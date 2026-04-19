@@ -29,12 +29,13 @@ interface UseProfileReturn {
   errorMessage: string | null;
   isRefreshing: boolean;
   friendStatus: ProfileUser['friendStatus'];
+  friendshipId?: string;
   fetchProfile: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   sendFriendRequest: () => Promise<void>;
-  cancelFriendRequest: () => Promise<void>;
-  acceptFriendRequest: () => Promise<void>;
-  unfriend: () => Promise<void>;
+  cancelFriendRequest: (friendshipId: string) => Promise<void>;
+  acceptFriendRequest: (friendshipId: string) => Promise<void>;
+  unfriend: (friendshipId: string) => Promise<void>;
   updateMyProfile: (data: Partial<ProfileUser>) => Promise<void>;
   updateStatus: (status: string) => Promise<void>;
 }
@@ -62,6 +63,7 @@ export const useProfile = (options: UseProfileOptions = {}): UseProfileReturn =>
   const [isError, setIsError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [localFriendStatus, setLocalFriendStatus] = useState<ProfileUser['friendStatus']>('none');
+  const [localFriendshipId, setLocalFriendshipId] = useState<string | undefined>(undefined);
 
   const isMyProfile = useMemo(() => {
     if (!userId) return true;
@@ -81,8 +83,14 @@ export const useProfile = (options: UseProfileOptions = {}): UseProfileReturn =>
         setProfile(mapUserToProfile(u));
         // Check friend status from API
         const pending = await friendsApi.getPendingRequests().catch(() => []);
-        const isPendingSent = pending.some((p) => p.userId === userId);
-        setLocalFriendStatus(isPendingSent ? 'pending_sent' : 'none');
+        const pendingItem = pending.find((p) => p.userId === userId);
+        if (pendingItem) {
+          setLocalFriendshipId(pendingItem.id ?? pendingItem.friendshipId ?? pendingItem.requestId);
+          setLocalFriendStatus('pending_received');
+        } else {
+          setLocalFriendshipId(undefined);
+          setLocalFriendStatus('none');
+        }
       }
     } catch (err: any) {
       setIsError(true);
@@ -137,30 +145,40 @@ export const useProfile = (options: UseProfileOptions = {}): UseProfileReturn =>
   const sendFriendRequest = useCallback(async () => {
     if (!userId) return;
     try {
-      await friendsApi.sendRequest(userId);
+      const res = await friendsApi.sendRequest(userId);
+      // Backend returns { message, data: { id: friendshipId, ... } }
+      const fid = (res as any)?.data?.id;
+      if (fid) {
+        setLocalFriendshipId(fid);
+      }
       setLocalFriendStatus('pending_sent');
     } catch {}
   }, [userId]);
 
-  const cancelFriendRequest = useCallback(async () => {
-    setLocalFriendStatus('none');
-  }, []);
-
-  const acceptFriendRequest = useCallback(async () => {
-    if (!userId) return;
+  // Backend uses /friends/reject for both cancel and unfriend
+  const cancelFriendRequest = useCallback(async (friendshipId: string) => {
+    if (!friendshipId) return;
     try {
-      await friendsApi.acceptRequest(userId);
-      setLocalFriendStatus('friends');
-    } catch {}
-  }, [userId]);
-
-  const unfriend = useCallback(async () => {
-    if (!userId) return;
-    try {
-      await friendsApi.rejectRequest(userId);
+      await friendsApi.cancelRequest(friendshipId);
       setLocalFriendStatus('none');
     } catch {}
-  }, [userId]);
+  }, []);
+
+  const acceptFriendRequest = useCallback(async (friendshipId: string) => {
+    if (!friendshipId) return;
+    try {
+      await friendsApi.acceptRequest(friendshipId);
+      setLocalFriendStatus('friends');
+    } catch {}
+  }, []);
+
+  const unfriend = useCallback(async (friendshipId: string) => {
+    if (!friendshipId) return;
+    try {
+      await friendsApi.rejectRequest(friendshipId);
+      setLocalFriendStatus('none');
+    } catch {}
+  }, []);
 
   return {
     user: profile,
@@ -170,6 +188,7 @@ export const useProfile = (options: UseProfileOptions = {}): UseProfileReturn =>
     errorMessage,
     isRefreshing,
     friendStatus: isMyProfile ? undefined : localFriendStatus,
+    friendshipId: isMyProfile ? undefined : localFriendshipId,
     fetchProfile,
     refreshProfile,
     sendFriendRequest,

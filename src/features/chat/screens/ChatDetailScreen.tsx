@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createSelector } from '@reduxjs/toolkit';
 import {
   View,
   FlatList,
@@ -20,24 +21,30 @@ import {
   setTypingUser,
   removeTypingUser,
   setMessageRevoked,
+  confirmPendingMessage,
+  failPendingMessage,
+  setMessageFailed,
 } from '@store/slices/chatSlice';
 import { messageApi } from '@api/endpoints';
 import { socketActions, connectSocket } from '@api/socket';
 import { colors, spacing, typography } from '@theme';
 import { Avatar } from '@components/common';
 import type { RootStackScreenProps } from '@navigation/types';
+import type { RootState } from '@store/store';
 
 type Props = RootStackScreenProps<'Chat'>;
 
 interface MessageItem {
-  id: string;
+  id: string | number;
   senderId: string;
+  senderName?: string;
+  senderAvatar?: string | null;
   content: string;
   time: string;
   isMe: boolean;
   type: 'text' | 'image' | 'file' | 'sticker' | 'emoji';
   file_url?: string | null;
-  status: 'sending' | 'sent' | 'delivered' | 'read';
+  status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
   isRevoked?: boolean;
 }
@@ -47,13 +54,28 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
 
-  const messages = useAppSelector(
-    (state) => state.chat.messages[conversationId] || []
+  // ─── Memoized Selectors ─────────────────────────────────────────────────────
+  const messagesSelector = useMemo(
+    () =>
+      createSelector(
+        (state: RootState) => state.chat.messages,
+        (messages) => messages[conversationId] || []
+      ),
+    [conversationId]
   );
-  const typingUsers = useAppSelector(
-    (state) => state.chat.typingUsers[conversationId] || []
+  const typingUsersSelector = useMemo(
+    () =>
+      createSelector(
+        (state: RootState) => state.chat.typingUsers,
+        (typingUsers) => typingUsers[conversationId] || []
+      ),
+    [conversationId]
   );
+
+  const messages = useAppSelector(messagesSelector);
+  const typingUsers = useAppSelector(typingUsersSelector);
   const currentUserId = useAppSelector((state) => state.auth.user?.userId);
+  const currentUser = useAppSelector((state) => state.auth.user);
   const isLoadingMessages = useAppSelector((state) => state.chat.isLoadingMessages);
 
   const [inputText, setInputText] = useState('');
@@ -67,16 +89,18 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     try {
       const result = await messageApi.getConversationMessages(conversationId);
       const mapped: MessageItem[] = result.messages.map((m) => ({
-        id: m.messageId,
-        senderId: m.senderId,
-        content: m.content,
-        time: new Date(m.created_at).toLocaleTimeString('vi-VN', {
+        id: String(m.id ?? m.messageId ?? ''),
+        senderId: String(m.senderId),
+        senderName: m.sender_name,
+        senderAvatar: m.sender_avatar ?? null,
+        content: m.content ?? '',
+        time: new Date(m.createdAt ?? m.created_at ?? Date.now()).toLocaleTimeString('vi-VN', {
           hour: '2-digit',
           minute: '2-digit',
         }),
-        isMe: m.senderId === currentUserId,
-        type: m.type as MessageItem['type'],
-        file_url: m.file_url,
+        isMe: String(m.senderId) === String(currentUserId),
+        type: (m.contentType ?? m.type ?? 'text') as MessageItem['type'],
+        file_url: m.file_url ?? m.attachments?.[0]?.url ?? null,
         status: 'sent',
         isDeleted: m.is_revoked,
         isRevoked: m.is_revoked,
@@ -134,10 +158,12 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     socketActions.sendStopTyping(conversationId);
     setIsTyping(false);
 
-    // Optimistic update
+    // Optimistic update — tracked as pending so it can be confirmed or removed
     const optimisticMsg: MessageItem = {
       id: tempId,
       senderId: currentUserId || '',
+      senderName: currentUser?.display_name,
+      senderAvatar: currentUser?.avatar_url ?? null,
       content: text,
       time: new Date().toLocaleTimeString('vi-VN', {
         hour: '2-digit',
@@ -152,26 +178,33 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
 
     try {
-      const result = await messageApi.sendMessage(conversationId, text);
-      // Replace optimistic message with real one
+      const result = await messageApi.sendMessage(conversationId, text, currentUserId || '');
+      const realId = String(result.id ?? result.messageId ?? tempId);
+
+      // Replace optimistic message with confirmed real message
       dispatch(
-        addMessage({
-          id: result.messageId,
+        confirmPendingMessage({
+          tempId,
+          realId,
           conversationId,
-          senderId: result.senderId,
-          content: result.content,
-          time: new Date(result.created_at).toLocaleTimeString('vi-VN', {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          isMe: result.senderId === currentUserId,
-          type: result.type as any,
-          file_url: result.file_url,
-          status: 'sent',
-        } as any)
+          senderId: String(result.senderId),
+          senderName: result.sender_name,
+          senderAvatar: result.sender_avatar ?? null,
+          content: result.content ?? '',
+          type: (result.contentType ?? result.type ?? 'text') as MessageItem['type'],
+          file_url: result.file_url ?? result.attachments?.[0]?.url ?? null,
+        })
       );
     } catch (err) {
-      Alert.alert('Lỗi', 'Không thể gửi tin nhắn');
+      // Mark optimistic message as failed instead of removing it immediately
+      dispatch(
+        failPendingMessage(tempId)
+      );
+      // Replace the "sending" status message with a visible error indicator
+      dispatch(
+        setMessageFailed({ conversationId, messageId: tempId })
+      );
+      Alert.alert('Lỗi', 'Không thể gửi tin nhắn. Vui lòng thử lại.');
     }
   };
 
@@ -185,9 +218,9 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         style: 'destructive',
         onPress: async () => {
           try {
-            await messageApi.revokeMessage(msg.id, conversationId);
+            await messageApi.revokeMessage(String(msg.id), conversationId);
             dispatch(
-              setMessageRevoked({ messageId: msg.id, conversationId })
+              setMessageRevoked({ messageId: String(msg.id), conversationId })
             );
           } catch {
             Alert.alert('Lỗi', 'Không thể thu hồi tin nhắn');
@@ -199,13 +232,12 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   // ─── Typing Label ─────────────────────────────────────────────────────────
-  const typingLabel =
-    typingUsers.length > 0
-      ? typingUsers
-          .filter((u) => u.userId !== currentUserId)
-          .map((u) => u.user_name || 'Ai đó')
-          .join(', ') + ' đang nhập...'
-      : '';
+  const typingLabel = useMemo(() => {
+    const others = typingUsers.filter((u) => u.userId !== currentUserId);
+    if (others.length === 0) return '';
+    const names = others.map((u) => u.user_name || 'Ai đó').join(', ');
+    return `${names} đang nhập...`;
+  }, [typingUsers, currentUserId]);
 
   // ─── Render Message ────────────────────────────────────────────────────────
   const renderMessage = ({ item }: { item: MessageItem }) => {
@@ -217,15 +249,29 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             item.isMe ? styles.messageRowMe : styles.messageRowOther,
           ]}
         >
-          <View
-            style={[
-              styles.messageBubble,
-              item.isMe ? styles.bubbleMe : styles.bubbleOther,
-            ]}
-          >
-            <Text style={[styles.revokedText, item.isMe && styles.revokedTextMe]}>
-              Tin nhắn đã bị thu hồi
-            </Text>
+          {!item.isMe && (
+            <Avatar
+              uri={item.senderAvatar ?? (item as any).sender_avatar ?? undefined}
+              name={item.senderName || (item as any).sender_name || title}
+              size="xs"
+            />
+          )}
+          <View style={styles.messageContentWrapper}>
+            {!item.isMe && (item.senderName || (item as any).sender_name) && (
+              <Text style={styles.senderName}>
+                {item.senderName || (item as any).sender_name}
+              </Text>
+            )}
+            <View
+              style={[
+                styles.messageBubble,
+                item.isMe ? styles.bubbleMe : styles.bubbleOther,
+              ]}
+            >
+              <Text style={[styles.revokedText, item.isMe && styles.revokedTextMe]}>
+                Tin nhắn đã bị thu hồi
+              </Text>
+            </View>
           </View>
         </View>
       );
@@ -240,13 +286,25 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           item.isMe ? styles.messageRowMe : styles.messageRowOther,
         ]}
       >
-        {!item.isMe && <Avatar name={title} size="xs" />}
-        <View
-          style={[
-            styles.messageBubble,
-            item.isMe ? styles.bubbleMe : styles.bubbleOther,
-          ]}
-        >
+        {!item.isMe && (
+          <Avatar
+            uri={item.senderAvatar ?? (item as any).sender_avatar ?? undefined}
+            name={item.senderName || (item as any).sender_name || title}
+            size="xs"
+          />
+        )}
+        <View style={styles.messageContentWrapper}>
+          {!item.isMe && (item.senderName || (item as any).sender_name) && (
+            <Text style={styles.senderName}>
+              {item.senderName || (item as any).sender_name}
+            </Text>
+          )}
+          <View
+            style={[
+              styles.messageBubble,
+              item.isMe ? styles.bubbleMe : styles.bubbleOther,
+            ]}
+          >
           {item.type === 'image' && item.file_url && (
             <Image
               source={{ uri: item.file_url }}
@@ -291,6 +349,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             )}
           </View>
         </View>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -315,16 +374,18 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         contentContainerStyle={styles.messagesList}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
         ListEmptyComponent={
-          isLoadingMessages ? (
-            <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>Đang tải tin nhắn...</Text>
-            </View>
-          ) : (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Chưa có tin nhắn nào</Text>
-              <Text style={styles.emptySubtext}>Gửi lời chào đầu tiên!</Text>
-            </View>
-          )
+          <View key="list-empty">
+            {isLoadingMessages ? (
+              <View style={styles.loadingContainer}>
+                <Text style={styles.loadingText}>Đang tải tin nhắn...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>Chưa có tin nhắn nào</Text>
+                <Text style={styles.emptySubtext}>Gửi lời chào đầu tiên!</Text>
+              </View>
+            )}
+          </View>
         }
       />
 
@@ -407,6 +468,15 @@ const styles = StyleSheet.create({
   },
   messageRowOther: {
     justifyContent: 'flex-start',
+  },
+  messageContentWrapper: {
+    maxWidth: '72%',
+  },
+  senderName: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginBottom: 2,
+    marginHorizontal: spacing.sm,
   },
   messageBubble: {
     maxWidth: '72%',

@@ -19,7 +19,10 @@ export interface User {
   coverImage?: string;
 }
 
+// Backend getFriends returns: { friendshipId, friend_id, status, friend_display_name, friend_username, friend_avatar_url }
 export interface FriendItem {
+  friendshipId: string;
+  friend_id: string;
   userId: string;
   username: string;
   display_name: string;
@@ -28,10 +31,19 @@ export interface FriendItem {
   friendship_status: string;
   friends_since?: string;
   isOnline?: boolean;
+  // Raw fields from backend
+  friend_display_name?: string;
+  friend_username?: string;
+  friend_avatar_url?: string | null;
 }
 
+// Backend getPendingRequests returns: { id: friendshipId, sender_id, ... }
 export interface PendingRequest {
+  id: string;
+  requestId?: string;
+  friendshipId?: string;
   userId: string;
+  sender_id: string;
   username: string;
   display_name: string;
   avatar_url: string | null;
@@ -56,6 +68,7 @@ export interface GroupMember {
   username: string;
   display_name: string;
   avatar_url: string | null;
+  role: 'OWNER' | 'DEPUTY' | 'MEMBER';
   joined_at: string;
 }
 
@@ -68,21 +81,38 @@ export interface Channel {
   created_at: string;
 }
 
+// Backend returns messages with `id` (number), `contentType`, `createdAt`
+// Frontend maps: id → messageId, contentType → type
 export interface BackendMessage {
-  messageId: string;
-  id?: string;
+  // Backend uses `id` (number), we map to `messageId` (string) on the frontend
+  id: number;
+  messageId?: string;
   conversationId: string;
   senderId: string;
   sender_name?: string;
   sender_avatar?: string | null;
-  type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'emoji';
+  // Backend uses contentType; frontend maps to `type`
+  contentType?: string;
+  type?: string;
   content: string;
   file_url?: string | null;
   file_name?: string | null;
   file_size?: number | null;
+  stickerData?: {
+    stickerId?: string;
+    stickerUrl?: string;
+    stickerPack?: string;
+    stickerName?: string;
+  };
+  attachments?: Array<{
+    url: string;
+    type: string;
+    size: number;
+  }>;
   is_revoked?: boolean;
   status?: 'sending' | 'sent' | 'delivered' | 'read';
-  created_at: string;
+  createdAt?: string;
+  created_at?: string;
 }
 
 export type { RootStackParamList, MainTabParamList, RootStackScreenProps, MainTabScreenProps } from '@navigation/types';

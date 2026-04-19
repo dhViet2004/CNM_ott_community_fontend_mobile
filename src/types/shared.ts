@@ -19,7 +19,10 @@ export interface User {
   coverImage?: string;
 }
 
+// Backend getFriends returns: { friendshipId, friend_id, status, ... }
 export interface FriendItem {
+  friendshipId: string;
+  friend_id: string;
   userId: string;
   username: string;
   display_name: string;
@@ -30,8 +33,13 @@ export interface FriendItem {
   isOnline?: boolean;
 }
 
+// Backend getPendingRequests returns: { id: friendshipId, sender_id, ... }
 export interface PendingRequest {
+  id: string;
+  requestId?: string;
+  friendshipId?: string;
   userId: string;
+  sender_id: string;
   username: string;
   display_name: string;
   avatar_url: string | null;
@@ -56,6 +64,7 @@ export interface GroupMember {
   username: string;
   display_name: string;
   avatar_url: string | null;
+  role: 'OWNER' | 'DEPUTY' | 'MEMBER';
   joined_at: string;
 }
 
@@ -68,19 +77,54 @@ export interface Channel {
   created_at: string;
 }
 
+// Backend returns messages with `id` (number), `contentType`, `createdAt`
+// Frontend maps: id → messageId, contentType → type
 export interface BackendMessage {
-  messageId: string;
-  id?: string;
+  id: number;
+  messageId?: string;
   conversationId: string;
   senderId: string;
   sender_name?: string;
   sender_avatar?: string | null;
-  type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'emoji';
+  contentType?: string;
+  type?: string;
   content: string;
   file_url?: string | null;
   file_name?: string | null;
   file_size?: number | null;
+  stickerData?: {
+    stickerId?: string;
+    stickerUrl?: string;
+    stickerPack?: string;
+    stickerName?: string;
+  };
+  attachments?: Array<{
+    url: string;
+    type: string;
+    size: number;
+  }>;
   is_revoked?: boolean;
   status?: 'sending' | 'sent' | 'delivered' | 'read';
-  created_at: string;
+  createdAt?: string;
+  created_at?: string;
+}
+
+export type { RootStackParamList, MainTabParamList, RootStackScreenProps, MainTabScreenProps } from '@navigation/types';
+
+export interface ApiResponse<T> {
+  data: T;
+  message?: string;
+  success: boolean;
+}
+
+export interface PaginationParams {
+  cursor?: string;
+  limit?: number;
+  page?: number;
+}
+
+export interface ApiError {
+  message: string;
+  code?: string;
+  status?: number;
 }

@@ -27,24 +27,44 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
+// Track registered event names so we can clean up before re-registering
+const REGISTERED_EVENTS = [
+  'connect', 'disconnect', 'connect_error',
+  'receive_message', 'message_sent', 'message_revoked',
+  'user_typing', 'user_stopped_typing',
+  'online_users', 'user_online', 'user_offline',
+  'friend_request', 'friend_accepted',
+  'call_incoming', 'call_accepted', 'call_rejected', 'call_ended',
+];
+
+function removeAllListeners() {
+  if (!socket) return;
+  REGISTERED_EVENTS.forEach((event) => socket!.removeAllListeners(event));
+}
+
 export interface SocketMessage {
-  messageId: string;
+  id: string;
   conversationId: string;
   senderId: string;
   sender_name?: string;
   sender_avatar?: string | null;
-  type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'emoji';
-  content: string;
+  contentType?: string;
+  content?: string;
   file_url?: string | null;
   file_name?: string | null;
   file_size?: number | null;
-  created_at: string;
+  createdAt?: string;
 }
 
 // ─── Connect ─────────────────────────────────────────────────────────────────
 
 export const connectSocket = (token: string) => {
-  if (socket?.connected) return;
+  if (socket?.connected) {
+    // Already connected — just ensure we haven't accumulated duplicate listeners
+    removeAllListeners();
+  } else if (socket) {
+    socket.disconnect();
+  }
 
   socket = io(SOCKET_URL, {
     auth: { token },
@@ -71,11 +91,26 @@ export const connectSocket = (token: string) => {
 
   // ─── Message Events ───────────────────────────────────────────────────────
 
-  socket.on('new_message', (message: SocketMessage) => {
+  socket.on('receive_message', (message: SocketMessage) => {
+    // Skip messages sent by the current user — they're already confirmed via REST API
+    const currentUserId = store.getState().auth.user?.userId;
+    const senderId = message.senderId ? String(message.senderId) : '';
+    if (currentUserId && senderId && senderId === String(currentUserId)) {
+      return;
+    }
+
     store.dispatch(addMessage({
-      ...message,
-      id: message.messageId,
-      timestamp: message.created_at,
+      id: message.id,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      sender_name: message.sender_name,
+      sender_avatar: message.sender_avatar ?? null,
+      type: message.contentType,
+      content: message.content ?? '',
+      file_url: message.file_url ?? null,
+      file_name: message.file_name ?? null,
+      file_size: message.file_size ?? null,
+      timestamp: message.createdAt,
       status: 'delivered',
     }));
   });
@@ -96,19 +131,19 @@ export const connectSocket = (token: string) => {
 
   // ─── Typing Events ────────────────────────────────────────────────────────
 
-  socket.on('typing_start', ({ conversationId, userId, user_name }: {
-    conversationId: string;
+  socket.on('user_typing', ({ roomId, userId, userName }: {
+    roomId: string;
     userId: string;
-    user_name: string;
+    userName: string;
   }) => {
-    store.dispatch(setTypingUser({ conversationId, userId, user_name }));
+    store.dispatch(setTypingUser({ conversationId: roomId, userId, user_name: userName }));
   });
 
-  socket.on('typing_stop', ({ conversationId, userId }: {
-    conversationId: string;
+  socket.on('user_stopped_typing', ({ roomId, userId }: {
+    roomId: string;
     userId: string;
   }) => {
-    store.dispatch(removeTypingUser({ conversationId, userId }));
+    store.dispatch(removeTypingUser({ conversationId: roomId, userId }));
   });
 
   // ─── Presence Events ──────────────────────────────────────────────────────
@@ -209,11 +244,11 @@ export const socketActions = {
 
   // Typing indicators
   sendTyping: (conversationId: string) => {
-    socket?.emit('typing', { conversationId });
+    socket?.emit('typing_start', { roomId: conversationId });
   },
 
   sendStopTyping: (conversationId: string) => {
-    socket?.emit('stop_typing', { conversationId });
+    socket?.emit('typing_stop', { roomId: conversationId });
   },
 
   // Send message (real-time, complements REST API)

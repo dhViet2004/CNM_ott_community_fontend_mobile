@@ -31,6 +31,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [allUsers, setAllUsers] = useState<any[]>([]);
+  const currentUserId = useAppSelector((state) => state.auth.user?.id);
 
   // ─── Load Data ────────────────────────────────────────────────────────────
   const loadContacts = useCallback(async () => {
@@ -65,27 +66,32 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
   // ─── Filter ───────────────────────────────────────────────────────────────
   const filteredFriends = friends.filter(
     (f) =>
-      f.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      f.username.toLowerCase().includes(searchQuery.toLowerCase())
+      (f.display_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (f.username || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const onlineFriends = filteredFriends.filter(
-    (f) => onlineUsers[f.userId]
+    (f) => !!onlineUsers[f.friend_id || f.userId]
   );
   const offlineFriends = filteredFriends.filter(
-    (f) => !onlineUsers[f.userId]
+    (f) => !onlineUsers[f.friend_id || f.userId]
   );
 
   // ─── Navigate ──────────────────────────────────────────────────────────────
   const handleFriendPress = useCallback(
     (friend: (typeof friends)[0]) => {
+      // Backend uses dm:{smallerId}:{largerId} for DM conversation IDs
+      const myId = currentUserId || '';
+      const otherId = friend.userId;
+      const sortedIds = [myId, otherId].sort();
+      const conversationId = `dm:${sortedIds.join(':')}`;
       navigation.navigate('Chat', {
-        conversationId: `user_${friend.userId}`,
+        conversationId,
         title: friend.display_name,
         userId: friend.userId,
       });
     },
-    [navigation]
+    [navigation, currentUserId]
   );
 
   const handleUserPress = useCallback(
@@ -108,7 +114,8 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
 
   // ─── Render ────────────────────────────────────────────────────────────────
   const renderFriendItem = ({ item }: { item: (typeof friends)[0] }) => {
-    const isOnline = !!onlineUsers[item.userId];
+    const friendId = item.friend_id || item.userId || '';
+    const isOnline = !!onlineUsers[friendId];
     return (
       <TouchableOpacity
         style={styles.contactItem}
@@ -116,7 +123,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
         activeOpacity={0.7}
       >
         <Avatar
-          name={item.display_name}
+          name={item.display_name || ''}
           uri={item.avatar_url || undefined}
           size="md"
           showOnlineIndicator

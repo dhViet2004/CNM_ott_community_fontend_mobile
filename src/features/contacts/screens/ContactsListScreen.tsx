@@ -36,7 +36,7 @@ const ContactsListScreen: React.FC<Props> = ({ navigation }) => {
     try {
       const results = await userApi.searchUsers(query.trim());
       const filtered = results.filter(
-        (u) => !friends.find((f) => f.userId === u.userId)
+        (u) => !friends.find((f) => (f.friend_id || f.userId) === u.userId)
       );
       setSearchResults(filtered);
     } catch {

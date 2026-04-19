@@ -74,12 +74,12 @@ const handleUnauthorized = async () => {
     }
 
     const response = await axios.post(`${BASE_URL}/auth/refresh`, {
-      refresh_token: refreshToken,
+      refreshToken,
     });
 
-    const newAccessToken = response.data?.data?.access_token;
+    const newAccessToken = response.data?.accessToken;
     const newRefreshToken =
-      response.data?.data?.refresh_token || refreshToken;
+      response.data?.refreshToken || refreshToken;
 
     if (newAccessToken) {
       await setTokens(newAccessToken, newRefreshToken);

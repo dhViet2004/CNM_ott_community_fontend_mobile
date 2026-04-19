@@ -15,7 +15,7 @@ export interface Message {
   file_name?: string | null;
   file_size?: number | null;
   timestamp: string;
-  status: 'sending' | 'sent' | 'delivered' | 'read';
+  status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
   isRevoked?: boolean;
 }
@@ -190,9 +190,19 @@ const chatSlice = createSlice({
 
     confirmPendingMessage(
       state,
-      action: PayloadAction<{ tempId: string; realId: string; conversationId: string }>
+      action: PayloadAction<{
+        tempId: string;
+        realId: string;
+        conversationId: string;
+        senderId: string;
+        senderName?: string;
+        senderAvatar?: string | null;
+        content: string;
+        type: string;
+        file_url?: string | null;
+      }>
     ) {
-      const { tempId, realId, conversationId } = action.payload;
+      const { tempId, realId, conversationId, senderId, senderName, senderAvatar, content, type, file_url } = action.payload;
       delete state.pendingMessages[tempId];
 
       const messages = state.messages[conversationId];
@@ -200,6 +210,12 @@ const chatSlice = createSlice({
         const idx = messages.findIndex((m) => m.id === tempId);
         if (idx !== -1) {
           messages[idx].id = realId;
+          messages[idx].senderId = senderId;
+          messages[idx].sender_name = senderName;
+          messages[idx].sender_avatar = senderAvatar ?? null;
+          messages[idx].content = content;
+          messages[idx].type = type as Message['type'];
+          messages[idx].file_url = file_url ?? null;
           messages[idx].status = 'sent';
         }
       }
@@ -207,6 +223,20 @@ const chatSlice = createSlice({
 
     failPendingMessage(state, action: PayloadAction<string>) {
       state.pendingMessages[action.payload] = 'failed';
+    },
+
+    setMessageFailed(
+      state,
+      action: PayloadAction<{ conversationId: string; messageId: string }>
+    ) {
+      const { conversationId, messageId } = action.payload;
+      const messages = state.messages[conversationId];
+      if (messages) {
+        const msg = messages.find((m) => m.id === messageId);
+        if (msg) {
+          msg.status = 'failed';
+        }
+      }
     },
 
     setMessageStatus(
@@ -403,6 +433,7 @@ export const {
   addPendingMessage,
   confirmPendingMessage,
   failPendingMessage,
+  setMessageFailed,
   setMessageStatus,
   updateMessageStatus,
   deleteMessage,

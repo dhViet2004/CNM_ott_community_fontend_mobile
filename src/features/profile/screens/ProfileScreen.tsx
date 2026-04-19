@@ -27,6 +27,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     isLoading,
     isRefreshing,
     friendStatus,
+    friendshipId,
     refreshProfile,
     sendFriendRequest,
     cancelFriendRequest,
@@ -161,6 +162,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           user={user}
           isMyProfile={isMyProfile}
           friendStatus={friendStatus}
+          friendshipId={friendshipId}
           onSendMessage={handleSendMessage}
           onSendFriendRequest={sendFriendRequest}
           onCancelRequest={cancelFriendRequest}

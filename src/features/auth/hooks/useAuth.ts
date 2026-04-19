@@ -85,13 +85,13 @@ export const useAuth = () => {
 
       try {
         const data = await authApi.login(username, password);
-        await setTokens(data.access_token, data.refresh_token);
+        await setTokens(data.accessToken, data.refreshToken);
 
         dispatch(
           loginSuccess({
             user: data.user,
-            token: data.access_token,
-            refreshToken: data.refresh_token,
+            token: data.accessToken,
+            refreshToken: data.refreshToken,
           })
         );
 
@@ -174,10 +174,10 @@ export const useAuth = () => {
         );
         return { success: true };
       } catch (err: any) {
-        const message =
-          err?.response?.data?.message ||
-          err?.message ||
-          'Đăng ký thất bại. Vui lòng thử lại.';
+        const isNetworkError = err?.code === 'NETWORK_ERROR' || !err?.response;
+        const message = isNetworkError
+          ? 'Không có kết nối internet'
+          : err?.response?.data?.message || err?.message || 'Đăng ký thất bại. Vui lòng thử lại.';
         dispatch(registerFailure(message));
         return { success: false, error: message };
       }

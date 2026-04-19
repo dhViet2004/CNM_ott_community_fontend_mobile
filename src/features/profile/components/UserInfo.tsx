@@ -8,18 +8,33 @@ import {
   Alert,
 } from 'react-native';
 import { colors, spacing, typography } from '@theme';
-import type { ProfileUser } from '../data/mockUsers';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
+
+export interface ProfileUser {
+  id: string;
+  fullName: string;
+  avatarUrl?: string;
+  coverUrl?: string;
+  phoneNumber?: string;
+  bio?: string;
+  isOnline?: boolean;
+  lastSeen?: string;
+  friendStatus?: 'none' | 'friends' | 'pending_sent' | 'pending_received';
+  totalFriends?: number;
+  totalPhotos?: number;
+  totalPosts?: number;
+}
 
 interface UserInfoProps {
   user: ProfileUser;
   isMyProfile: boolean;
   friendStatus: ProfileUser['friendStatus'];
+  friendshipId?: string;
   onSendMessage?: () => void;
   onSendFriendRequest?: () => void;
-  onCancelRequest?: () => void;
-  onAcceptRequest?: () => void;
-  onUnfriend?: () => void;
+  onCancelRequest?: (friendshipId: string) => void;
+  onAcceptRequest?: (friendshipId: string) => void;
+  onUnfriend?: (friendshipId: string) => void;
   onEditProfile?: () => void;
   onUpdateStatus?: (status: string) => void;
 }
@@ -28,6 +43,7 @@ const UserInfo: React.FC<UserInfoProps> = ({
   user,
   isMyProfile,
   friendStatus,
+  friendshipId,
   onSendMessage,
   onSendFriendRequest,
   onCancelRequest,
@@ -47,12 +63,13 @@ const UserInfo: React.FC<UserInfoProps> = ({
   };
 
   const handleUnfriend = () => {
+    if (!friendshipId) return;
     Alert.alert(
       'Hủy kết bạn',
       `Bạn có chắc muốn hủy kết bạn với ${user.fullName}?`,
       [
         { text: 'Hủy', style: 'cancel' },
-        { text: 'Hủy kết bạn', style: 'destructive', onPress: onUnfriend },
+        { text: 'Hủy kết bạn', style: 'destructive', onPress: () => onUnfriend?.(friendshipId) },
       ]
     );
   };
@@ -83,7 +100,7 @@ const UserInfo: React.FC<UserInfoProps> = ({
         return (
           <TouchableOpacity
             style={[styles.actionButton, styles.outlineButton]}
-            onPress={onCancelRequest}
+            onPress={() => onCancelRequest?.(friendshipId ?? '')}
             activeOpacity={0.75}
           >
             <Text style={styles.outlineButtonText}>Hủy lời mời</Text>
@@ -94,14 +111,14 @@ const UserInfo: React.FC<UserInfoProps> = ({
           <>
             <TouchableOpacity
               style={[styles.actionButton, styles.primaryButton]}
-              onPress={onAcceptRequest}
+              onPress={() => onAcceptRequest?.(friendshipId ?? '')}
               activeOpacity={0.75}
             >
               <Text style={styles.primaryButtonText}>Chấp nhận</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionButton, styles.outlineButton]}
-              onPress={onCancelRequest}
+              onPress={() => onCancelRequest?.(friendshipId ?? '')}
               activeOpacity={0.75}
             >
               <Text style={styles.outlineButtonText}>Từ chối</Text>
@@ -217,18 +234,6 @@ const UserInfo: React.FC<UserInfoProps> = ({
           <View style={styles.infoRow}>
             <Feather name="smartphone" size={18} color={colors.text.tertiary} style={styles.infoIcon} />
             <Text style={styles.infoText}>{user.phoneNumber}</Text>
-          </View>
-        )}
-        {user.city && (
-          <View style={styles.infoRow}>
-            <Feather name="map-pin" size={18} color={colors.text.tertiary} style={styles.infoIcon} />
-            <Text style={styles.infoText}>Sống tại {user.city}</Text>
-          </View>
-        )}
-        {user.birthday && (
-          <View style={styles.infoRow}>
-            <Ionicons name="gift-outline" size={18} color={colors.text.tertiary} style={styles.infoIcon} />
-            <Text style={styles.infoText}>Sinh {user.birthday}</Text>
           </View>
         )}
       </View>

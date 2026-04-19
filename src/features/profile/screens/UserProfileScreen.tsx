@@ -1,20 +1,50 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
 import { Avatar, Button } from '@components/common';
+import { useProfile } from '../hooks';
 import type { RootStackScreenProps } from '@navigation/types';
 
 type Props = RootStackScreenProps<'UserProfile'>;
 
 const UserProfileScreen: React.FC<Props> = ({ route, navigation }) => {
-  const insets = useSafeAreaInsets();
   const { userId } = route.params;
+  const insets = useSafeAreaInsets();
+
+  const { user, isLoading, friendStatus, friendshipId, sendFriendRequest, cancelFriendRequest, acceptFriendRequest, unfriend } =
+    useProfile({ userId, autoLoad: true });
+
+  useEffect(() => {
+    if (user) {
+      navigation.setOptions({ title: user.fullName });
+    }
+  }, [user, navigation]);
 
   const handleBack = () => navigation.goBack();
   const handleSendMessage = () => {
-    navigation.navigate('Chat', { conversationId: userId, title: 'Người dùng' });
+    navigation.navigate('Chat', {
+      conversationId: `dm:${[userId].sort().join(':')}`,
+      title: user?.fullName || 'Người dùng',
+    });
   };
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <Text style={styles.errorText}>Không tìm thấy người dùng</Text>
+        <Button title="Quay lại" onPress={handleBack} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -22,31 +52,84 @@ const UserProfileScreen: React.FC<Props> = ({ route, navigation }) => {
         <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Text style={styles.backText}>{'<'}</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Trang cá nhân</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>{user.fullName}</Text>
         <View style={{ width: 36 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.profileHeader}>
-          <Avatar name="Người dùng" size="xl" />
-          <Text style={styles.userName}>Người dùng Zalo</Text>
-          <Text style={styles.userStatus}>Đang hoạt động</Text>
+          <Avatar
+            uri={user.avatarUrl}
+            name={user.fullName}
+            size="xl"
+            showOnlineIndicator={!isLoading}
+            online={user.isOnline}
+          />
+          <Text style={styles.userName}>{user.fullName}</Text>
+          <Text style={styles.userStatus}>
+            {user.isOnline ? 'Đang hoạt động' : 'Offline'}
+          </Text>
         </View>
 
         <View style={styles.actions}>
-          <Button title="Nhắn tin" onPress={handleSendMessage} />
-          <Button title="Chặn" variant="outline" style={{ marginLeft: spacing.md }} />
+          {friendStatus === 'friends' && (
+            <>
+              <Button title="Nhắn tin" onPress={handleSendMessage} />
+              <Button
+                title="Bạn bè"
+                variant="outline"
+                style={{ marginLeft: spacing.md }}
+                onPress={() => {
+                  // TODO: navigate to unfriend action
+                }}
+              />
+            </>
+          )}
+          {friendStatus === 'pending_sent' && (
+            <Button
+              title="Hủy lời mời"
+              variant="outline"
+              onPress={() => cancelFriendRequest(friendshipId ?? '')}
+            />
+          )}
+          {friendStatus === 'pending_received' && (
+            <>
+              <Button title="Chấp nhận" onPress={() => acceptFriendRequest(friendshipId ?? '')} />
+              <Button
+                title="Từ chối"
+                variant="outline"
+                style={{ marginLeft: spacing.md }}
+                onPress={() => cancelFriendRequest(friendshipId ?? '')}
+              />
+            </>
+          )}
+          {friendStatus === 'none' && (
+            <Button title="Kết bạn" onPress={sendFriendRequest} />
+          )}
+          <Button
+            title="Chặn"
+            variant="outline"
+            style={{ marginLeft: spacing.md }}
+          />
         </View>
 
         <View style={styles.infoSection}>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Số điện thoại</Text>
-            <Text style={styles.infoValue}>0842 xxx xxx</Text>
-          </View>
+          {user.phoneNumber && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Số điện thoại</Text>
+              <Text style={styles.infoValue}>{user.phoneNumber}</Text>
+            </View>
+          )}
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Bio</Text>
-            <Text style={styles.infoValue}>Chưa cập nhật</Text>
+            <Text style={styles.infoValue}>{user.bio || 'Chưa cập nhật'}</Text>
           </View>
+          {user.lastSeen && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Hoạt động</Text>
+              <Text style={styles.infoValue}>{user.lastSeen}</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -82,6 +165,8 @@ const styles = StyleSheet.create({
   },
   infoLabel: { ...typography.body, color: colors.text.secondary },
   infoValue: { ...typography.body, color: colors.text.primary },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  errorText: { ...typography.body, color: colors.text.secondary, textAlign: 'center' },
 });
 
 export default UserProfileScreen;

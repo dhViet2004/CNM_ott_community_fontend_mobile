@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   FlatList,
@@ -7,24 +7,76 @@ import {
   TouchableOpacity,
   Text,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, spacing, typography, shadows } from '@theme';
+import { colors, spacing, typography } from '@theme';
 import { MessageListItem } from '@components/common';
+import { useAppSelector, useAppDispatch } from '@store/hooks';
+import { setFriends } from '@store/slices/chatSlice';
+import { friendsApi } from '@api/endpoints';
 import type { RootStackScreenProps } from '@navigation/types';
-import type { MockConversation } from '../data/mockConversations';
-import { MOCK_CONVERSATIONS } from '../data/mockConversations';
 
 type Props = RootStackScreenProps<'MainTabs'>;
 
 const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  const dispatch = useAppDispatch();
   const [searchQuery, setSearchQuery] = useState('');
-  const [conversations] = useState<MockConversation[]>(MOCK_CONVERSATIONS);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const filteredConversations = conversations.filter((conv) =>
-    conv.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    conv.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
+  const friends = useAppSelector((state) => state.chat.friends);
+  const onlineUsers = useAppSelector((state) => state.chat.onlineUsers);
+  const currentUserId = useAppSelector((state) => state.auth.user?.userId);
+
+  // Build DM conversations from friends list
+  const conversations = friends.map((friend) => {
+    const friendId = friend.friend_id || friend.userId || '';
+    const myId = currentUserId || '';
+    const sortedIds = [myId, friendId].sort();
+    return {
+      id: `dm:${sortedIds.join(':')}`,
+      type: 'single' as const,
+      name: friend.display_name || '',
+      avatar: friend.avatar_url || undefined,
+      lastMessage: friend.status || '',
+      time: friend.friends_since || '',
+      unreadCount: 0,
+      isPinned: false,
+      isMuted: false,
+      isOnline: !!onlineUsers[friendId],
+      friendId,
+      friend,
+    };
+  });
+
+  const loadFriends = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const list = await friendsApi.getFriends().catch(() => []);
+      dispatch(setFriends(list));
+    } catch (err) {
+      console.error('Failed to load friends:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [dispatch]);
+
+  useEffect(() => {
+    loadFriends();
+  }, [loadFriends]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadFriends();
+    setIsRefreshing(false);
+  };
+
+  const filteredConversations = conversations.filter(
+    (conv) =>
+      conv.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      conv.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const pinnedConversations = filteredConversations.filter((c) => c.isPinned);
@@ -34,16 +86,20 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const mutedConversations = filteredConversations.filter((c) => c.isMuted);
 
   const handleConversationPress = useCallback(
-    (conv: MockConversation) => {
+    (conv: (typeof conversations)[0]) => {
+      const friendId = conv.friendId;
+      const myId = currentUserId || '';
+      const sortedIds = [myId, friendId].sort();
+      const conversationId = `dm:${sortedIds.join(':')}`;
       navigation.navigate('Chat', {
-        conversationId: conv.id,
+        conversationId,
         title: conv.name || 'Chat',
       });
     },
-    [navigation]
+    [navigation, currentUserId]
   );
 
-  const handleConversationLongPress = useCallback((conv: MockConversation) => {
+  const handleConversationLongPress = useCallback((conv: (typeof conversations)[0]) => {
     Alert.alert(
       conv.name || 'Tùy chọn',
       'Chọn thao tác với cuộc trò chuyện',
@@ -117,11 +173,11 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     </View>
   );
 
-  const renderConversation = ({ item }: { item: MockConversation }) => (
+  const renderConversation = ({ item }: { item: (typeof conversations)[0] }) => (
     <MessageListItem
       avatarUri={item.avatar}
       name={item.name || 'Người dùng'}
-      lastMessage={item.lastMessage}
+      lastMessage={item.lastMessage || 'Bắt đầu trò chuyện'}
       time={item.time}
       unreadCount={item.unreadCount}
       isOnline={item.isOnline}
@@ -148,12 +204,28 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
         keyExtractor={(item) => item.id}
         renderItem={renderConversation}
         ItemSeparatorComponent={renderSeparator}
-        ListEmptyComponent={renderEmpty}
+        ListEmptyComponent={
+          isLoading ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>Đang tải...</Text>
+            </View>
+          ) : (
+            renderEmpty()
+          )
+        }
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: insets.bottom + 60 },
         ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       />
     </View>
   );

@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { User, FriendItem, PendingRequest, Group, GroupMember, Channel, BackendMessage } from '@/types';
+import type { User, FriendItem, Group, GroupMember, Channel, BackendMessage } from '@/types';
 
 // ─── Backend Response wrapper ──────────────────────────────────────────────────
 // NOTE: Backend controllers have INCONSISTENT response formats.
@@ -10,16 +10,16 @@ import type { User, FriendItem, PendingRequest, Group, GroupMember, Channel, Bac
 
 export interface LoginResponse {
   user: User;
-  access_token: string;
-  refresh_token: string;
+  accessToken: string;
+  refreshToken: string;
   token: string;
   expires_in?: number;
 }
 
 export interface RegisterResponse {
   user: User;
-  access_token: string;
-  refresh_token: string;
+  accessToken: string;
+  refreshToken: string;
   token: string;
 }
 
@@ -106,14 +106,14 @@ export const userApi = {
     apiClient
       .post<{ message: string; channel: string; target: string; expiresIn: number }>(
         '/users/verify/phone/send',
-        { phone_number: phoneNumber }
+        { phone: phoneNumber }
       )
       .then((r) => r.data),
 
   confirmPhoneOTP: (phoneNumber: string, otp: string) =>
     apiClient
       .post<{ message: string }>('/users/verify/phone/confirm', {
-        phone_number: phoneNumber,
+        phone: phoneNumber,
         otp,
       })
       .then((r) => r.data),
@@ -143,11 +143,35 @@ export const userApi = {
 // ─── Friends ─────────────────────────────────────────────────────────────────
 
 // Backend returns: { message, data, count }
+export interface PendingRequest {
+  id: string;
+  requestId?: string;
+  friendshipId?: string;
+  userId: string;
+  sender_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  requested_at?: string;
+  // Raw fields from backend
+  sender_display_name?: string;
+  sender_username?: string;
+  sender_avatar_url?: string | null;
+}
+
 export const friendsApi = {
   getFriends: () =>
     apiClient
       .get<{ message: string; data: FriendItem[]; count: number }>('/friends')
-      .then((r) => r.data.data),
+      .then((r) => r.data.data.map((f) => ({
+        ...f,
+        // Backend returns friend_display_name, friend_username, friend_avatar_url
+        // Map to display_name, username, avatar_url for internal use
+        display_name: f.friend_display_name || f.display_name || '',
+        username: f.friend_username || f.username || '',
+        avatar_url: f.friend_avatar_url ?? f.avatar_url ?? null,
+        userId: f.friend_id || f.userId,
+      }))),
 
   // Backend expects receiverId (NOT friend_id)
   sendRequest: (receiverId: string) =>
@@ -157,7 +181,7 @@ export const friendsApi = {
       })
       .then((r) => r.data),
 
-  // Backend expects requestId (NOT friendId)
+  // Backend expects requestId (friendshipId from pending requests)
   acceptRequest: (requestId: string) =>
     apiClient
       .put<{ message: string }>('/friends/accept', { requestId })
@@ -168,12 +192,26 @@ export const friendsApi = {
       .put<{ message: string }>('/friends/reject', { requestId })
       .then((r) => r.data),
 
+  // Same endpoint as reject — backend treats cancel the same as reject
+  cancelRequest: (requestId: string) =>
+    apiClient
+      .put<{ message: string }>('/friends/reject', { requestId })
+      .then((r) => r.data),
+
   getPendingRequests: () =>
     apiClient
-      .get<{ message: string; data: PendingRequest[]; count: number }>(
+      .get<{ message: string; data: any[]; count: number }>(
         '/friends/pending'
       )
-      .then((r) => r.data.data),
+      .then((r) => r.data.data.map((p) => ({
+        ...p,
+        // Backend returns sender_display_name, sender_username, sender_avatar_url
+        display_name: p.sender_display_name || p.display_name || '',
+        username: p.sender_username || p.username || '',
+        avatar_url: p.sender_avatar_url ?? p.avatar_url ?? null,
+        userId: p.sender_id || p.userId,
+        requested_at: p.created_at,
+      }))),
 };
 
 // ─── Groups ──────────────────────────────────────────────────────────────────
@@ -201,10 +239,22 @@ export const groupsApi = {
       .then((r) => r.data),
 
   // Correct endpoint: GET /groups/user/:userId
+  // Backend returns avatarUrl/memberCount; map to avatar_url/member_count
   getMyGroups: (userId: string) =>
     apiClient
-      .get<Group[]>(`/groups/user/${userId}`)
-      .then((r) => r.data),
+      .get<any[]>(`/groups/user/${userId}`)
+      .then((r) => r.data.map((g) => ({
+        groupId: g.groupId,
+        name: g.name,
+        description: g.description ?? '',
+        avatar_url: g.avatarUrl ?? g.avatar_url ?? null,
+        is_private: g.is_private ?? false,
+        invite_code: g.invite_code ?? '',
+        member_count: g.memberCount ?? g.member_count ?? 0,
+        created_by: g.createdBy ?? g.created_by ?? '',
+        created_at: g.createdAt ?? g.created_at ?? '',
+        members: g.members,
+      }))),
 
   getMembers: (groupId: string) =>
     apiClient
@@ -279,16 +329,19 @@ export const messageApi = {
       })),
 
   // POST /messages → raw message object
+  // NOTE: backend uses contentType field, not `type`
   sendMessage: (
     conversationId: string,
     content: string,
-    type: 'text' | 'sticker' | 'emoji' = 'text'
+    senderId: string,
+    contentType: 'text' | 'sticker' | 'emoji' = 'text'
   ) =>
     apiClient
       .post<BackendMessage>('/messages', {
         conversationId,
+        senderId,
         content,
-        type,
+        contentType,
       })
       .then((r) => r.data),
 

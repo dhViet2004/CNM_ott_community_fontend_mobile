@@ -11,14 +11,21 @@ import {
 } from 'react-native';
 import { colors, spacing, shadows } from '@theme';
 import { Avatar } from '@components/common';
-import type { ProfileUser } from '../data/mockUsers';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COVER_HEIGHT = 200;
 const AVATAR_SIZE = 96;
 
+export interface CoverHeaderUser {
+  id?: string;
+  fullName: string;
+  avatarUrl?: string;
+  coverUrl?: string;
+  isOnline?: boolean;
+}
+
 interface CoverHeaderProps {
-  user: ProfileUser;
+  user: CoverHeaderUser;
   isMyProfile: boolean;
   scrollY?: Animated.Value;
   onChangeCoverPress?: () => void;

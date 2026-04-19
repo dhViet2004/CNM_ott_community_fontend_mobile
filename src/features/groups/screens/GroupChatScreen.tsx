@@ -11,7 +11,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
-import { setMessages, addMessage, setLoadingMessages } from '@store/slices/chatSlice';
+import {
+  setMessages,
+  addMessage,
+  setLoadingMessages,
+  confirmPendingMessage,
+  failPendingMessage,
+} from '@store/slices/chatSlice';
 import { messageApi } from '@api/endpoints';
 import { socketActions } from '@api/socket';
 import { colors, spacing, typography } from '@theme';
@@ -21,7 +27,7 @@ import type { RootStackScreenProps } from '@navigation/types';
 type Props = RootStackScreenProps<'GroupChat'>;
 
 interface MessageItem {
-  id: string;
+  id: string | number;
   senderId: string;
   senderName: string;
   senderAvatar?: string;
@@ -30,7 +36,7 @@ interface MessageItem {
   isMe: boolean;
   type: 'text' | 'image' | 'file' | 'sticker' | 'emoji';
   file_url?: string | null;
-  status: 'sending' | 'sent' | 'delivered' | 'read';
+  status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 }
 
 const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
@@ -58,17 +64,17 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       // For now, use a placeholder - in production this would be a dedicated group channel
       const result = await messageApi.getConversationMessages(conversationId);
       const mapped: MessageItem[] = result.messages.map((m) => ({
-        id: m.messageId,
-        senderId: m.senderId,
+        id: String(m.id ?? m.messageId ?? ''),
+        senderId: String(m.senderId),
         senderName: m.sender_name || 'Unknown',
-        content: m.content,
-        time: new Date(m.created_at).toLocaleTimeString('vi-VN', {
+        content: m.content ?? '',
+        time: new Date(m.createdAt ?? m.created_at ?? Date.now()).toLocaleTimeString('vi-VN', {
           hour: '2-digit',
           minute: '2-digit',
         }),
-        isMe: m.senderId === currentUserId,
-        type: m.type as MessageItem['type'],
-        file_url: m.file_url,
+        isMe: String(m.senderId) === String(currentUserId),
+        type: (m.contentType ?? m.type ?? 'text') as MessageItem['type'],
+        file_url: m.file_url ?? m.attachments?.[0]?.url ?? null,
         status: 'sent',
       }));
       dispatch(setMessages({ conversationId, messages: mapped as any }));
@@ -108,12 +114,13 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   // ─── Send ─────────────────────────────────────────────────────────────────
   const handleSend = async () => {
     if (!inputText.trim()) return;
+
+    const tempId = `temp_${Date.now()}`;
     const text = inputText.trim();
     setInputText('');
     socketActions.sendStopTyping(conversationId);
     setIsTyping(false);
 
-    const tempId = `temp_${Date.now()}`;
     const optimisticMsg: MessageItem = {
       id: tempId,
       senderId: currentUserId || '',
@@ -131,25 +138,24 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
 
     try {
-      const result = await messageApi.sendMessage(conversationId, text);
+      const result = await messageApi.sendMessage(conversationId, text, currentUserId || '');
+      const realId = String(result.id ?? result.messageId ?? tempId);
+
       dispatch(
-        addMessage({
-          id: result.messageId,
+        confirmPendingMessage({
+          tempId,
+          realId,
           conversationId,
-          senderId: result.senderId,
-          sender_name: result.sender_name,
-          content: result.content,
-          time: new Date(result.created_at).toLocaleTimeString('vi-VN', {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          isMe: result.senderId === currentUserId,
-          type: result.type as any,
-          status: 'sent',
-        } as any)
+          senderId: String(result.senderId),
+          senderName: result.sender_name || 'Tôi',
+          senderAvatar: result.sender_avatar ?? null,
+          content: result.content ?? '',
+          type: (result.contentType ?? result.type ?? 'text') as MessageItem['type'],
+          file_url: result.file_url ?? result.attachments?.[0]?.url ?? null,
+        })
       );
     } catch {
-      // In production: mark message as failed
+      dispatch(failPendingMessage(tempId));
     }
   };
 
