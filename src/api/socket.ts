@@ -8,6 +8,7 @@ import {
   setUserOffline,
   setMessageRevoked,
   updateMessageStatus,
+  addFriend as addFriendToChat,
 } from '@store/slices/chatSlice';
 import {
   addPendingRequest,
@@ -30,10 +31,10 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 // Track registered event names so we can clean up before re-registering
 const REGISTERED_EVENTS = [
   'connect', 'disconnect', 'connect_error',
-  'receive_message', 'message_sent', 'message_revoked',
+  'receive_message', 'message_sent', 'message:revoked',
   'user_typing', 'user_stopped_typing',
   'online_users', 'user_online', 'user_offline',
-  'friend_request', 'friend_accepted',
+  'new_friend_request', 'friend_request_accepted',
   'call_incoming', 'call_accepted', 'call_rejected', 'call_ended',
 ];
 
@@ -60,7 +61,6 @@ export interface SocketMessage {
 
 export const connectSocket = (token: string) => {
   if (socket?.connected) {
-    // Already connected — just ensure we haven't accumulated duplicate listeners
     removeAllListeners();
   } else if (socket) {
     socket.disconnect();
@@ -92,7 +92,6 @@ export const connectSocket = (token: string) => {
   // ─── Message Events ───────────────────────────────────────────────────────
 
   socket.on('receive_message', (message: SocketMessage) => {
-    // Skip messages sent by the current user — they're already confirmed via REST API
     const currentUserId = store.getState().auth.user?.userId;
     const senderId = message.senderId ? String(message.senderId) : '';
     if (currentUserId && senderId && senderId === String(currentUserId)) {
@@ -105,27 +104,31 @@ export const connectSocket = (token: string) => {
       senderId: message.senderId,
       sender_name: message.sender_name,
       sender_avatar: message.sender_avatar ?? null,
-      type: message.contentType,
+      type: (message.contentType ?? 'text') as 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'emoji',
       content: message.content ?? '',
       file_url: message.file_url ?? null,
       file_name: message.file_name ?? null,
       file_size: message.file_size ?? null,
-      timestamp: message.createdAt,
+      timestamp: message.createdAt ?? '',
       status: 'delivered',
     }));
   });
 
+  // Backend sends { id, conversationId, senderId, content } after persisting
   socket.on('message_sent', (message: SocketMessage) => {
+    const msgId = message.id || (message as any).messageId;
+    if (!msgId) return;
     store.dispatch(
       updateMessageStatus({
         conversationId: message.conversationId,
-        messageId: message.messageId,
+        messageId: String(msgId),
         status: 'sent',
       })
     );
   });
 
-  socket.on('message_revoked', ({ messageId, conversationId }: { messageId: string; conversationId: string }) => {
+  // Backend emits "message:revoked" (with colon) after message is revoked
+  socket.on('message:revoked', ({ messageId, conversationId }: { messageId: string; conversationId: string }) => {
     store.dispatch(setMessageRevoked({ messageId, conversationId }));
   });
 
@@ -160,14 +163,47 @@ export const connectSocket = (token: string) => {
     store.dispatch(setUserOffline(userId));
   });
 
-  // ─── Friend Events ────────────────────────────────────────────────────────
+  // ─── Friend Events ───────────────────────────────────────────────────────
 
-  socket.on('friend_request', ({ from_user }: { from_user: any }) => {
-    store.dispatch(addPendingRequest(from_user));
+  // Backend emits "new_friend_request" with payload:
+  // { type: "new_friend_request", sender: { id, display_name, username, avatar_url } }
+  socket.on('new_friend_request', ({ sender }: {
+    sender: { id: string; display_name: string; username: string; avatar_url: string | null }
+  }) => {
+    store.dispatch(addPendingRequest({
+      userId: sender.id,
+      username: sender.username,
+      display_name: sender.display_name,
+      avatar_url: sender.avatar_url ?? null,
+    }));
   });
 
-  socket.on('friend_accepted', ({ friend }: { friend: any }) => {
-    store.dispatch(addContact(friend));
+  // Backend emits "friend_request_accepted" with payload:
+  // { type: "friend_request_accepted", receiver: { id, display_name, username, avatar_url } }
+  socket.on('friend_request_accepted', ({ receiver }: {
+    receiver: { id: string; display_name: string; username: string; avatar_url: string | null }
+  }) => {
+    store.dispatch(addContact({
+      id: receiver.id,
+      name: receiver.display_name,
+      avatar: receiver.avatar_url ?? undefined,
+      userId: receiver.id,
+      username: receiver.username,
+      display_name: receiver.display_name,
+      avatar_url: receiver.avatar_url ?? null,
+    }));
+    // Update chatSlice friends so ChatScreen conversation list updates in real-time
+    store.dispatch(addFriendToChat({
+      userId: receiver.id,
+      display_name: receiver.display_name,
+      username: receiver.username,
+      avatar_url: receiver.avatar_url ?? null,
+      friends_since: new Date().toISOString(),
+      friend_id: receiver.id,
+      friendshipId: `pending_${Date.now()}`,
+      status: 'accepted',
+      friendship_status: 'accepted',
+    }));
   });
 
   // ─── Call Events ──────────────────────────────────────────────────────────
@@ -233,7 +269,6 @@ export const getSocket = () => socket;
 // ─── Emit Actions ────────────────────────────────────────────────────────────
 
 export const socketActions = {
-  // Join/leave conversation room
   joinConversation: (conversationId: string) => {
     socket?.emit('join_conversation', { conversationId });
   },
@@ -242,7 +277,6 @@ export const socketActions = {
     socket?.emit('leave_conversation', { conversationId });
   },
 
-  // Typing indicators
   sendTyping: (conversationId: string) => {
     socket?.emit('typing_start', { roomId: conversationId });
   },
@@ -251,12 +285,10 @@ export const socketActions = {
     socket?.emit('typing_stop', { roomId: conversationId });
   },
 
-  // Send message (real-time, complements REST API)
   sendMessage: (conversationId: string, content: string, type: string = 'text') => {
     socket?.emit('send_message', { conversationId, content, type });
   },
 
-  // Video calls
   initiateCall: (targetUserId: string, type: 'video' | 'voice' = 'video') => {
     socket?.emit('initiate_call', { target_user_id: targetUserId, type });
     store.dispatch(setCallStatus('calling'));
@@ -276,7 +308,6 @@ export const socketActions = {
     socket?.emit('end_call', { roomId });
   },
 
-  // Mark messages as read
   markRead: (conversationId: string, messageId: string) => {
     socket?.emit('mark_read', { conversationId, messageId });
   },
