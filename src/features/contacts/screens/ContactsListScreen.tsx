@@ -13,7 +13,7 @@ import { useAppDispatch, useAppSelector } from '@store/hooks';
 import { addFriend } from '@store/slices/chatSlice';
 import { friendsApi, userApi } from '@api/endpoints';
 import { colors, spacing, typography } from '@theme';
-import { Avatar } from '@components/common';
+import { Avatar, Icons, IconSize } from '@components/common';
 import type { RootStackScreenProps } from '@navigation/types';
 
 type Props = RootStackScreenProps<'ContactsList'>;
@@ -91,7 +91,9 @@ const ContactsListScreen: React.FC<Props> = ({ navigation }) => {
           onPress={() => navigation.goBack()}
           style={styles.backBtn}
         >
-          <Text style={styles.backText}>{'<'}</Text>
+          <View style={styles.backIconContainer}>
+            {Icons.arrowBack(IconSize.lg)}
+          </View>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Thêm bạn</Text>
         <View style={{ width: 36 }} />
@@ -99,7 +101,9 @@ const ContactsListScreen: React.FC<Props> = ({ navigation }) => {
 
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
-          <Text style={styles.searchIcon}>🔍</Text>
+          <View style={styles.searchIconContainer}>
+            {Icons.search(IconSize.sm)}
+          </View>
           <TextInput
             style={styles.searchInput}
             placeholder="Tìm theo tên hoặc số điện thoại"
@@ -111,7 +115,9 @@ const ContactsListScreen: React.FC<Props> = ({ navigation }) => {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => handleSearch('')}>
-              <Text style={styles.clearIcon}>✕</Text>
+              <View style={styles.clearIconContainer}>
+                {Icons.close(IconSize.sm)}
+              </View>
             </TouchableOpacity>
           )}
         </View>
@@ -124,7 +130,9 @@ const ContactsListScreen: React.FC<Props> = ({ navigation }) => {
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>🔍</Text>
+            <View style={styles.emptyIconContainer}>
+              {Icons.search(64)}
+            </View>
             <Text style={styles.emptyText}>
               {isSearching
                 ? 'Đang tìm kiếm...'
@@ -150,6 +158,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
   },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  backIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   backText: { fontSize: 22, color: colors.text.inverse, fontWeight: '300' },
   headerTitle: { flex: 1, ...typography.h3, color: colors.text.inverse, textAlign: 'center' },
   searchContainer: { padding: spacing.md, backgroundColor: colors.background.primary },
@@ -161,8 +173,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     height: 42,
   },
+  searchIconContainer: {
+    marginRight: spacing.sm,
+    opacity: 0.6,
+  },
   searchIcon: { fontSize: 16, marginRight: spacing.sm },
   searchInput: { flex: 1, ...typography.body, color: colors.text.primary, paddingVertical: 0 },
+  clearIconContainer: {
+    opacity: 0.6,
+  },
   clearIcon: { fontSize: 14, color: colors.text.tertiary },
   userItem: {
     flexDirection: 'row',
@@ -188,6 +207,10 @@ const styles = StyleSheet.create({
     marginLeft: spacing.screenPadding + spacing.iconSize.avatar + spacing.md,
   },
   emptyContainer: { alignItems: 'center', paddingTop: 80 },
+  emptyIconContainer: {
+    marginBottom: spacing.lg,
+    opacity: 0.4,
+  },
   emptyIcon: { fontSize: 48, marginBottom: spacing.lg },
   emptyText: { ...typography.body, color: colors.text.tertiary, textAlign: 'center', paddingHorizontal: spacing.xl },
 });

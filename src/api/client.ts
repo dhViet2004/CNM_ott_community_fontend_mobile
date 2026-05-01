@@ -62,39 +62,6 @@ export const clearTokens = async () => {
   await AsyncStorage.removeItem(REFRESH_TOKEN_KEY);
 };
 
-const handleUnauthorized = async () => {
-  if (isRefreshing) return;
-
-  isRefreshing = true;
-  try {
-    const refreshToken = await getRefreshToken();
-    if (!refreshToken) {
-      store.dispatch(logout());
-      return;
-    }
-
-    const response = await axios.post(`${BASE_URL}/auth/refresh`, {
-      refreshToken,
-    });
-
-    const newAccessToken = response.data?.accessToken;
-    const newRefreshToken =
-      response.data?.refreshToken || refreshToken;
-
-    if (newAccessToken) {
-      await setTokens(newAccessToken, newRefreshToken);
-      onRefreshComplete(newAccessToken);
-    } else {
-      store.dispatch(logout());
-    }
-  } catch {
-    await clearTokens();
-    store.dispatch(logout());
-  } finally {
-    isRefreshing = false;
-  }
-};
-
 // ─── Request Interceptor ─────────────────────────────────────────────────────
 
 apiClient.interceptors.request.use(
@@ -128,7 +95,7 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
 
       if (isRefreshing) {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
           subscribeTokenRefresh((token: string) => {
             if (originalRequest.headers) {
               originalRequest.headers.Authorization = `Bearer ${token}`;
@@ -138,8 +105,42 @@ apiClient.interceptors.response.use(
         });
       }
 
-      await handleUnauthorized();
-      return Promise.reject({ message: 'Token expired', code: 'TOKEN_EXPIRED' });
+      isRefreshing = true;
+      try {
+        const refreshToken = await getRefreshToken();
+        if (!refreshToken) {
+          store.dispatch(logout());
+          return Promise.reject({ message: 'Vui lòng đăng nhập lại', code: 'NO_REFRESH_TOKEN' });
+        }
+
+        const response = await axios.post(`${BASE_URL}/auth/refresh`, {
+          refreshToken,
+        });
+
+        const newAccessToken = response.data?.accessToken;
+        const newRefreshToken =
+          response.data?.refreshToken || refreshToken;
+
+        if (newAccessToken) {
+          await setTokens(newAccessToken, newRefreshToken);
+          onRefreshComplete(newAccessToken);
+          
+          // Retry original request with new token
+          if (originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+          }
+          return apiClient(originalRequest);
+        } else {
+          store.dispatch(logout());
+          return Promise.reject({ message: 'Token refresh failed', code: 'REFRESH_FAILED' });
+        }
+      } catch (refreshError) {
+        await clearTokens();
+        store.dispatch(logout());
+        return Promise.reject({ message: 'Session expired, please login again', code: 'SESSION_EXPIRED' });
+      } finally {
+        isRefreshing = false;
+      }
     }
 
     return Promise.reject(error);

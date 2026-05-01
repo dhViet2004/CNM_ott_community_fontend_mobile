@@ -14,7 +14,7 @@ import { setFriends } from '@store/slices/chatSlice';
 import { setContacts, setPendingRequests as setRawPendingRequests, setLoading as setContactsLoading } from '@store/slices/contactSlice';
 import { friendsApi, userApi } from '@api/endpoints';
 import { colors, spacing, typography } from '@theme';
-import { Avatar } from '@components/common';
+import { Avatar, Icons, IconSize } from '@components/common';
 import type { MainTabScreenProps } from '@navigation/types';
 
 type Props = MainTabScreenProps<'ContactsTab'>;
@@ -222,11 +222,15 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Danh bạ</Text>
           <TouchableOpacity onPress={handleAddFriend} style={styles.headerIcon}>
-            <Text style={styles.headerIconText}>+</Text>
+            <View style={styles.headerIconContainer}>
+              {Icons.add(IconSize.lg)}
+            </View>
           </TouchableOpacity>
         </View>
         <View style={styles.searchBar}>
-          <Text style={styles.searchIcon}>🔍</Text>
+          <View style={styles.searchIconContainer}>
+            {Icons.search(IconSize.sm)}
+          </View>
           <TextInput
             style={styles.searchInput}
             placeholder="Tìm kiếm"
@@ -236,7 +240,9 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Text style={styles.clearIcon}>✕</Text>
+              <View style={styles.clearIconContainer}>
+                {Icons.close(IconSize.sm)}
+              </View>
             </TouchableOpacity>
           )}
         </View>
@@ -249,7 +255,9 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>👥</Text>
+            <View style={styles.emptyIconContainer}>
+              {Icons.people(64)}
+            </View>
             <Text style={styles.emptyText}>
               {searchQuery ? 'Không tìm thấy người dùng' : 'Chưa có bạn bè nào'}
             </Text>
@@ -300,6 +308,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerIconText: {
     fontSize: 22,
     color: colors.text.inverse,
@@ -314,12 +334,19 @@ const styles = StyleSheet.create({
     height: 38,
     marginTop: spacing.sm,
   },
+  searchIconContainer: {
+    marginRight: spacing.sm,
+    opacity: 0.7,
+  },
   searchIcon: { fontSize: 16, marginRight: spacing.sm },
   searchInput: {
     flex: 1,
     ...typography.body,
     color: colors.text.inverse,
     paddingVertical: 0,
+  },
+  clearIconContainer: {
+    opacity: 0.7,
   },
   clearIcon: { fontSize: 14, color: 'rgba(255,255,255,0.7)' },
   sectionHeader: {
@@ -372,6 +399,10 @@ const styles = StyleSheet.create({
   emptyContainer: {
     alignItems: 'center',
     paddingTop: 60,
+  },
+  emptyIconContainer: {
+    marginBottom: spacing.lg,
+    opacity: 0.4,
   },
   emptyIcon: { fontSize: 64, marginBottom: spacing.lg },
   emptyText: { ...typography.subtitle, color: colors.text.secondary },

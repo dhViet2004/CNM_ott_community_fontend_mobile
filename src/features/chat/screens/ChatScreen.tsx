@@ -11,13 +11,30 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
-import { MessageListItem } from '@components/common';
+import { Icons, IconSize, SearchBar } from '@components/common';
+import { MessageListItem } from '@features/chat/components';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { setFriends } from '@store/slices/chatSlice';
-import { friendsApi } from '@api/endpoints';
+import { setMyGroups } from '@store/slices/groupsSlice';
+import { friendsApi, groupsApi } from '@api/endpoints';
 import type { RootStackScreenProps } from '@navigation/types';
 
 type Props = RootStackScreenProps<'MainTabs'>;
+
+interface ChatConversation {
+  id: string;
+  type: 'single' | 'group';
+  name: string;
+  avatar?: string;
+  lastMessage: string;
+  time: string;
+  unreadCount: number;
+  isPinned: boolean;
+  isMuted: boolean;
+  isOnline?: boolean;
+  friendId?: string;
+  groupId?: string;
+}
 
 const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
@@ -29,17 +46,20 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const friends = useAppSelector((state) => state.chat.friends);
   const onlineUsers = useAppSelector((state) => state.chat.onlineUsers);
   const currentUserId = useAppSelector((state) => state.auth.user?.userId);
+  
+  // Get groups from groupsSlice
+  const groups = useAppSelector((state) => state.groups.myGroups);
 
   // Build DM conversations from friends list
-  const conversations = friends.map((friend) => {
+  const dmConversations: ChatConversation[] = friends.map((friend) => {
     const friendId = friend.friend_id || friend.userId || '';
     const myId = currentUserId || '';
     const sortedIds = [myId, friendId].sort();
     return {
       id: `dm:${sortedIds.join(':')}`,
       type: 'single' as const,
-      name: friend.display_name || '',
-      avatar: friend.avatar_url || undefined,
+      name: friend.display_name || friend.friend_display_name || '',
+      avatar: friend.avatar_url || friend.friend_avatar_url || undefined,
       lastMessage: friend.status || '',
       time: friend.friends_since || '',
       unreadCount: 0,
@@ -47,9 +67,25 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
       isMuted: false,
       isOnline: !!onlineUsers[friendId],
       friendId,
-      friend,
     };
   });
+
+  // Build group conversations from groups list
+  const groupConversations: ChatConversation[] = groups.map((group) => ({
+    id: `group:${group.groupId}`,
+    type: 'group' as const,
+    name: group.name || '',
+    avatar: group.avatar_url || undefined,
+    lastMessage: group.description || `${group.member_count || 0} thành viên`,
+    time: group.created_at || '',
+    unreadCount: 0,
+    isPinned: false,
+    isMuted: false,
+    groupId: group.groupId,
+  }));
+
+  // Combine DM and group conversations
+  const allConversations = [...dmConversations, ...groupConversations];
 
   const loadFriends = useCallback(async () => {
     setIsLoading(true);
@@ -63,17 +99,28 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [dispatch]);
 
+  const loadGroups = useCallback(async () => {
+    if (!currentUserId) return;
+    try {
+      const groupsList = await groupsApi.getMyGroups(currentUserId);
+      dispatch(setMyGroups(groupsList));
+    } catch (err) {
+      console.error('Failed to load groups:', err);
+    }
+  }, [currentUserId, dispatch]);
+
   useEffect(() => {
     loadFriends();
-  }, [loadFriends]);
+    loadGroups();
+  }, [loadFriends, loadGroups]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await loadFriends();
+    await Promise.all([loadFriends(), loadGroups()]);
     setIsRefreshing(false);
   };
 
-  const filteredConversations = conversations.filter(
+  const filteredConversations = allConversations.filter(
     (conv) =>
       conv.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       conv.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
@@ -86,27 +133,37 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const mutedConversations = filteredConversations.filter((c) => c.isMuted);
 
   const handleConversationPress = useCallback(
-    (conv: (typeof conversations)[0]) => {
-      const friendId = conv.friendId;
-      const myId = currentUserId || '';
-      const sortedIds = [myId, friendId].sort();
-      const conversationId = `dm:${sortedIds.join(':')}`;
-      navigation.navigate('Chat', {
-        conversationId,
-        title: conv.name || 'Chat',
-      });
+    (conv: ChatConversation) => {
+      if (conv.type === 'single') {
+        // DM conversation
+        const friendId = conv.friendId;
+        const myId = currentUserId || '';
+        const sortedIds = [myId, friendId].sort();
+        const conversationId = `dm:${sortedIds.join(':')}`;
+        navigation.navigate('Chat', {
+          conversationId,
+          title: conv.name || 'Chat',
+        });
+      } else {
+        // Group conversation
+        navigation.navigate('GroupChat', {
+          groupId: conv.groupId || conv.id.replace('group:', ''),
+          title: conv.name || 'Nhóm',
+        });
+      }
     },
     [navigation, currentUserId]
   );
 
-  const handleConversationLongPress = useCallback((conv: (typeof conversations)[0]) => {
+  const handleConversationLongPress = useCallback((conv: ChatConversation) => {
+    const title = conv.type === 'group' ? 'Tùy chọn nhóm' : 'Tùy chọn cuộc trò chuyện';
     Alert.alert(
-      conv.name || 'Tùy chọn',
-      'Chọn thao tác với cuộc trò chuyện',
+      conv.name || title,
+      conv.type === 'group' ? 'Chọn thao tác với nhóm' : 'Chọn thao tác với cuộc trò chuyện',
       [
         { text: 'Ghim', onPress: () => {} },
         { text: 'Tắt thông báo', onPress: () => {} },
-        { text: 'Xóa', onPress: () => {}, style: 'destructive' },
+        { text: conv.type === 'group' ? 'Rời nhóm' : 'Xóa', onPress: () => {}, style: 'destructive' },
         { text: 'Hủy', style: 'cancel' },
       ]
     );
@@ -132,21 +189,27 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
             style={styles.headerIcon}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Text style={styles.headerIconText}>👥</Text>
+            <View style={styles.headerIconContainer}>
+              {Icons.people(IconSize.lg)}
+            </View>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleAddFriend}
             style={styles.headerIcon}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Text style={styles.headerIconText}>+</Text>
+            <View style={styles.headerIconContainer}>
+              {Icons.add(IconSize.lg)}
+            </View>
           </TouchableOpacity>
         </View>
       </View>
 
       <View style={styles.searchBarContainer}>
         <View style={styles.searchBar}>
-          <Text style={styles.searchIcon}>🔍</Text>
+          <View style={styles.searchIconContainer}>
+            {Icons.search(IconSize.sm)}
+          </View>
           <TextInput
             style={styles.searchInput}
             placeholder="Tìm kiếm"
@@ -159,7 +222,9 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
               onPress={() => setSearchQuery('')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text style={styles.clearIcon}>✕</Text>
+              <View style={styles.clearIconContainer}>
+                {Icons.close(IconSize.sm)}
+              </View>
             </TouchableOpacity>
           )}
         </View>
@@ -173,7 +238,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     </View>
   );
 
-  const renderConversation = ({ item }: { item: (typeof conversations)[0] }) => (
+  const renderConversation = ({ item }: { item: ChatConversation }) => (
     <MessageListItem
       avatarUri={item.avatar}
       name={item.name || 'Người dùng'}
@@ -183,6 +248,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
       isOnline={item.isOnline}
       onPress={() => handleConversationPress(item)}
       onLongPress={() => handleConversationLongPress(item)}
+      isGroup={item.type === 'group'}
     />
   );
 
@@ -190,7 +256,9 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyIcon}>💬</Text>
+      <View style={styles.emptyIconContainer}>
+        {Icons.chatbubbles(64)}
+      </View>
       <Text style={styles.emptyText}>Chưa có cuộc trò chuyện nào</Text>
       <Text style={styles.emptySubtext}>Bắt đầu trò chuyện với bạn bè</Text>
     </View>
@@ -268,6 +336,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: spacing.sm,
   },
+  headerIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerIconText: {
     fontSize: 22,
     color: colors.text.inverse,
@@ -284,6 +356,10 @@ const styles = StyleSheet.create({
     borderRadius: spacing.borderRadius.lg,
     paddingHorizontal: spacing.md,
     height: 38,
+  },
+  searchIconContainer: {
+    marginRight: spacing.sm,
+    opacity: 0.7,
   },
   searchIcon: {
     fontSize: 16,
@@ -322,6 +398,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 100,
+  },
+  emptyIconContainer: {
+    marginBottom: spacing.lg,
+    opacity: 0.4,
   },
   emptyIcon: {
     fontSize: 64,

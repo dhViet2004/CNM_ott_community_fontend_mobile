@@ -11,7 +11,8 @@ export const lightColors = {
     secondary: '#F5F5F5',
     tertiary: '#EBEBEB',
     chatBg: '#E5E5E5',
-    tabBar: '#FAFAFA',
+    chatBubbleOther: '#FFFFFF',  // Màu bubble người khác (trắng để nổi bật)
+    tabBar: '#FFFFFF',
   },
   text: {
     primary: '#1A1A1A',
@@ -56,7 +57,8 @@ export const darkColors = {
     primary: '#1C1C1E',
     secondary: '#2C2C2E',
     tertiary: '#3A3A3C',
-    chatBg: '#2C2C2E',
+    chatBg: '#121212',        // Dark gray cho nền chat
+    chatBubbleOther: '#2C2C2E', // Màu bubble người khác (đậm hơn nền)
     tabBar: '#1C1C1E',
   },
   text: {

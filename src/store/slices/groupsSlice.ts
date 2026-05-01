@@ -55,7 +55,16 @@ const groupsSlice = createSlice({
       state,
       action: PayloadAction<{ groupId: string; members: GroupMember[] }>
     ) {
-      state.groupMembers[action.payload.groupId] = action.payload.members;
+      // Normalize members from backend (camelCase) to mobile format (snake_case)
+      const normalizedMembers = action.payload.members.map((m: any) => ({
+        userId: m.userId || m.id,
+        username: m.username || '',
+        display_name: m.displayName || m.display_name || m.username || '',
+        avatar_url: m.avatarUrl ?? m.avatar_url ?? null,
+        role: m.role || 'MEMBER',
+        joined_at: m.joinedAt || m.joined_at || null,
+      }));
+      state.groupMembers[action.payload.groupId] = normalizedMembers as GroupMember[];
     },
     addMemberToGroup(
       state,

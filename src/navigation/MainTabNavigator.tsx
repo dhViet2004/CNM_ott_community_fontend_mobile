@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { colors, spacing, typography } from '@theme';
+import { Icons, IconSize } from '@components/common';
 import type { MainTabParamList } from './types';
 
 import ChatScreen from '@features/chat/screens/ChatScreen';
@@ -18,17 +19,12 @@ const TabIcon = ({
 }: {
   label: string;
   focused: boolean;
-  icon: string;
+  icon: React.ReactNode;
 }) => (
   <View style={styles.tabIconContainer}>
-    <Text
-      style={[
-        styles.tabIcon,
-        { color: focused ? colors.primary : colors.text.tertiary },
-      ]}
-    >
+    <View style={styles.tabIconWrapper}>
       {icon}
-    </Text>
+    </View>
     <Text
       style={[
         styles.tabLabel,
@@ -54,7 +50,15 @@ const MainTabNavigator: React.FC = () => {
         component={ChatScreen as any}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon label="Tin nhắn" focused={focused} icon="💬" />
+            <TabIcon
+              label="Tin nhắn"
+              focused={focused}
+              icon={
+                focused
+                  ? Icons.chatbubbles(IconSize.lg)
+                  : Icons.chatbubblesOutline(IconSize.lg)
+              }
+            />
           ),
         }}
       />
@@ -63,7 +67,15 @@ const MainTabNavigator: React.FC = () => {
         component={ContactsScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon label="Danh bạ" focused={focused} icon="👥" />
+            <TabIcon
+              label="Danh bạ"
+              focused={focused}
+              icon={
+                focused
+                  ? Icons.people(IconSize.lg)
+                  : Icons.peopleOutline(IconSize.lg)
+              }
+            />
           ),
         }}
       />
@@ -72,7 +84,15 @@ const MainTabNavigator: React.FC = () => {
         component={ExploreScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon label="Khám phá" focused={focused} icon="🌐" />
+            <TabIcon
+              label="Khám phá"
+              focused={focused}
+              icon={
+                focused
+                  ? Icons.compass(IconSize.lg)
+                  : Icons.compassOutline(IconSize.lg)
+              }
+            />
           ),
         }}
       />
@@ -81,7 +101,17 @@ const MainTabNavigator: React.FC = () => {
         component={ProfileScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon label="Cá nhân" focused={focused} icon="👤" />
+            <TabIcon
+              label="Cá nhân"
+              focused={focused}
+              icon={
+                focused
+                  ? Icons.person(IconSize.lg)
+                  : <View style={styles.personOutlineWrapper}>
+                      {Icons.person(IconSize.lg)}
+                    </View>
+              }
+            />
           ),
         }}
       />
@@ -107,8 +137,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: spacing.xs,
   },
-  tabIcon: {
-    fontSize: 22,
+  tabIconWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  personOutlineWrapper: {
+    opacity: 0.7,
   },
   tabLabel: {
     ...typography.tabLabel,

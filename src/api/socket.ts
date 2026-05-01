@@ -35,7 +35,9 @@ const REGISTERED_EVENTS = [
   'user_typing', 'user_stopped_typing',
   'online_users', 'user_online', 'user_offline',
   'new_friend_request', 'friend_request_accepted',
-  'call_incoming', 'call_accepted', 'call_rejected', 'call_ended',
+  'incoming-call', 'call-accepted', 'call-ended', 'call-timeout', 'group-call-request',
+  'user_joined', 'user_left', 'room_joined', 'message_read',
+  'live_location_started', 'live_location_updated', 'live_location_stopped',
 ];
 
 function removeAllListeners() {
@@ -45,7 +47,7 @@ function removeAllListeners() {
 
 export interface SocketMessage {
   id: string;
-  conversationId: string;
+  conversationId?: string;
   senderId: string;
   sender_name?: string;
   sender_avatar?: string | null;
@@ -55,6 +57,9 @@ export interface SocketMessage {
   file_name?: string | null;
   file_size?: number | null;
   createdAt?: string;
+  roomId?: string;
+  senderDisplayName?: string;
+  senderAvatarUrl?: string;
 }
 
 // ─── Connect ─────────────────────────────────────────────────────────────────
@@ -68,8 +73,11 @@ export const connectSocket = (token: string) => {
 
   socket = io(SOCKET_URL, {
     auth: { token },
-    transports: ['websocket'],
-    reconnection: false,
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
   });
 
   socket.on('connect', () => {
@@ -89,27 +97,61 @@ export const connectSocket = (token: string) => {
     scheduleReconnect(token);
   });
 
+  // Global debug listener - log ALL incoming events
+  const debugEvents = ['receive_message', 'message_sent', 'room_joined', 'user_joined', 'user_left', 'typing', 'notification:new_message'];
+  debugEvents.forEach(event => {
+    socket?.on(event, (data) => {
+      console.log(`[Socket] Event "${event}":`, JSON.stringify(data).substring(0, 100));
+    });
+  });
+
   // ─── Message Events ───────────────────────────────────────────────────────
 
   socket.on('receive_message', (message: SocketMessage) => {
-    const currentUserId = store.getState().auth.user?.userId;
+    console.log('[Socket] receive_message received:', JSON.stringify(message).substring(0, 100));
+    
+    const currentUserId = store.getState().auth?.user?.userId;
     const senderId = message.senderId ? String(message.senderId) : '';
+    
+    console.log('[Socket] currentUserId:', currentUserId, 'senderId:', senderId, 'match:', currentUserId === senderId);
+    
     if (currentUserId && senderId && senderId === String(currentUserId)) {
+      console.log('[Socket] Skipping own message');
       return;
+    }
+
+    const convId = message.conversationId || (message as any).roomId;
+    console.log('[Socket] Adding message to conversation:', convId);
+
+    // Get senderDisplayName - prefer from message, then try group members
+    let senderDisplayName = message.senderDisplayName || message.sender_name;
+    let senderAvatar = message.sender_avatar ?? message.senderAvatarUrl ?? null;
+
+    // If no senderDisplayName, try to get from group members in store
+    if (!senderDisplayName) {
+      const groupMembers = store.getState().groups?.groupMembers?.[convId] || [];
+      const senderMember = groupMembers.find((m: any) => 
+        String(m.userId) === String(senderId) || String(m.id) === String(senderId)
+      );
+      if (senderMember) {
+        senderDisplayName = senderMember.display_name || senderMember.username;
+        senderAvatar = senderMember.avatar_url ?? senderAvatar;
+      }
     }
 
     store.dispatch(addMessage({
       id: message.id,
-      conversationId: message.conversationId,
+      conversationId: convId,
       senderId: message.senderId,
-      sender_name: message.sender_name,
-      sender_avatar: message.sender_avatar ?? null,
+      senderName: senderDisplayName || 'Unknown',
+      sender_name: senderDisplayName || 'Unknown',
+      sender_avatar: senderAvatar,
       type: (message.contentType ?? 'text') as 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'emoji',
       content: message.content ?? '',
       file_url: message.file_url ?? null,
       file_name: message.file_name ?? null,
       file_size: message.file_size ?? null,
-      timestamp: message.createdAt ?? '',
+      timestamp: message.createdAt ?? (message as any).created_at ?? '',
       status: 'delivered',
     }));
   });
@@ -120,7 +162,7 @@ export const connectSocket = (token: string) => {
     if (!msgId) return;
     store.dispatch(
       updateMessageStatus({
-        conversationId: message.conversationId,
+        conversationId: message.conversationId || '',
         messageId: String(msgId),
         status: 'sent',
       })
@@ -208,29 +250,136 @@ export const connectSocket = (token: string) => {
 
   // ─── Call Events ──────────────────────────────────────────────────────────
 
-  socket.on('call_incoming', (data: {
+  // Backend emits "incoming-call" (with hyphen) for incoming call requests
+  socket.on('incoming-call', (data: {
     roomId: string;
     callerId: string;
-    caller_name: string;
+    callerName?: string;
+    caller_name?: string;
     type: 'video' | 'voice';
   }) => {
-    store.dispatch(setIncomingCall(data));
+    store.dispatch(setIncomingCall({
+      roomId: data.roomId,
+      callerId: data.callerId,
+      caller_name: data.callerName || data.caller_name || '',
+      type: data.type,
+    }));
     store.dispatch(setCallStatus('ringing'));
   });
 
-  socket.on('call_accepted', ({ roomId }: { roomId: string }) => {
+  // Backend emits "call-accepted" (with hyphen) when call is accepted
+  socket.on('call-accepted', ({ roomId }: { roomId: string }) => {
     store.dispatch(setCallStatus('connected'));
   });
 
-  socket.on('call_rejected', () => {
-    store.dispatch(setCallStatus('ended'));
-    store.dispatch(clearIncomingCall());
-  });
-
-  socket.on('call_ended', () => {
+  // Backend emits "call-ended" (with hyphen) when call ends
+  socket.on('call-ended', () => {
     store.dispatch(setCallStatus('ended'));
     store.dispatch(clearIncomingCall());
     store.dispatch(setActiveCall(null));
+  });
+
+  // Backend emits "call-timeout" when call times out
+  socket.on('call-timeout', ({ roomId, reason }: { roomId: string; reason: string }) => {
+    store.dispatch(setCallStatus('ended'));
+    store.dispatch(clearIncomingCall());
+    store.dispatch(setActiveCall(null));
+  });
+
+  // Backend emits "group-call-request" for group calls
+  socket.on('group-call-request', (data: {
+    groupId: string;
+    roomId: string;
+    callerId: string;
+    callerName?: string;
+    caller_name?: string;
+    isGroupCall: boolean;
+  }) => {
+    store.dispatch(setIncomingCall({
+      roomId: data.roomId,
+      callerId: data.callerId,
+      caller_name: data.callerName || data.caller_name || '',
+      type: 'video',
+    }));
+    store.dispatch(setCallStatus('ringing'));
+  });
+
+  // ─── Message Read Receipt Events ─────────────────────────────────────────
+
+  // Backend emits "message_read" when a message is marked as read
+  socket.on('message_read', ({ conversationId, messageId, readerId, readerName, readerAvatar, readAt }: {
+    conversationId: string;
+    messageId: string;
+    readerId: string;
+    readerName?: string;
+    readerAvatar?: string | null;
+    readAt?: string;
+  }) => {
+    const currentUserId = store.getState().auth?.user?.userId;
+    // Only update if this is a message sent by current user
+    const messages = store.getState().chat?.messages?.[conversationId] || [];
+    const message = messages.find((m: any) => m.id === messageId);
+    if (message && String(message.senderId) === String(currentUserId)) {
+      store.dispatch(updateMessageStatus({
+        conversationId,
+        messageId: String(messageId),
+        status: 'read',
+      }));
+    }
+  });
+
+  // ─── Live Location Events ───────────────────────────────────────────────
+
+  socket.on('live_location_started', (data: {
+    roomId: string;
+    senderId: string;
+    senderDisplayName?: string;
+    startedAt?: string;
+  }) => {
+    console.log('[Socket] Live location started:', data);
+    // Could dispatch to a locationSlice if needed
+  });
+
+  socket.on('live_location_updated', (data: {
+    roomId: string;
+    senderId: string;
+    lat: number;
+    lng: number;
+    updatedAt?: string;
+  }) => {
+    console.log('[Socket] Live location updated:', data);
+    // Could dispatch to a locationSlice if needed
+  });
+
+  socket.on('live_location_stopped', (data: {
+    roomId: string;
+    senderId: string;
+    stoppedAt?: string;
+  }) => {
+    console.log('[Socket] Live location stopped:', data);
+    // Could dispatch to a locationSlice if needed
+  });
+
+  // ─── User Presence in Rooms ─────────────────────────────────────────────
+
+  socket.on('user_joined', ({ roomId, userId }: {
+    roomId: string;
+    userId: string;
+  }) => {
+    console.log('[Socket] User joined room:', roomId, userId);
+  });
+
+  socket.on('user_left', ({ roomId, userId }: {
+    roomId: string;
+    userId: string;
+  }) => {
+    console.log('[Socket] User left room:', roomId, userId);
+  });
+
+  socket.on('room_joined', ({ roomId }: {
+    roomId: string;
+  }) => {
+    console.log('[Socket] Successfully joined room:', roomId);
   });
 };
 
@@ -269,14 +418,16 @@ export const getSocket = () => socket;
 // ─── Emit Actions ────────────────────────────────────────────────────────────
 
 export const socketActions = {
+  // Join/Leave conversation rooms
   joinConversation: (conversationId: string) => {
-    socket?.emit('join_conversation', { conversationId });
+    socket?.emit('join_room', { roomId: conversationId });
   },
 
   leaveConversation: (conversationId: string) => {
-    socket?.emit('leave_conversation', { conversationId });
+    socket?.emit('leave_room', { roomId: conversationId });
   },
 
+  // Typing indicators - backend uses typing_start/typing_stop
   sendTyping: (conversationId: string) => {
     socket?.emit('typing_start', { roomId: conversationId });
   },
@@ -285,30 +436,59 @@ export const socketActions = {
     socket?.emit('typing_stop', { roomId: conversationId });
   },
 
+  // Send message via socket - backend uses send_message
   sendMessage: (conversationId: string, content: string, type: string = 'text') => {
-    socket?.emit('send_message', { conversationId, content, type });
+    socket?.emit('send_message', { roomId: conversationId, content, contentType: type });
   },
 
-  initiateCall: (targetUserId: string, type: 'video' | 'voice' = 'video') => {
-    socket?.emit('initiate_call', { target_user_id: targetUserId, type });
+  // Call actions - backend uses call-request, call-accept, call-reject, end-call
+  initiateCall: (roomId: string, callerId: string, receiverId: string, type: 'video' | 'voice' = 'video') => {
+    socket?.emit('call-request', { roomId, callerId, receiverId, type });
     store.dispatch(setCallStatus('calling'));
   },
 
-  acceptCall: (roomId: string) => {
-    socket?.emit('accept_call', { roomId });
+  initiateGroupCall: (roomId: string, groupId: string, callerName: string) => {
+    socket?.emit('group-call-request', { roomId, groupId, callerName });
+    store.dispatch(setCallStatus('calling'));
+  },
+
+  acceptCall: (roomId: string, callerId: string) => {
+    socket?.emit('call-accept', { roomId, callerId });
     store.dispatch(setCallStatus('connected'));
   },
 
   rejectCall: (roomId: string) => {
-    socket?.emit('reject_call', { roomId });
+    socket?.emit('call-reject', { roomId });
     store.dispatch(clearIncomingCall());
+    store.dispatch(setCallStatus('ended'));
+  },
+
+  cancelCall: (roomId: string) => {
+    socket?.emit('call-cancel', { roomId });
+    store.dispatch(setCallStatus('ended'));
   },
 
   endCall: (roomId: string) => {
-    socket?.emit('end_call', { roomId });
+    socket?.emit('end-call', { roomId });
+    store.dispatch(setCallStatus('ended'));
+    store.dispatch(setActiveCall(null));
   },
 
+  // Read receipts - backend uses mark_read
   markRead: (conversationId: string, messageId: string) => {
     socket?.emit('mark_read', { conversationId, messageId });
+  },
+
+  // Live location - backend uses start_live_location, update_live_location, stop_live_location
+  startLiveLocation: (roomId: string) => {
+    socket?.emit('start_live_location', { roomId });
+  },
+
+  updateLiveLocation: (roomId: string, lat: number, lng: number) => {
+    socket?.emit('update_live_location', { roomId, lat, lng });
+  },
+
+  stopLiveLocation: (roomId: string) => {
+    socket?.emit('stop_live_location', { roomId });
   },
 };

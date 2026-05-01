@@ -7,6 +7,12 @@ export interface Message {
   id: string;
   conversationId: string;
   senderId: string;
+  // Backend field names (senderDisplayName, senderAvatarUrl) - từ getMessagesForConversation
+  senderName?: string;
+  senderAvatar?: string | null;
+  senderDisplayName?: string;
+  senderAvatarUrl?: string | null;
+  // Legacy field names (sender_name, sender_avatar) - từ socket/addMessage
   sender_name?: string;
   sender_avatar?: string | null;
   type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'emoji';
@@ -14,10 +20,13 @@ export interface Message {
   file_url?: string | null;
   file_name?: string | null;
   file_size?: number | null;
+  // Backend field: createdAt, Legacy field: timestamp
   timestamp: string;
+  createdAt?: string;
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
   isRevoked?: boolean;
+  is_revoked?: boolean;
 }
 
 export interface Conversation {
@@ -211,6 +220,7 @@ const chatSlice = createSlice({
         if (idx !== -1) {
           messages[idx].id = realId;
           messages[idx].senderId = senderId;
+          messages[idx].senderName = senderName;
           messages[idx].sender_name = senderName;
           messages[idx].sender_avatar = senderAvatar ?? null;
           messages[idx].content = content;
@@ -273,6 +283,24 @@ const chatSlice = createSlice({
         );
         if (msgIndex !== -1) {
           messages[msgIndex].status = action.payload.status;
+        }
+      }
+    },
+
+    updateMessage(
+      state,
+      action: PayloadAction<{
+        conversationId: string;
+        messageId: string;
+        updates: Partial<Message>;
+      }>
+    ) {
+      const { conversationId, messageId, updates } = action.payload;
+      const messages = state.messages[conversationId];
+      if (messages) {
+        const msgIndex = messages.findIndex((m) => m.id === messageId);
+        if (msgIndex !== -1) {
+          messages[msgIndex] = { ...messages[msgIndex], ...updates };
         }
       }
     },
@@ -436,6 +464,7 @@ export const {
   setMessageFailed,
   setMessageStatus,
   updateMessageStatus,
+  updateMessage,
   deleteMessage,
   setMessageRevoked,
   setFriends,

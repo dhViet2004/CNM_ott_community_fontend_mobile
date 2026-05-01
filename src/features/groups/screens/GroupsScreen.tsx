@@ -18,7 +18,7 @@ import {
 } from '@store/slices/groupsSlice';
 import { groupsApi } from '@api/endpoints';
 import { colors, spacing, typography } from '@theme';
-import { Avatar } from '@components/common';
+import { Avatar, Icons, IconSize } from '@components/common';
 import type { RootStackScreenProps } from '@navigation/types';
 
 type Props = RootStackScreenProps<'Groups'>;
@@ -34,13 +34,21 @@ const GroupsScreen: React.FC<Props> = ({ navigation }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadGroups = useCallback(async () => {
-    if (!currentUserId) return;
+    if (!currentUserId) {
+      console.log('[GroupsScreen] currentUserId is null/undefined, skipping API call');
+      return;
+    }
     dispatch(setLoading(true));
+    dispatch(setError(null));
     try {
+      console.log('[GroupsScreen] Calling groupsApi.getMyGroups with userId:', currentUserId);
       const groups = await groupsApi.getMyGroups(currentUserId);
+      console.log('[GroupsScreen] getMyGroups returned:', groups);
       dispatch(setMyGroups(groups));
     } catch (err: any) {
-      dispatch(setError(err?.message || 'Không thể tải danh sách nhóm'));
+      console.error('[GroupsScreen] Error loading groups:', err);
+      const errorMessage = err?.response?.data?.message || err?.message || 'Không thể tải danh sách nhóm';
+      dispatch(setError(errorMessage));
     } finally {
       dispatch(setLoading(false));
     }
@@ -119,7 +127,11 @@ const GroupsScreen: React.FC<Props> = ({ navigation }) => {
           {item.member_count} thành viên
         </Text>
       </View>
-      {item.is_private && <Text style={styles.privateIcon}>🔒</Text>}
+      {item.is_private && (
+        <View style={styles.privateIconContainer}>
+          {Icons.lock(IconSize.sm)}
+        </View>
+      )}
     </TouchableOpacity>
   );
 
@@ -130,15 +142,21 @@ const GroupsScreen: React.FC<Props> = ({ navigation }) => {
           <Text style={styles.headerTitle}>Nhóm của tôi</Text>
           <View style={styles.headerActions}>
             <TouchableOpacity onPress={handleJoinGroup} style={styles.headerIcon}>
-              <Text style={styles.headerIconText}>↗</Text>
+              <View style={styles.headerIconContainer}>
+                {Icons.userGroup(IconSize.lg)}
+              </View>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleCreateGroup} style={styles.headerIcon}>
-              <Text style={styles.headerIconText}>+</Text>
+              <View style={styles.headerIconContainer}>
+                {Icons.add(IconSize.lg)}
+              </View>
             </TouchableOpacity>
           </View>
         </View>
         <View style={styles.searchBar}>
-          <Text style={styles.searchIcon}>🔍</Text>
+          <View style={styles.searchIconContainer}>
+            {Icons.search(IconSize.sm)}
+          </View>
           <TextInput
             style={styles.searchInput}
             placeholder="Tìm kiếm nhóm"
@@ -148,7 +166,9 @@ const GroupsScreen: React.FC<Props> = ({ navigation }) => {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Text style={styles.clearIcon}>✕</Text>
+              <View style={styles.clearIconContainer}>
+                {Icons.close(IconSize.sm)}
+              </View>
             </TouchableOpacity>
           )}
         </View>
@@ -161,7 +181,9 @@ const GroupsScreen: React.FC<Props> = ({ navigation }) => {
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>👥</Text>
+            <View style={styles.emptyIconContainer}>
+              {Icons.people(64)}
+            </View>
             <Text style={styles.emptyText}>Chưa tham gia nhóm nào</Text>
             <Text style={styles.emptySubtext}>
               Tạo nhóm mới hoặc tham gia qua mã mời
@@ -211,6 +233,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerIconText: { fontSize: 20, color: colors.text.inverse },
   searchBar: {
     flexDirection: 'row',
@@ -221,12 +247,19 @@ const styles = StyleSheet.create({
     height: 38,
     marginTop: spacing.sm,
   },
+  searchIconContainer: {
+    marginRight: spacing.sm,
+    opacity: 0.7,
+  },
   searchIcon: { fontSize: 16, marginRight: spacing.sm },
   searchInput: {
     flex: 1,
     ...typography.body,
     color: colors.text.inverse,
     paddingVertical: 0,
+  },
+  clearIconContainer: {
+    opacity: 0.7,
   },
   clearIcon: { fontSize: 14, color: 'rgba(255,255,255,0.7)' },
   groupItem: {
@@ -238,13 +271,20 @@ const styles = StyleSheet.create({
   groupInfo: { flex: 1, marginLeft: spacing.md },
   groupName: { ...typography.subtitle, color: colors.text.primary },
   memberCount: { ...typography.caption, color: colors.text.tertiary, marginTop: 2 },
-  privateIcon: { fontSize: 16 },
+  privateIconContainer: {
+    marginLeft: spacing.sm,
+    opacity: 0.6,
+  },
   separator: {
     height: 0,
     backgroundColor: colors.border.light,
     marginLeft: spacing.screenPadding + spacing.iconSize.avatar + spacing.md,
   },
   emptyContainer: { alignItems: 'center', paddingTop: 80 },
+  emptyIconContainer: {
+    marginBottom: spacing.lg,
+    opacity: 0.4,
+  },
   emptyIcon: { fontSize: 64, marginBottom: spacing.lg },
   emptyText: { ...typography.subtitle, color: colors.text.secondary },
   emptySubtext: { ...typography.caption, color: colors.text.tertiary, marginTop: spacing.xs, textAlign: 'center' },

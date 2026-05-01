@@ -8,90 +8,145 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
+import { store } from '@store/store';
 import {
   setMessages,
   addMessage,
   setLoadingMessages,
   confirmPendingMessage,
   failPendingMessage,
+  Message,
 } from '@store/slices/chatSlice';
-import { messageApi } from '@api/endpoints';
+import { setGroupMembers } from '@store/slices/groupsSlice';
+import { messageApi, channelApi, groupsApi } from '@api/endpoints';
 import { socketActions } from '@api/socket';
 import { colors, spacing, typography } from '@theme';
-import { Avatar } from '@components/common';
+import { Icons, IconSize } from '@components/common';
+import MessageBubble from '@features/chat/components/MessageBubble';
 import type { RootStackScreenProps } from '@navigation/types';
 
 type Props = RootStackScreenProps<'GroupChat'>;
-
-interface MessageItem {
-  id: string | number;
-  senderId: string;
-  senderName: string;
-  senderAvatar?: string;
-  content: string;
-  time: string;
-  isMe: boolean;
-  type: 'text' | 'image' | 'file' | 'sticker' | 'emoji';
-  file_url?: string | null;
-  status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
-}
 
 const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const { groupId, title } = route.params;
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
 
-  const messages = useAppSelector(
-    (state) => state.chat.messages[`group_${groupId}`] || []
-  );
+  // Bottom padding cho input
+  const bottomPadding = Platform.OS === 'ios'
+    ? insets.bottom
+    : Math.max(insets.bottom, spacing.md);
+
+  // Dùng groupId trực tiếp như web để tương thích với backend
+  // Backend lưu messages dưới key = groupId (ví dụ: "group_1777567390968")
+  const conversationId = String(groupId);
+
+  // ✅ FIX: Đọc messages trực tiếp từ Redux store
+  const messages = useAppSelector((state) => state.chat.messages[conversationId] ?? []);
+
   const currentUserId = useAppSelector((state) => state.auth.user?.userId);
+  const currentUser = useAppSelector((state) => state.auth.user);
   const isLoadingMessages = useAppSelector((state) => state.chat.isLoadingMessages);
 
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [defaultChannelId, setDefaultChannelId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const conversationId = `group_${groupId}`;
+
+  // Track if user is near bottom
+  const isNearBottomRef = useRef(true);
+  const isInitializedRef = useRef(false);
 
   // ─── Load Messages ────────────────────────────────────────────────────────
+  // ✅ FIX: Tách loadMessages khỏi dependency defaultChannelId để tránh loop
   const loadMessages = useCallback(async () => {
     dispatch(setLoadingMessages(true));
     try {
-      // Groups don't have channels by default, so we use the group's default channel
-      // For now, use a placeholder - in production this would be a dedicated group channel
       const result = await messageApi.getConversationMessages(conversationId);
-      const mapped: MessageItem[] = result.messages.map((m) => ({
-        id: String(m.id ?? m.messageId ?? ''),
-        senderId: String(m.senderId),
-        senderName: m.sender_name || 'Unknown',
-        content: m.content ?? '',
-        time: new Date(m.createdAt ?? m.created_at ?? Date.now()).toLocaleTimeString('vi-VN', {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-        isMe: String(m.senderId) === String(currentUserId),
-        type: (m.contentType ?? m.type ?? 'text') as MessageItem['type'],
-        file_url: m.file_url ?? m.attachments?.[0]?.url ?? null,
-        status: 'sent',
-      }));
-      dispatch(setMessages({ conversationId, messages: mapped as any }));
+      const rawMessages = result.messages || [];
+
+      const mapped = rawMessages.map((m: any) => {
+        const senderDisplayName = m.senderDisplayName || m.sender_name || m.Sender?.display_name || 'Unknown';
+        const senderAvatarUrl = m.senderAvatarUrl || m.sender_avatar || (m.Sender?.avatar_url ?? null);
+        return {
+          id: String(m.id ?? m.messageId ?? ''),
+          conversationId,
+          senderId: String(m.senderId),
+          senderName: senderDisplayName,
+          senderAvatar: senderAvatarUrl,
+          sender_name: senderDisplayName,
+          sender_avatar: senderAvatarUrl,
+          content: m.content ?? '',
+          timestamp: m.createdAt ?? m.created_at ?? new Date().toISOString(),
+          createdAt: m.createdAt ?? m.created_at,
+          type: (m.contentType ?? m.type ?? 'text') as Message['type'],
+          file_url: m.file_url ?? m.attachments?.[0]?.url ?? null,
+          status: 'sent' as const,
+        };
+      });
+      dispatch(setMessages({ conversationId, messages: mapped as Message[] }));
     } catch (err) {
-      console.error('Failed to load group messages:', err);
+      console.error('[GroupChatScreen] Failed to load group messages:', err);
+      dispatch(setMessages({ conversationId, messages: [] }));
     } finally {
       dispatch(setLoadingMessages(false));
     }
-  }, [conversationId, currentUserId, dispatch]);
+  }, [conversationId, dispatch]);
+
+  // ─── Get default channel ──────────────────────────────────────────────────
+  const loadDefaultChannel = useCallback(async () => {
+    try {
+      const channels = await channelApi.getChannels(groupId);
+      if (channels && channels.length > 0) {
+        // Use first channel or "general" channel
+        const generalChannel = channels.find((c: any) =>
+          c.name?.toLowerCase() === 'general' || c.name?.toLowerCase() === 'chung'
+        );
+        setDefaultChannelId(generalChannel?.channelId || channels[0].channelId);
+      }
+    } catch (err) {
+      console.error('Failed to load channels:', err);
+    }
+  }, [groupId]);
 
   useEffect(() => {
+    loadDefaultChannel();
+  }, [loadDefaultChannel]);
+
+  useEffect(() => {
+    // Reset state khi vào screen
+    isInitializedRef.current = false;
+    isNearBottomRef.current = true;
     loadMessages();
     socketActions.joinConversation(conversationId);
+
+    // Load group members if not already in store (for sender name lookup in realtime messages)
+    const existingMembers = store.getState().groups?.groupMembers?.[conversationId];
+    if (!existingMembers || existingMembers.length === 0) {
+      groupsApi.getMembers(groupId).then((members) => {
+        dispatch(setGroupMembers({ groupId, members }));
+      }).catch((err) => {
+        console.error('[GroupChatScreen] Failed to load group members:', err);
+      });
+    }
+
     return () => {
       socketActions.leaveConversation(conversationId);
     };
-  }, [conversationId, loadMessages]);
+  }, [conversationId]);
+
+  // ─── Refresh ───────────────────────────────────────────────────────────────
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await loadMessages();
+    setIsRefreshing(false);
+  }, [loadMessages]);
 
   // ─── Typing ───────────────────────────────────────────────────────────────
   const handleTextChange = (text: string) => {
@@ -121,21 +176,25 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     socketActions.sendStopTyping(conversationId);
     setIsTyping(false);
 
-    const optimisticMsg: MessageItem = {
+    const optimisticMsg: Message = {
       id: tempId,
+      conversationId,
       senderId: currentUserId || '',
-      senderName: 'Tôi',
+      senderName: currentUser?.display_name || 'Tôi',
+      senderAvatar: currentUser?.avatar_url ?? null,
+      sender_name: currentUser?.display_name || 'Tôi',
+      sender_avatar: currentUser?.avatar_url ?? null,
       content: text,
-      time: new Date().toLocaleTimeString('vi-VN', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-      isMe: true,
+      timestamp: new Date().toISOString(),
       type: 'text',
       status: 'sending',
     };
-    dispatch(addMessage({ ...optimisticMsg, conversationId } as any));
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    dispatch(addMessage(optimisticMsg));
+
+    // Chỉ auto-scroll nếu user đang ở gần cuối
+    if (isNearBottomRef.current) {
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    }
 
     try {
       const result = await messageApi.sendMessage(conversationId, text, currentUserId || '');
@@ -147,11 +206,11 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           realId,
           conversationId,
           senderId: String(result.senderId),
-          senderName: result.sender_name || 'Tôi',
-          senderAvatar: result.sender_avatar ?? null,
+          senderName: (result as any).senderDisplayName || (result as any).sender_name || currentUser?.display_name || 'Tôi',
+          senderAvatar: (result as any).senderAvatarUrl ?? (result as any).sender_avatar ?? null,
           content: result.content ?? '',
-          type: (result.contentType ?? result.type ?? 'text') as MessageItem['type'],
-          file_url: result.file_url ?? result.attachments?.[0]?.url ?? null,
+          type: (result.contentType ?? (result as any).type ?? 'text') as Message['type'],
+          file_url: result.file_url ?? (result as any).attachments?.[0]?.url ?? null,
         })
       );
     } catch {
@@ -160,136 +219,210 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
-  const renderMessage = ({ item }: { item: MessageItem }) => (
-    <View
-      style={[
-        styles.messageRow,
-        item.isMe ? styles.messageRowMe : styles.messageRowOther,
-      ]}
-    >
-      {!item.isMe && (
-        <Avatar name={item.senderName} uri={item.senderAvatar} size="xs" />
-      )}
-      <View
-        style={[
-          styles.messageBubble,
-          item.isMe ? styles.bubbleMe : styles.bubbleOther,
-        ]}
-      >
-        {!item.isMe && (
-          <Text style={styles.senderName}>{item.senderName}</Text>
-        )}
-        <Text
-          style={[
-            styles.messageText,
-            item.isMe ? styles.textMe : styles.textOther,
-          ]}
-        >
-          {item.content}
-        </Text>
-        <Text
-          style={[
-            styles.messageTime,
-            item.isMe ? styles.timeMe : styles.timeOther,
-          ]}
-        >
-          {item.time}
-        </Text>
-      </View>
-    </View>
+  const renderMessage = useCallback(
+    ({ item }: { item: Message }) => {
+      const isMe = String(item.senderId) === String(currentUserId);
+      const time = new Date(item.createdAt ?? item.timestamp ?? Date.now()).toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      const senderName = item.senderName || item.sender_name || 'Unknown';
+      const senderAvatar = item.senderAvatar || item.sender_avatar || null;
+      // Chỉ dùng các type được MessageBubble hỗ trợ
+      const messageType = item.type === 'video' || item.type === 'audio' ? 'file' : item.type;
+
+      return (
+        <MessageBubble
+          id={item.id}
+          senderId={item.senderId}
+          senderName={senderName}
+          senderAvatar={senderAvatar}
+          content={item.content}
+          time={time}
+          isMe={isMe}
+          type={messageType}
+          file_url={item.file_url}
+          status={item.status}
+          isDeleted={item.isDeleted}
+          isRevoked={item.isRevoked}
+          defaultName={title}
+          onLongPress={() => {}}
+        />
+      );
+    },
+    [title, currentUserId]
   );
 
+  const keyExtractor = useCallback((item: Message) => String(item.id), []);
+
+  // Handle scroll to detect if user is near bottom
+  const handleScroll = useCallback((event: any) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const paddingToBottom = 100;
+    const isNear = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+
+    isNearBottomRef.current = isNear;
+  }, []);
+
+  // Initial scroll to bottom after messages load
+  const handleContentSizeChange = useCallback(() => {
+    if (!isInitializedRef.current && messages.length > 0) {
+      isInitializedRef.current = true;
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 100);
+    }
+  }, [messages.length]);
+
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={90}
-    >
-      <FlatList
-        ref={flatListRef}
-        data={messages as any}
-        keyExtractor={(item) => item.id}
-        renderItem={renderMessage as any}
-        contentContainerStyle={styles.messagesList}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-        ListEmptyComponent={
-          isLoadingMessages ? (
-            <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>Đang tải tin nhắn...</Text>
-            </View>
-          ) : (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Chưa có tin nhắn nào</Text>
-            </View>
-          )
-        }
-      />
-      <View
-        style={[
-          styles.inputBar,
-          { paddingBottom: insets.bottom > 0 ? insets.bottom : spacing.sm },
-        ]}
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <TouchableOpacity style={styles.attachBtn}>
-          <Text style={styles.attachIcon}>📎</Text>
-        </TouchableOpacity>
-        <TextInput
-          style={styles.input}
-          placeholder="Nhập tin nhắn..."
-          placeholderTextColor={colors.text.placeholder}
-          value={inputText}
-          onChangeText={handleTextChange}
-          multiline
+        <FlatList
+          ref={flatListRef}
+          data={messages as Message[]}
+          keyExtractor={keyExtractor}
+          renderItem={renderMessage as any}
+          contentContainerStyle={[
+            styles.messagesList,
+            { paddingBottom: bottomPadding + spacing.md }
+          ]}
+          onContentSizeChange={handleContentSizeChange}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          ListEmptyComponent={
+            isLoadingMessages ? (
+              <View style={styles.loadingContainer}>
+                <Text style={styles.loadingText}>Đang tải tin nhắn...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>Chưa có tin nhắn nào</Text>
+                <Text style={styles.emptySubtext}>Gửi lời chào đầu tiên!</Text>
+              </View>
+            )
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
         />
-        <TouchableOpacity
-          style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
-          onPress={handleSend}
-          disabled={!inputText.trim()}
-        >
-          <Text style={styles.sendIcon}>➤</Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+        <View style={[styles.inputWrapper, { paddingBottom: bottomPadding }]}>
+          <View style={styles.inputBar}>
+            <TouchableOpacity style={styles.attachBtn}>
+              <View style={styles.attachIconContainer}>
+                {Icons.attach(IconSize.lg)}
+              </View>
+            </TouchableOpacity>
+            <TextInput
+              style={styles.input}
+              placeholder="Nhập tin nhắn..."
+              placeholderTextColor={colors.text.placeholder}
+              value={inputText}
+              onChangeText={handleTextChange}
+              multiline
+            />
+            <TouchableOpacity
+              style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
+              onPress={handleSend}
+              disabled={!inputText.trim()}
+            >
+              <View style={styles.sendIconContainer}>
+                {Icons.send(IconSize.lg, inputText.trim() ? colors.text.inverse : colors.text.tertiary)}
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background.chatBg },
-  messagesList: { padding: spacing.md, paddingBottom: spacing.xl },
-  loadingContainer: { alignItems: 'center', paddingTop: 100 },
-  loadingText: { ...typography.body, color: colors.text.tertiary },
-  emptyContainer: { alignItems: 'center', paddingTop: 100 },
-  emptyText: { ...typography.subtitle, color: colors.text.secondary },
-  messageRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: spacing.sm },
-  messageRowMe: { justifyContent: 'flex-end' },
-  messageRowOther: { justifyContent: 'flex-start' },
-  messageBubble: { maxWidth: '72%', borderRadius: spacing.borderRadius.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginHorizontal: spacing.sm },
-  bubbleMe: { backgroundColor: colors.primary, borderBottomRightRadius: 4 },
-  bubbleOther: { backgroundColor: colors.background.primary, borderBottomLeftRadius: 4 },
-  senderName: { ...typography.caption, color: colors.primary, fontWeight: '600', marginBottom: 2 },
-  messageText: { ...typography.body },
-  textMe: { color: colors.text.inverse },
-  textOther: { color: colors.text.primary },
-  messageTime: { ...typography.caption, marginTop: spacing.xs },
-  timeMe: { color: 'rgba(255,255,255,0.7)', textAlign: 'right' },
-  timeOther: { color: colors.text.tertiary },
-  inputBar: {
-    flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: spacing.md, paddingTop: spacing.sm,
-    backgroundColor: colors.background.primary, borderTopWidth: 0.5, borderTopColor: colors.border.light,
+  container: {
+    flex: 1,
+    backgroundColor: colors.background.chatBg,
   },
-  attachBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  attachIcon: { fontSize: 22 },
+  keyboardView: {
+    flex: 1,
+  },
+  messagesList: {
+    padding: spacing.md,
+    flexGrow: 1,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.text.tertiary,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  emptyText: {
+    ...typography.subtitle,
+    color: colors.text.secondary,
+  },
+  emptySubtext: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    marginTop: spacing.xs,
+  },
+  inputWrapper: {
+    backgroundColor: colors.background.primary,
+  },
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  attachBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   input: {
-    flex: 1, backgroundColor: colors.background.secondary, borderRadius: 20,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, maxHeight: 100,
-    ...typography.body, color: colors.text.primary,
+    flex: 1,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    maxHeight: 100,
+    ...typography.body,
+    color: colors.text.primary,
   },
   sendBtn: {
-    width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary,
-    alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing.sm,
   },
-  sendBtnDisabled: { backgroundColor: colors.background.tertiary },
-  sendIcon: { fontSize: 18, color: colors.text.inverse },
+  sendBtnDisabled: {
+    backgroundColor: colors.background.tertiary,
+  },
+  sendIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 
 export default GroupChatScreen;

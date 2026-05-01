@@ -67,7 +67,6 @@ const AppContent: React.FC = () => {
 
   return (
     <NavigationContainer>
-      <StatusBar style="light" />
       <RootStackNavigator />
     </NavigationContainer>
   );

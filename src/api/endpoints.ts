@@ -52,12 +52,12 @@ export const authApi = {
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 
-// Backend returns: { user } from service (no wrapper)
+// Backend returns: user object directly (no wrapper)
 export const userApi = {
   getMe: () =>
     apiClient
-      .get<{ user: User }>('/users/me')
-      .then((r) => r.data.user),
+      .get<User>('/users/me')
+      .then((r) => r.data),
 
   updateProfile: (data: {
     display_name?: string;
@@ -239,22 +239,28 @@ export const groupsApi = {
       .then((r) => r.data),
 
   // Correct endpoint: GET /groups/user/:userId
-  // Backend returns avatarUrl/memberCount; map to avatar_url/member_count
+  // Backend returns raw array of group objects
+  // Note: Backend requires auth, token is sent via interceptor
   getMyGroups: (userId: string) =>
     apiClient
       .get<any[]>(`/groups/user/${userId}`)
-      .then((r) => r.data.map((g) => ({
-        groupId: g.groupId,
-        name: g.name,
-        description: g.description ?? '',
-        avatar_url: g.avatarUrl ?? g.avatar_url ?? null,
-        is_private: g.is_private ?? false,
-        invite_code: g.invite_code ?? '',
-        member_count: g.memberCount ?? g.member_count ?? 0,
-        created_by: g.createdBy ?? g.created_by ?? '',
-        created_at: g.createdAt ?? g.created_at ?? '',
-        members: g.members,
-      }))),
+      .then((r) => {
+        const data = r.data;
+        // Handle both raw array and wrapped response
+        const groupsArray = Array.isArray(data) ? data : (data?.data ?? []);
+        return groupsArray.map((g: any) => ({
+          groupId: g.groupId,
+          name: g.name,
+          description: g.description ?? '',
+          avatar_url: g.avatarUrl ?? g.avatar_url ?? null,
+          is_private: g.is_private ?? false,
+          invite_code: g.inviteCode ?? g.invite_code ?? '',
+          member_count: g.memberCount ?? g.member_count ?? 0,
+          created_by: g.createdBy ?? g.created_by ?? '',
+          created_at: g.createdAt ?? g.created_at ?? '',
+          members: g.members,
+        }));
+      }),
 
   getMembers: (groupId: string) =>
     apiClient
