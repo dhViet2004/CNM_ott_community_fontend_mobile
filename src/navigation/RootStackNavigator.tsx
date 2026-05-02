@@ -20,6 +20,9 @@ import CreateGroupScreen from '@features/groups/screens/CreateGroupScreen';
 import GroupDetailScreen from '@features/groups/screens/GroupDetailScreen';
 import GroupChatScreen from '@features/groups/screens/GroupChatScreen';
 import AddMembersScreen from '@features/groups/screens/AddMembersScreen';
+import GroupSettingsScreen from '@features/groups/screens/GroupSettingsScreen';
+import ManageMembersScreen from '@features/groups/screens/ManageMembersScreen';
+import TransferOwnerScreen from '@features/groups/screens/TransferOwnerScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -241,6 +244,30 @@ const RootStackNavigator: React.FC = () => {
         options={{
           headerShown: false,
           animation: 'slide_from_bottom',
+        }}
+      />
+      <Stack.Screen
+        name="GroupSettings"
+        component={GroupSettingsScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="ManageMembers"
+        component={ManageMembersScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="TransferOwner"
+        component={TransferOwnerScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
         }}
       />
     </Stack.Navigator>
