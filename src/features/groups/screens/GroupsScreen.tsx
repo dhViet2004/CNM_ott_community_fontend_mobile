@@ -10,49 +10,41 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAppSelector, useAppDispatch } from '@store/hooks';
-import {
-  setMyGroups,
-  setLoading,
-  setError,
-} from '@store/slices/groupsSlice';
-import { groupsApi } from '@api/endpoints';
+import { useAppSelector } from '@store/hooks';
 import { colors, spacing, typography } from '@theme';
 import { Avatar, Icons, IconSize } from '@components/common';
 import type { RootStackScreenProps } from '@navigation/types';
+import {
+  useMyGroups,
+  useGroupsLoading,
+  useFetchMyGroups,
+  useJoinGroupByCode,
+} from '../hooks/useGroupsHooks';
 
 type Props = RootStackScreenProps<'Groups'>;
 
 const GroupsScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const dispatch = useAppDispatch();
-  const myGroups = useAppSelector((state) => state.groups.myGroups);
-  const isLoading = useAppSelector((state) => state.groups.isLoading);
-  const currentUserId = useAppSelector((state) => state.auth.user?.userId);
+  const myGroups = useMyGroups();
+  const { isLoading } = useGroupsLoading();
+  const fetchMyGroups = useFetchMyGroups();
+  const joinGroupByCode = useJoinGroupByCode();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadGroups = useCallback(async () => {
-    if (!currentUserId) {
-      console.log('[GroupsScreen] currentUserId is null/undefined, skipping API call');
-      return;
-    }
-    dispatch(setLoading(true));
-    dispatch(setError(null));
     try {
-      console.log('[GroupsScreen] Calling groupsApi.getMyGroups with userId:', currentUserId);
-      const groups = await groupsApi.getMyGroups(currentUserId);
-      console.log('[GroupsScreen] getMyGroups returned:', groups);
-      dispatch(setMyGroups(groups));
+      console.log('[GroupsScreen] Fetching my groups from API');
+      await fetchMyGroups();
     } catch (err: any) {
       console.error('[GroupsScreen] Error loading groups:', err);
-      const errorMessage = err?.response?.data?.message || err?.message || 'Không thể tải danh sách nhóm';
-      dispatch(setError(errorMessage));
-    } finally {
-      dispatch(setLoading(false));
+      Alert.alert(
+        'Lỗi',
+        err?.response?.data?.message || err?.message || 'Không thể tải danh sách nhóm'
+      );
     }
-  }, [currentUserId, dispatch]);
+  }, [fetchMyGroups]);
 
   useEffect(() => {
     loadGroups();
@@ -94,7 +86,7 @@ const GroupsScreen: React.FC<Props> = ({ navigation }) => {
           onPress: async (inviteCode?: string) => {
             if (!inviteCode?.trim()) return;
             try {
-              await groupsApi.joinByCode(inviteCode.trim());
+              await joinGroupByCode(inviteCode.trim());
               Alert.alert('Thành công', 'Bạn đã tham gia nhóm!');
               loadGroups();
             } catch (err: any) {
@@ -108,7 +100,7 @@ const GroupsScreen: React.FC<Props> = ({ navigation }) => {
       ],
       'plain-text'
     );
-  }, [loadGroups]);
+  }, [joinGroupByCode, loadGroups]);
 
   const renderGroupItem = ({ item }: { item: (typeof myGroups)[0] }) => (
     <TouchableOpacity
@@ -139,7 +131,15 @@ const GroupsScreen: React.FC<Props> = ({ navigation }) => {
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.headerRow}>
-          <Text style={styles.headerTitle}>Nhóm của tôi</Text>
+          <View style={styles.headerTitleRow}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+            >
+              {Icons.back(IconSize.lg, colors.text.inverse)}
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Nhóm của tôi</Text>
+          </View>
           <View style={styles.headerActions}>
             <TouchableOpacity onPress={handleJoinGroup} style={styles.headerIcon}>
               <View style={styles.headerIconContainer}>
@@ -223,7 +223,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     height: 48,
   },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   headerTitle: { ...typography.h2, color: colors.text.inverse },
+  backButton: {
+    marginRight: spacing.md,
+  },
   headerActions: { flexDirection: 'row', gap: spacing.sm },
   headerIcon: {
     width: 36,

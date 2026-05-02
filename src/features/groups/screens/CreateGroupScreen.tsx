@@ -7,18 +7,16 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAppDispatch } from '@store/hooks';
-import { addGroup } from '@store/slices/groupsSlice';
-import { groupsApi } from '@api/endpoints';
 import { colors, spacing, typography } from '@theme';
 import { Button, Input } from '@components/common';
 import type { RootStackScreenProps } from '@navigation/types';
+import { useCreateGroup } from '../hooks/useGroupsHooks';
 
 type Props = RootStackScreenProps<'CreateGroup'>;
 
 const CreateGroupScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const dispatch = useAppDispatch();
+  const createGroup = useCreateGroup();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -39,12 +37,11 @@ const CreateGroupScreen: React.FC<Props> = ({ navigation }) => {
     setLoading(true);
     setError('');
     try {
-      const group = await groupsApi.createGroup({
+      const group = await createGroup({
         name: name.trim(),
         description: description.trim() || undefined,
-        is_private: isPrivate,
+        type: isPrivate ? 'private_community' : 'public_community',
       });
-      dispatch(addGroup(group));
       Alert.alert('Thành công', `Nhóm "${group.name}" đã được tạo!`, [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
@@ -53,7 +50,7 @@ const CreateGroupScreen: React.FC<Props> = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
-  }, [name, description, isPrivate, dispatch, navigation]);
+  }, [name, description, isPrivate, createGroup, navigation]);
 
   return (
     <ScrollView

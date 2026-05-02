@@ -1,6 +1,9 @@
 import React from 'react';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors, typography } from '@theme';
+import { Icons, IconSize } from '@components/common';
 import type { RootStackParamList } from './types';
 
 import MainTabNavigator from './MainTabNavigator';
@@ -16,6 +19,7 @@ import GroupsScreen from '@features/groups/screens/GroupsScreen';
 import CreateGroupScreen from '@features/groups/screens/CreateGroupScreen';
 import GroupDetailScreen from '@features/groups/screens/GroupDetailScreen';
 import GroupChatScreen from '@features/groups/screens/GroupChatScreen';
+import AddMembersScreen from '@features/groups/screens/AddMembersScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -75,13 +79,63 @@ const RootStackNavigator: React.FC = () => {
       <Stack.Screen
         name="GroupChat"
         component={GroupChatScreen}
-        options={({ route }) => ({
+        options={({ route, navigation }) => ({
           headerShown: true,
-          title: route.params.title,
-          headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: colors.text.inverse,
-          headerTitleStyle: { ...typography.h3, color: colors.text.inverse },
-          headerBackTitleVisible: false,
+          header: () => (
+            <SafeAreaView edges={['top']} style={{ backgroundColor: colors.primary }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  height: 56,
+                  paddingHorizontal: 16,
+                  backgroundColor: colors.primary,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity
+                    onPress={() => navigation.goBack()}
+                    style={{ paddingVertical: 8, paddingRight: 16, marginLeft: -8 }}
+                  >
+                    {Icons.back(IconSize.lg, colors.text.inverse)}
+                  </TouchableOpacity>
+                  <Text style={{ ...typography.h3, color: colors.text.inverse }}>
+                    {route.params.title}
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      navigation.navigate('GroupDetail', { groupId: route.params.groupId })
+                    }
+                    style={{ padding: 8 }}
+                  >
+                    {Icons.videocam(IconSize.lg, colors.text.inverse)}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() =>
+                      navigation.navigate('GroupDetail', { groupId: route.params.groupId })
+                    }
+                    style={{ padding: 8, marginLeft: 8 }}
+                  >
+                    {Icons.search(IconSize.lg, colors.text.inverse)}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() =>
+                      navigation.navigate('GroupDetail', { groupId: route.params.groupId })
+                    }
+                    style={{ padding: 8, marginLeft: 8, marginRight: -8 }}
+                  >
+                    {Icons.menu(IconSize.lg, colors.text.inverse)}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </SafeAreaView>
+          ),
         })}
       />
 
@@ -132,11 +186,7 @@ const RootStackNavigator: React.FC = () => {
         name="Groups"
         component={GroupsScreen}
         options={{
-          headerShown: true,
-          title: 'Nhóm',
-          headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: colors.text.inverse,
-          headerBackTitleVisible: false,
+          headerShown: false,
         }}
       />
       <Stack.Screen
@@ -153,12 +203,44 @@ const RootStackNavigator: React.FC = () => {
       <Stack.Screen
         name="GroupDetail"
         component={GroupDetailScreen}
-        options={{
+        options={({ navigation }) => ({
           headerShown: true,
-          title: 'Chi tiết nhóm',
-          headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: colors.text.inverse,
-          headerBackTitleVisible: false,
+          header: () => (
+            <SafeAreaView edges={['top']} style={{ backgroundColor: colors.primary }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  height: 56,
+                  paddingHorizontal: 16,
+                  backgroundColor: colors.primary,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity
+                    onPress={() => navigation.goBack()}
+                    style={{ paddingVertical: 8, paddingRight: 16, marginLeft: -8 }}
+                  >
+                    {Icons.back(IconSize.lg, colors.text.inverse)}
+                  </TouchableOpacity>
+                  <Text style={{ ...typography.h3, color: colors.text.inverse }}>
+                    Chi tiết nhóm
+                  </Text>
+                </View>
+
+                <View style={{ width: 32 }} />
+              </View>
+            </SafeAreaView>
+          ),
+        })}
+      />
+      <Stack.Screen
+        name="AddMembers"
+        component={AddMembersScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_bottom',
         }}
       />
     </Stack.Navigator>

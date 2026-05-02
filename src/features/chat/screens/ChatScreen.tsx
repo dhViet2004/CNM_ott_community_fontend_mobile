@@ -146,8 +146,17 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
         });
       } else {
         // Group conversation
+        const resolvedGroupId = String(conv.groupId ?? conv.id ?? '')
+          .replace(/^group:/, '')
+          .trim();
+
+        if (!resolvedGroupId || resolvedGroupId === 'undefined' || resolvedGroupId === 'null') {
+          Alert.alert('Lỗi', 'Không tìm thấy ID nhóm hợp lệ để mở đoạn chat');
+          return;
+        }
+
         navigation.navigate('GroupChat', {
-          groupId: conv.groupId || conv.id.replace('group:', ''),
+          groupId: resolvedGroupId,
           title: conv.name || 'Nhóm',
         });
       }
@@ -370,6 +379,9 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text.inverse,
     paddingVertical: 0,
+  },
+  clearIconContainer: {
+    opacity: 0.7,
   },
   clearIcon: {
     fontSize: 14,

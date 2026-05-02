@@ -20,9 +20,9 @@ export const IconSize = {
 // Common icons used throughout the app
 export const Icons = {
   // Navigation & Actions
-  back: (size?: number) => <Ionicons name="chevron-back" size={size ?? IconSize.md} />,
+ back: (size?: number, color?: string) => <Ionicons name="chevron-back" size={size ?? IconSize.md} color={color} />,
   close: (size?: number) => <Ionicons name="close" size={size ?? IconSize.md} />,
-  menu: (size?: number) => <Ionicons name="menu" size={size ?? IconSize.md} />,
+  menu: (size?: number, color?: string) => <Ionicons name="menu" size={size ?? IconSize.md} color={color} />,
   moreVertical: (size?: number) => <Ionicons name="ellipsis-vertical" size={size ?? IconSize.md} />,
   
   // Chat & Messages
@@ -57,7 +57,7 @@ export const Icons = {
   exitToApp: (size?: number) => <MaterialCommunityIcons name="exit-to-app" size={size ?? IconSize.md} />,
   
   // Search & Find
-  search: (size?: number) => <Ionicons name="search" size={size ?? IconSize.md} />,
+  search: (size?: number, color?: string) => <Ionicons name="search" size={size ?? IconSize.md} color={color} />,
   filter: (size?: number) => <Ionicons name="options" size={size ?? IconSize.md} />,
   
   // Social & Status
@@ -72,7 +72,7 @@ export const Icons = {
   // Communication
   call: (size?: number) => <Ionicons name="call" size={size ?? IconSize.md} />,
   callOutline: (size?: number) => <Ionicons name="call-outline" size={size ?? IconSize.md} />,
-  videocam: (size?: number) => <Ionicons name="videocam" size={size ?? IconSize.md} />,
+  videocam: (size?: number, color?: string) => <Ionicons name="videocam" size={size ?? IconSize.md} color={color} />,
   mail: (size?: number) => <Ionicons name="mail" size={size ?? IconSize.md} />,
   mailOutline: (size?: number) => <Ionicons name="mail-outline" size={size ?? IconSize.md} />,
   

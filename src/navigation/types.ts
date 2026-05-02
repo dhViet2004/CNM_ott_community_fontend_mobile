@@ -18,6 +18,7 @@ export type RootStackParamList = {
   CreateGroup: undefined;
   JoinGroup: undefined;
   GroupDetail: { groupId: string };
+  AddMembers: { groupId: string };
 };
 
 export type MainTabParamList = {

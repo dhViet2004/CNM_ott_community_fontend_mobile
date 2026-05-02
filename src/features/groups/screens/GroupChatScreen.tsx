@@ -10,7 +10,7 @@ import {
   Platform,
   RefreshControl,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { store } from '@store/store';
 import {
@@ -22,14 +22,16 @@ import {
   Message,
 } from '@store/slices/chatSlice';
 import { setGroupMembers } from '@store/slices/groupsSlice';
-import { messageApi, channelApi, groupsApi } from '@api/endpoints';
+import { messageApi, channelApi } from '@api/endpoints';
 import { socketActions } from '@api/socket';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import MessageBubble from '@features/chat/components/MessageBubble';
 import type { RootStackScreenProps } from '@navigation/types';
+import { getGroupMembers } from '../api';
 
 type Props = RootStackScreenProps<'GroupChat'>;
+const EMPTY_MESSAGES: Message[] = [];
 
 const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const { groupId, title } = route.params;
@@ -46,7 +48,9 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const conversationId = String(groupId);
 
   // ✅ FIX: Đọc messages trực tiếp từ Redux store
-  const messages = useAppSelector((state) => state.chat.messages[conversationId] ?? []);
+  const messages = useAppSelector(
+    (state) => state.chat.messages[conversationId] ?? EMPTY_MESSAGES
+  );
 
   const currentUserId = useAppSelector((state) => state.auth.user?.userId);
   const currentUser = useAppSelector((state) => state.auth.user);
@@ -129,7 +133,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     // Load group members if not already in store (for sender name lookup in realtime messages)
     const existingMembers = store.getState().groups?.groupMembers?.[conversationId];
     if (!existingMembers || existingMembers.length === 0) {
-      groupsApi.getMembers(groupId).then((members) => {
+      getGroupMembers(groupId).then((members) => {
         dispatch(setGroupMembers({ groupId, members }));
       }).catch((err) => {
         console.error('[GroupChatScreen] Failed to load group members:', err);
@@ -275,7 +279,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [messages.length]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={styles.container}>
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -341,7 +345,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 };
 
