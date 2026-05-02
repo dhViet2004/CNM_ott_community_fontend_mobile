@@ -19,6 +19,9 @@ export type RootStackParamList = {
   JoinGroup: undefined;
   GroupDetail: { groupId: string };
   AddMembers: { groupId: string };
+  GroupSettings: { groupId: string };
+  ManageMembers: { groupId: string };
+  TransferOwner: { groupId: string; groupName: string };
 };
 
 export type MainTabParamList = {
