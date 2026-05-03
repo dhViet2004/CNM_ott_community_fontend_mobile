@@ -35,7 +35,7 @@ import { Icons, IconSize } from '@components/common';
 import MessageBubble from '@features/chat/components/MessageBubble';
 import PinnedHeader from '@features/chat/components/PinnedHeader';
 import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
-import { MessageContextMenu, ChatInput } from '@features/chat/components';
+import { MessageContextMenu, ChatInput, ForwardMessageModal } from '@features/chat/components';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 import { getGroupMembers } from '../api';
 
@@ -124,6 +124,10 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const [defaultChannelId, setDefaultChannelId] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<SelectedMessage>(null);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [forwardMessageState, setForwardMessageState] = useState<{
+    messageId: string;
+    content: string;
+  } | null>(null);
   const selectedMessageRef = useRef<SelectedMessage>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -722,7 +726,15 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         isOwn={selectedMessage?.isMe ?? false}
         isDeleting={deletingMessageId === String(selectedMessage?.id)}
         onReply={() => Alert.alert('Trả lời', 'Tính năng đang phát triển')}
-        onForward={() => Alert.alert('Chuyển tiếp', 'Tính năng đang phát triển')}
+        onForward={() => {
+          const msg = selectedMessageRef.current;
+          if (!msg) return;
+          setSelectedMessage(null);
+          setForwardMessageState({
+            messageId: String(msg.id),
+            content: msg.content,
+          });
+        }}
         onSave={() => Alert.alert('Lưu', 'Tính năng đang phát triển')}
         onRecall={handleRecall}
         onCopy={handleCopy}
@@ -764,6 +776,14 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
             }
           }
         }}
+      />
+      {/* ── Forward Modal ── */}
+      <ForwardMessageModal
+        isOpen={forwardMessageState !== null}
+        onClose={() => setForwardMessageState(null)}
+        messageId={forwardMessageState?.messageId ?? ''}
+        messageContent={forwardMessageState?.content ?? ''}
+        sourceConversationId={conversationId}
       />
     </View>
   );
