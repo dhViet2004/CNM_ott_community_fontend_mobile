@@ -23,6 +23,7 @@ interface ContactState {
   favorites: Contact[];
   blocked: Contact[];
   pendingRequests: Contact[];
+  pendingCount: number;
   isLoading: boolean;
   error: string | null;
   searchQuery: string;
@@ -33,6 +34,7 @@ const initialState: ContactState = {
   favorites: [],
   blocked: [],
   pendingRequests: [],
+  pendingCount: 0,
   isLoading: false,
   error: null,
   searchQuery: '',
@@ -105,6 +107,16 @@ const contactSlice = createSlice({
         avatar_url: p.avatar_url,
       }));
     },
+    removePendingRequest(state, action: PayloadAction<string>) {
+      state.pendingRequests = state.pendingRequests.filter((r) => r.id !== action.payload);
+      if (state.pendingCount > 0) state.pendingCount -= 1;
+    },
+    decrementPendingCount(state) {
+      if (state.pendingCount > 0) state.pendingCount -= 1;
+    },
+    setPendingCount(state, action: PayloadAction<number>) {
+      state.pendingCount = action.payload;
+    },
     addPendingRequest(state, action: PayloadAction<{ userId: string; username: string; display_name: string; avatar_url: string | null }>) {
       const exists = state.pendingRequests.find((c) => c.id === action.payload.userId);
       if (!exists) {
@@ -137,6 +149,9 @@ export const {
   setPendingRequests,
   setRawPendingRequests,
   addPendingRequest,
+  removePendingRequest,
+  decrementPendingCount,
+  setPendingCount,
   setLoading,
   clearError,
 } = contactSlice.actions;

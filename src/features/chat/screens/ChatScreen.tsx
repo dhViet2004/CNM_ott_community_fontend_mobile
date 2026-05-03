@@ -23,6 +23,12 @@ import type { RootStackScreenProps } from '@navigation/types';
 
 type Props = RootStackScreenProps<'MainTabs'>;
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const buildDmConversationId = (myId: string, otherId: string): string => {
+  const sortedIds = [myId, otherId].sort();
+  return `dm:${sortedIds.join(':')}`;
+};
+
 interface ChatConversation {
   id: string;
   type: 'single' | 'group';
@@ -104,7 +110,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
         if (f.pinnedMessages && Array.isArray(f.pinnedMessages)) {
           const friendId = f.friend_id || f.userId;
           const myId = currentUserId || '';
-          const sortedIds = [myId, friendId].sort((a, b) => Number(a) - Number(b));
+          const sortedIds = [myId, friendId].sort();
           const conversationId = `dm:${sortedIds.join(':')}`;
           dispatch({
             type: 'chat/setPinnedMessages',
@@ -166,7 +172,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
       if (conv.type === 'single') {
         const friendId = conv.friendId;
         const myId = currentUserId || '';
-        const sortedIds = [myId, friendId].sort((a, b) => Number(a) - Number(b));
+        const sortedIds = [myId, friendId].sort();
         const conversationId = `dm:${sortedIds.join(':')}`;
         navigation.navigate('Chat', {
           conversationId,
