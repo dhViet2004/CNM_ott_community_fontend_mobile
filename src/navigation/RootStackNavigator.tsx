@@ -16,6 +16,7 @@ import LoginScreen from '@features/auth/screens/LoginScreen';
 import RegisterScreen from '@features/auth/screens/RegisterScreen';
 import ForgotPasswordScreen from '@features/auth/screens/ForgotPasswordScreen';
 import ContactsListScreen from '@features/contacts/screens/ContactsListScreen';
+import FriendRequestsScreen from '@features/contacts/screens/FriendRequestsScreen';
 import GroupsScreen from '@features/groups/screens/GroupsScreen';
 import CreateGroupScreen from '@features/groups/screens/CreateGroupScreen';
 import GroupDetailScreen from '@features/groups/screens/GroupDetailScreen';
@@ -126,10 +127,15 @@ const RootStackNavigator: React.FC = () => {
         name="ContactsList"
         component={ContactsListScreen}
         options={{
-          headerShown: true,
-          title: 'Danh bạ',
-          headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: colors.text.inverse,
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="FriendRequests"
+        component={FriendRequestsScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
         }}
       />
 

@@ -70,6 +70,7 @@ export const Icons: Record<string, IconFn | IconFnNoColor> = {
   heart: (size?: number) => <Ionicons name="heart" size={size ?? IconSize.md} />,
   heartOutline: (size?: number) => <Ionicons name="heart-outline" size={size ?? IconSize.md} />,
   heartFill: (size?: number, color?: string) => <Ionicons name="heart" size={size ?? IconSize.md} color={color} />,
+  gift: (size?: number, color?: string) => <MaterialCommunityIcons name="gift" size={size ?? IconSize.md} color={color} />,
   share: (size?: number) => <Ionicons name="share" size={size ?? IconSize.md} />,
   shareOutline: (size?: number) => <Ionicons name="share-outline" size={size ?? IconSize.md} />,
   star: (size?: number) => <Ionicons name="star" size={size ?? IconSize.md} />,
@@ -247,6 +248,7 @@ export const Icons: Record<string, IconFn | IconFnNoColor> = {
 
   // QR Code
   qrCode: (size?: number, color?: string) => <Ionicons name="qr-code-outline" size={size ?? IconSize.md} color={color} />,
+  qrCodeScanner: (size?: number, color?: string) => <MaterialCommunityIcons name="qrcode-scan" size={size ?? IconSize.md} color={color} />,
 
   // Timeline / Card
   timelineCard: (size?: number, color?: string) => <Ionicons name="albums" size={size ?? IconSize.md} color={color} />,

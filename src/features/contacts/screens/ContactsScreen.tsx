@@ -1,17 +1,22 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
+  SectionList,
   FlatList,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   Text,
   RefreshControl,
+  ScrollView,
+  ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { setFriends } from '@store/slices/chatSlice';
-import { setContacts, setPendingRequests as setRawPendingRequests, setLoading as setContactsLoading } from '@store/slices/contactSlice';
+import { setPendingRequests as setRawPendingRequests, setLoading as setContactsLoading } from '@store/slices/contactSlice';
+import { setLoading as setGroupsLoading } from '@store/slices/groupsSlice';
+import { fetchMyGroupsAsync } from '@store/slices/groupsSlice';
 import { friendsApi, userApi } from '@api/endpoints';
 import { colors, spacing, typography } from '@theme';
 import { Avatar, Icons, IconSize } from '@components/common';
@@ -19,37 +24,498 @@ import type { MainTabScreenProps } from '@navigation/types';
 
 type Props = MainTabScreenProps<'ContactsTab'>;
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+type TabType = 'friends' | 'groups' | 'oa';
+type FilterType = 'all' | 'recent';
+
+type Friend = {
+  userId: string;
+  friend_id?: string;
+  display_name: string;
+  username?: string;
+  avatar_url?: string | null;
+};
+
+type PendingRequest = {
+  userId: string;
+  display_name: string;
+  avatar_url?: string | null;
+};
+
+type Group = {
+  groupId: string;
+  name: string;
+  description?: string;
+  avatar_url?: string | null;
+  member_count?: number;
+  is_private?: boolean;
+};
+
+type OA = {
+  oaId: string;
+  name: string;
+  avatar_url?: string | null;
+  description?: string;
+};
+
+interface FriendSection {
+  title: string;
+  data: Friend[];
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('');
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const getSectionLetter = (name: string): string => {
+  const first = (name.trim()[0] || '').toUpperCase();
+  if (/[A-Z]/.test(first)) return first;
+  return '#';
+};
+
+const groupFriendsByLetter = (friends: Friend[]): FriendSection[] => {
+  const grouped: Record<string, Friend[]> = {};
+  friends.forEach((f) => {
+    const letter = getSectionLetter(f.display_name);
+    if (!grouped[letter]) grouped[letter] = [];
+    grouped[letter].push(f);
+  });
+  return ALPHABET
+    .filter((l) => grouped[l]?.length > 0)
+    .map((l) => ({ title: l, data: grouped[l] }));
+};
+
+const buildDmConversationId = (myId: string, otherId: string): string => {
+  const sortedIds = [myId, otherId].sort();
+  return `dm:${sortedIds.join(':')}`;
+};
+
+// ─── MOCK DATA ────────────────────────────────────────────────────────────────
+// Dữ liệu OA giả lập – thay bằng API thực tế khi có backend
+const MOCK_OA_LIST: OA[] = [
+  { oaId: 'oa_1', name: 'Zalo Official', avatar_url: null, description: 'Ứng dụng Zalo' },
+  { oaId: 'oa_2', name: 'Zalo PC', avatar_url: null, description: 'Zalo trên máy tính' },
+  { oaId: 'oa_3', name: 'Zalo Me', avatar_url: null, description: 'Trang cá nhân Zalo' },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUB-COMPONENT: ContactsHeader
+// Thanh header màu xanh Zalo: icon thêm bạn + search bar giả lập
+// ═══════════════════════════════════════════════════════════════════════════
+interface ContactsHeaderProps {
+  insets: number;
+  onAddFriend: () => void;
+}
+
+const ContactsHeader: React.FC<ContactsHeaderProps> = ({ insets, onAddFriend }) => (
+  <View style={[styles.zaloHeader, { paddingTop: insets + spacing.sm }]}>
+    <View style={styles.headerTopRow}>
+      <Text style={styles.headerPlaceholder}>Danh bạ</Text>
+      <TouchableOpacity
+        style={styles.headerIconBtn}
+        onPress={onAddFriend}
+        activeOpacity={0.7}
+      >
+        {Icons.userPlus(IconSize.lg, colors.text.inverse)}
+      </TouchableOpacity>
+    </View>
+
+    <TouchableOpacity style={styles.fakeSearchBar} activeOpacity={0.8}>
+      <View style={styles.searchLeft}>
+        {Icons.search(IconSize.sm, 'rgba(255,255,255,0.7)')}
+        <Text style={styles.searchPlaceholder}>Tìm kiếm</Text>
+      </View>
+    </TouchableOpacity>
+  </View>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUB-COMPONENT: ContactsTabs
+// Tab navigation: Bạn bè / Nhóm / OA với underline active
+// ═══════════════════════════════════════════════════════════════════════════
+interface ContactsTabsProps {
+  activeTab: TabType;
+  onTabChange: (tab: TabType) => void;
+}
+
+const ContactsTabs: React.FC<ContactsTabsProps> = ({ activeTab, onTabChange }) => (
+  <View style={styles.tabsRow}>
+    {(['friends', 'groups', 'oa'] as TabType[]).map((tab) => (
+      <TouchableOpacity
+        key={tab}
+        style={styles.tab}
+        onPress={() => onTabChange(tab)}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+          {tab === 'friends' ? 'Bạn bè' : tab === 'groups' ? 'Nhóm' : 'OA'}
+        </Text>
+        {activeTab === tab && <View style={styles.tabUnderline} />}
+      </TouchableOpacity>
+    ))}
+  </View>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUB-COMPONENT: AlphabetSidebar
+// Thanh chữ cái A-Z cố định bên phải để scroll nhanh
+// ═══════════════════════════════════════════════════════════════════════════
+interface AlphabetSidebarProps {
+  sections: FriendSection[];
+  sectionIndexMap: Record<string, number>;
+  sectionListRef: React.RefObject<any>;
+}
+
+const AlphabetSidebar: React.FC<AlphabetSidebarProps> = ({
+  sections,
+  sectionIndexMap,
+  sectionListRef,
+}) => {
+  const availableLetters = sections.map((s) => s.title);
+
+  const handlePress = (letter: string) => {
+    const idx = sectionIndexMap[letter];
+    if (idx !== undefined) {
+      sectionListRef.current?.scrollToLocation({
+        sectionIndex: idx,
+        itemIndex: 0,
+        animated: true,
+        viewOffset: 0,
+      });
+    }
+  };
+
+  return (
+    <View style={styles.alphabetSidebar}>
+      {ALPHABET.map((letter) => {
+        const isAvailable = availableLetters.includes(letter);
+        return (
+          <TouchableOpacity
+            key={letter}
+            style={styles.alphabetLetter}
+            onPress={() => handlePress(letter)}
+            disabled={!isAvailable}
+            activeOpacity={0.6}
+          >
+            <Text
+              style={[
+                styles.alphabetLetterText,
+                !isAvailable && styles.alphabetLetterDisabled,
+              ]}
+            >
+              {letter}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUB-COMPONENT: FriendItem
+// Mỗi dòng bạn bè: avatar + tên + icon gọi thoại/video
+// ═══════════════════════════════════════════════════════════════════════════
+interface FriendItemProps {
+  friend: Friend;
+  isOnline: boolean;
+  onPress: (f: Friend) => void;
+}
+
+const FriendItem: React.FC<FriendItemProps> = ({ friend, isOnline, onPress }) => (
+  <TouchableOpacity
+    style={styles.friendItem}
+    onPress={() => onPress(friend)}
+    activeOpacity={0.7}
+  >
+    <Avatar
+      name={friend.display_name || ''}
+      uri={friend.avatar_url || undefined}
+      size="md"
+      showOnlineIndicator
+      online={isOnline}
+    />
+    <Text style={styles.friendName} numberOfLines={1}>
+      {friend.display_name}
+    </Text>
+    <View style={styles.actionIcons}>
+      <TouchableOpacity style={styles.actionBtn} activeOpacity={0.6}>
+        {Icons.call(IconSize.md, colors.primary)}
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.actionBtn} activeOpacity={0.6}>
+        {Icons.videocam(IconSize.md, colors.primary)}
+      </TouchableOpacity>
+    </View>
+  </TouchableOpacity>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUB-COMPONENT: FriendsListHeader
+// Header của danh sách bạn bè: quick actions + pending + filter pills
+// ═══════════════════════════════════════════════════════════════════════════
+interface FriendsListHeaderProps {
+  pendingRequests: any[];
+  totalFriends: number;
+  onlineCount: number;
+  activeFilter: FilterType;
+  onFilterChange: (f: FilterType) => void;
+  onPendingPress: (req: any) => void;
+  onFriendRequestsPress: () => void;
+}
+
+const FriendsListHeader: React.FC<FriendsListHeaderProps> = ({
+  pendingRequests,
+  totalFriends,
+  onlineCount,
+  activeFilter,
+  onFilterChange,
+  onPendingPress,
+  onFriendRequestsPress,
+}) => (
+  <View style={styles.listHeader}>
+    {/* Quick actions */}
+    <View style={styles.quickActions}>
+      <TouchableOpacity
+        style={styles.quickActionBtn}
+        activeOpacity={0.7}
+        onPress={onFriendRequestsPress}
+      >
+        <View style={styles.quickActionIconBg}>
+          {Icons.people(IconSize.md, colors.primary)}
+        </View>
+        <Text style={styles.quickActionLabel}>Lời mời kết bạn</Text>
+        {pendingRequests.length > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{pendingRequests.length}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.quickActionBtn} activeOpacity={0.7}>
+        <View style={styles.quickActionIconBg}>
+          {Icons.gift(IconSize.md, colors.primary)}
+        </View>
+        <Text style={styles.quickActionLabel}>Sinh nhật</Text>
+      </TouchableOpacity>
+    </View>
+
+    {/* Pending requests horizontal scroll */}
+    {pendingRequests.length > 0 && (
+      <View style={styles.pendingSection}>
+        <Text style={styles.pendingSectionTitle}>
+          Lời mời kết bạn ({pendingRequests.length})
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pendingScrollContent}
+        >
+          {pendingRequests.map((req) => (
+            <TouchableOpacity
+              key={req.userId}
+              style={styles.pendingCard}
+              onPress={() => onPendingPress(req)}
+              activeOpacity={0.7}
+            >
+              <Avatar
+                name={req.display_name}
+                uri={req.avatar_url || undefined}
+                size="md"
+              />
+              <Text style={styles.pendingName} numberOfLines={2}>
+                {req.display_name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    )}
+
+    {/* Filter pills */}
+    <View style={styles.filterPills}>
+      <TouchableOpacity
+        style={[styles.filterPill, activeFilter === 'all' && styles.filterPillActive]}
+        onPress={() => onFilterChange('all')}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.filterPillText, activeFilter === 'all' && styles.filterPillTextActive]}>
+          Tất cả ({totalFriends})
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.filterPill, activeFilter === 'recent' && styles.filterPillActive]}
+        onPress={() => onFilterChange('recent')}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.filterPillText, activeFilter === 'recent' && styles.filterPillTextActive]}>
+          Mới truy cập ({onlineCount})
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUB-COMPONENT: GroupItem
+// Mỗi dòng nhóm: avatar + tên nhóm + số thành viên
+// ═══════════════════════════════════════════════════════════════════════════
+interface GroupItemProps {
+  group: Group;
+  onPress: (g: Group) => void;
+}
+
+const GroupItem: React.FC<GroupItemProps> = ({ group, onPress }) => (
+  <TouchableOpacity
+    style={styles.groupItem}
+    onPress={() => onPress(group)}
+    activeOpacity={0.7}
+  >
+    <Avatar
+      name={group.name}
+      uri={group.avatar_url || undefined}
+      size="md"
+      variant="group"
+    />
+    <View style={styles.groupInfo}>
+      <Text style={styles.groupName} numberOfLines={1}>
+        {group.name}
+      </Text>
+      {group.description ? (
+        <Text style={styles.groupDesc} numberOfLines={1}>
+          {group.description}
+        </Text>
+      ) : null}
+    </View>
+    <View style={styles.groupMeta}>
+      {typeof group.member_count === 'number' && (
+        <Text style={styles.groupMemberCount}>
+          {group.member_count} thành viên
+        </Text>
+      )}
+      <View style={styles.groupChevron}>
+        {Icons.chevronRight(IconSize.sm, colors.text.tertiary)}
+      </View>
+    </View>
+  </TouchableOpacity>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUB-COMPONENT: OAItem
+// Mỗi dòng OA (Official Account)
+// ═══════════════════════════════════════════════════════════════════════════
+interface OAItemProps {
+  oa: OA;
+  onPress: (oa: OA) => void;
+}
+
+const OAItem: React.FC<OAItemProps> = ({ oa, onPress }) => (
+  <TouchableOpacity
+    style={styles.oaItem}
+    onPress={() => onPress(oa)}
+    activeOpacity={0.7}
+  >
+    <Avatar
+      name={oa.name}
+      uri={oa.avatar_url || undefined}
+      size="md"
+    />
+    <View style={styles.oaInfo}>
+      <Text style={styles.oaName} numberOfLines={1}>
+        {oa.name}
+      </Text>
+      {oa.description ? (
+        <Text style={styles.oaDesc} numberOfLines={1}>
+          {oa.description}
+        </Text>
+      ) : null}
+    </View>
+    <View style={styles.oaChevron}>
+      {Icons.chevronRight(IconSize.sm, colors.text.tertiary)}
+    </View>
+  </TouchableOpacity>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUB-COMPONENT: EmptyState
+// Trạng thái trống cho mỗi tab
+// ═══════════════════════════════════════════════════════════════════════════
+interface EmptyStateProps {
+  tab: TabType;
+}
+
+const EmptyState: React.FC<EmptyStateProps> = ({ tab }) => {
+  const configs = {
+    friends: {
+      icon: Icons.people(64),
+      title: 'Chưa có bạn bè nào',
+      subtitle: 'Thêm bạn bè để bắt đầu trò chuyện',
+    },
+    groups: {
+      icon: Icons.userGroup(IconSize.xxl, colors.text.tertiary),
+      title: 'Chưa có nhóm nào',
+      subtitle: 'Tạo nhóm hoặc tham gia nhóm để trò chuyện cùng bạn bè',
+    },
+    oa: {
+      icon: Icons.book(64),
+      title: 'Chưa có OA nào',
+      subtitle: 'Danh sách Official Account sẽ hiển thị tại đây',
+    },
+  };
+
+  const config = configs[tab];
+
+  return (
+    <View style={styles.emptyContainer}>
+      <View style={styles.emptyIconContainer}>{config.icon}</View>
+      <Text style={styles.emptyText}>{config.title}</Text>
+      <Text style={styles.emptySubtext}>{config.subtitle}</Text>
+    </View>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT: ContactsScreen
+// ═══════════════════════════════════════════════════════════════════════════
+const SectionListRef = React.createRef<any>();
+
 const ContactsScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
 
+  // ─── Redux State ─────────────────────────────────────────────────────────
   const friends = useAppSelector((state) => state.chat.friends);
   const pendingRequests = useAppSelector((state) => state.contacts.pendingRequests);
-  const isLoading = useAppSelector((state) => state.contacts.isLoading);
+  const isContactsLoading = useAppSelector((state) => state.contacts.isLoading);
   const onlineUsers = useAppSelector((state) => state.chat.onlineUsers);
 
-  const [searchQuery, setSearchQuery] = useState('');
+  // Groups state
+  const myGroups = useAppSelector((state) => state.groups.myGroups);
+  const isGroupsLoading = useAppSelector((state) => state.groups.isLoading);
+
+  // ─── Local State ─────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<TabType>('friends');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [allUsers, setAllUsers] = useState<any[]>([]);
-  const currentUserId = useAppSelector((state) => state.auth.user?.id);
+  const currentUserId = useAppSelector((state) => state.auth.user?.userId);
 
   // ─── Load Data ────────────────────────────────────────────────────────────
   const loadContacts = useCallback(async () => {
     dispatch(setContactsLoading(true));
+    dispatch(setGroupsLoading(true));
     try {
-      const [friendsList, pendingList, usersList] = await Promise.all([
+      const [friendsList, pendingList] = await Promise.all([
         friendsApi.getFriends().catch(() => []),
         friendsApi.getPendingRequests().catch(() => []),
-        userApi.searchUsers('').catch(() => []),
       ]);
 
       dispatch(setFriends(friendsList));
       dispatch(setRawPendingRequests(pendingList as any));
-      setAllUsers(usersList);
+      dispatch(fetchMyGroupsAsync());
     } catch (err) {
       console.error('Failed to load contacts:', err);
     } finally {
       dispatch(setContactsLoading(false));
+      dispatch(setGroupsLoading(false));
     }
   }, [dispatch]);
 
@@ -63,28 +529,39 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
     setIsRefreshing(false);
   };
 
-  // ─── Filter ───────────────────────────────────────────────────────────────
-  const filteredFriends = friends.filter(
-    (f) =>
-      (f.display_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (f.username || '').toLowerCase().includes(searchQuery.toLowerCase())
+  // ─── Filter Friends ────────────────────────────────────────────────────────
+  const onlineFriends = useMemo(() =>
+    friends.filter((f) => !!onlineUsers[f.friend_id || f.userId]),
+    [friends, onlineUsers]
   );
 
-  const onlineFriends = filteredFriends.filter(
-    (f) => !!onlineUsers[f.friend_id || f.userId]
-  );
-  const offlineFriends = filteredFriends.filter(
-    (f) => !onlineUsers[f.friend_id || f.userId]
+  const displayFriends = useMemo(() =>
+    activeFilter === 'recent' ? onlineFriends : friends,
+    [activeFilter, friends, onlineFriends]
   );
 
-  // ─── Navigate ──────────────────────────────────────────────────────────────
+  const sections = useMemo(() =>
+    groupFriendsByLetter(displayFriends),
+    [displayFriends]
+  );
+
+  const sectionIndexMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    sections.forEach((s, i) => { map[s.title] = i; });
+    return map;
+  }, [sections]);
+
+  const onlineCount = useMemo(() =>
+    friends.filter((f) => !!onlineUsers[f.friend_id || f.userId]).length,
+    [friends, onlineUsers]
+  );
+
+  // ─── Navigation Handlers ─────────────────────────────────────────────────
   const handleFriendPress = useCallback(
-    (friend: (typeof friends)[0]) => {
-      // Backend uses dm:{smallerId}:{largerId} for DM conversation IDs
+    (friend: Friend) => {
       const myId = currentUserId || '';
       const otherId = friend.userId;
-      const sortedIds = [myId, otherId].sort((a, b) => Number(a) - Number(b));
-      const conversationId = `dm:${sortedIds.join(':')}`;
+      const conversationId = buildDmConversationId(myId, otherId);
       navigation.navigate('Chat', {
         conversationId,
         title: friend.display_name,
@@ -94,15 +571,8 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
     [navigation, currentUserId]
   );
 
-  const handleUserPress = useCallback(
-    (user: any) => {
-      navigation.navigate('UserProfile', { userId: user.userId });
-    },
-    [navigation]
-  );
-
   const handlePendingPress = useCallback(
-    (req: (typeof pendingRequests)[0]) => {
+    (req: PendingRequest) => {
       navigation.navigate('UserProfile', { userId: req.userId ?? '' });
     },
     [navigation]
@@ -112,301 +582,526 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
     navigation.navigate('ContactsList');
   }, [navigation]);
 
-  // ─── Render ────────────────────────────────────────────────────────────────
-  const renderFriendItem = ({ item }: { item: (typeof friends)[0] }) => {
+  const handleFriendRequests = useCallback(() => {
+    navigation.navigate('FriendRequests');
+  }, [navigation]);
+
+  const handleGroupPress = useCallback(
+    (group: Group) => {
+      navigation.navigate('GroupDetail', { groupId: group.groupId });
+    },
+    [navigation]
+  );
+
+  const handleOAPress = useCallback(
+    (_oa: OA) => {
+      // TODO: navigate to OA detail when available
+    },
+    []
+  );
+
+  // ─── Render Helpers ────────────────────────────────────────────────────────
+  const renderSectionHeader = ({ section }: { section: FriendSection }) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionLetter}>{section.title}</Text>
+    </View>
+  );
+
+  const renderFriendItem = ({ item }: { item: Friend }) => {
     const friendId = item.friend_id || item.userId || '';
     const isOnline = !!onlineUsers[friendId];
     return (
-      <TouchableOpacity
-        style={styles.contactItem}
-        onPress={() => handleFriendPress(item)}
-        activeOpacity={0.7}
-      >
-        <Avatar
-          name={item.display_name || ''}
-          uri={item.avatar_url || undefined}
-          size="md"
-          showOnlineIndicator
-          online={isOnline}
-        />
-        <View style={styles.contactInfo}>
-          <Text style={styles.contactName}>{item.display_name}</Text>
-          {item.username && (
-            <Text style={styles.contactUsername}>@{item.username}</Text>
-          )}
-        </View>
-        {isOnline && <View style={styles.onlineDot} />}
-      </TouchableOpacity>
+      <FriendItem
+        friend={item}
+        isOnline={isOnline}
+        onPress={handleFriendPress}
+      />
     );
   };
 
-  const renderPendingItem = ({ item }: { item: (typeof pendingRequests)[0] }) => (
-    <TouchableOpacity
-      style={styles.pendingItem}
-      onPress={() => handlePendingPress(item)}
-      activeOpacity={0.7}
-    >
-      <Avatar name={item.display_name} uri={item.avatar_url || undefined} size="sm" />
-      <View style={styles.pendingInfo}>
-        <Text style={styles.pendingName}>{item.display_name}</Text>
-        <Text style={styles.pendingLabel}>Lời mời kết bạn</Text>
-      </View>
-    </TouchableOpacity>
+  const renderFriendSeparator = () => <View style={styles.separator} />;
+
+  const renderGroupItem = ({ item }: { item: Group }) => (
+    <GroupItem group={item} onPress={handleGroupPress} />
   );
 
-  const renderUserItem = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      style={styles.contactItem}
-      onPress={() => handleUserPress(item)}
-      activeOpacity={0.7}
-    >
-      <Avatar name={item.display_name || item.username} uri={item.avatar_url || undefined} size="md" />
-      <View style={styles.contactInfo}>
-        <Text style={styles.contactName}>{item.display_name || item.username}</Text>
-        {item.username && <Text style={styles.contactUsername}>@{item.username}</Text>}
-      </View>
-    </TouchableOpacity>
+  const renderGroupSeparator = () => <View style={styles.separatorGroup} />;
+
+  const renderOAItem = ({ item }: { item: OA }) => (
+    <OAItem oa={item} onPress={handleOAPress} />
   );
 
-  const renderHeader = () => (
-    <View>
-      {pendingRequests.length > 0 && (
-        <>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
-              Lời mời kết bạn ({pendingRequests.length})
-            </Text>
-          </View>
-          <FlatList
-            data={pendingRequests}
-            keyExtractor={(item) => `pending_${item.userId}`}
-            renderItem={renderPendingItem}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.pendingList}
+  const renderOASeparator = () => <View style={styles.separatorGroup} />;
+
+  const refreshControl = (
+    <RefreshControl
+      refreshing={isRefreshing}
+      onRefresh={handleRefresh}
+      tintColor={colors.primary}
+      colors={[colors.primary]}
+    />
+  );
+
+  // ─── Tab Content Renderers ─────────────────────────────────────────────────
+  const renderFriendsTab = () => (
+    <View style={styles.listContainer}>
+      <SectionList
+        ref={SectionListRef}
+        sections={sections}
+        keyExtractor={(item) => item.userId}
+        renderItem={renderFriendItem}
+        renderSectionHeader={renderSectionHeader}
+        ListHeaderComponent={
+          <FriendsListHeader
+            pendingRequests={pendingRequests}
+            totalFriends={friends.length}
+            onlineCount={onlineCount}
+            activeFilter={activeFilter}
+            onFilterChange={setActiveFilter}
+            onPendingPress={handlePendingPress}
+            onFriendRequestsPress={handleFriendRequests}
           />
-        </>
-      )}
-
-      {searchQuery.length > 0 && allUsers.length > 0 && (
-        <>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Người dùng khác</Text>
-          </View>
-          {allUsers
-            .filter(
-              (u) =>
-                !friends.find((f) => f.userId === u.userId) &&
-                (u.display_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  u.username?.toLowerCase().includes(searchQuery.toLowerCase()))
-            )
-            .map((user) => (
-              <View key={user.userId}>{renderUserItem({ item: user })}</View>
-            ))}
-        </>
-      )}
-
-      {onlineFriends.length > 0 && !searchQuery && (
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            Đang hoạt động ({onlineFriends.length})
-          </Text>
-        </View>
+        }
+        ListEmptyComponent={<EmptyState tab="friends" />}
+        ItemSeparatorComponent={renderFriendSeparator}
+        refreshControl={refreshControl}
+        stickySectionHeadersEnabled
+        onScrollToIndexFailed={() => {}}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
+      />
+      {sections.length > 0 && (
+        <AlphabetSidebar
+          sections={sections}
+          sectionIndexMap={sectionIndexMap}
+          sectionListRef={SectionListRef}
+        />
       )}
     </View>
   );
 
+  const renderGroupsTab = () => (
+    <FlatList
+      data={myGroups}
+      keyExtractor={(item) => item.groupId}
+      renderItem={renderGroupItem}
+      ItemSeparatorComponent={renderGroupSeparator}
+      ListEmptyComponent={
+        isGroupsLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : (
+          <EmptyState tab="groups" />
+        )
+      }
+      refreshControl={refreshControl}
+      contentContainerStyle={{
+        paddingBottom: insets.bottom + 16,
+        paddingTop: spacing.sm,
+      }}
+    />
+  );
+
+  const renderOATab = () => (
+    <FlatList
+      data={MOCK_OA_LIST}
+      keyExtractor={(item) => item.oaId}
+      renderItem={renderOAItem}
+      ItemSeparatorComponent={renderOASeparator}
+      ListEmptyComponent={<EmptyState tab="oa" />}
+      refreshControl={refreshControl}
+      contentContainerStyle={{
+        paddingBottom: insets.bottom + 16,
+        paddingTop: spacing.sm,
+      }}
+    />
+  );
+
+  // ─── Main Render ──────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top }]}>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Danh bạ</Text>
-          <TouchableOpacity onPress={handleAddFriend} style={styles.headerIcon}>
-            <View style={styles.headerIconContainer}>
-              {Icons.add(IconSize.lg)}
-            </View>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.searchBar}>
-          <View style={styles.searchIconContainer}>
-            {Icons.search(IconSize.sm)}
-          </View>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Tìm kiếm"
-            placeholderTextColor="rgba(255,255,255,0.6)"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <View style={styles.clearIconContainer}>
-                {Icons.close(IconSize.sm)}
-              </View>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      <FlatList
-        data={searchQuery.length === 0 ? [...onlineFriends, ...offlineFriends] : filteredFriends}
-        keyExtractor={(item) => item.userId}
-        renderItem={renderFriendItem}
-        ListHeaderComponent={renderHeader}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconContainer}>
-              {Icons.people(64)}
-            </View>
-            <Text style={styles.emptyText}>
-              {searchQuery ? 'Không tìm thấy người dùng' : 'Chưa có bạn bè nào'}
-            </Text>
-            {!searchQuery && (
-              <Text style={styles.emptySubtext}>
-                Thêm bạn bè để bắt đầu trò chuyện
-              </Text>
-            )}
-          </View>
-        }
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={colors.text.inverse}
-            colors={[colors.primary]}
-          />
-        }
-        contentContainerStyle={{ paddingBottom: insets.bottom + 60 }}
+      {/* Fixed header + tabs */}
+      <ContactsHeader
+        insets={insets.top}
+        onAddFriend={handleAddFriend}
       />
+      <ContactsTabs activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {/* Tab content */}
+      <View style={styles.tabContent}>
+        {activeTab === 'friends' && renderFriendsTab()}
+        {activeTab === 'groups' && renderGroupsTab()}
+        {activeTab === 'oa' && renderOATab()}
+      </View>
     </View>
   );
 };
 
+// ─── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background.primary },
-  header: {
+  container: {
+    flex: 1,
+    backgroundColor: colors.background.primary,
+  },
+
+  // ── Zalo-style Header ──
+  zaloHeader: {
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.screenPadding,
     paddingBottom: spacing.md,
   },
-  headerContent: {
+  headerTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: 48,
+    marginBottom: spacing.sm,
   },
-  headerTitle: {
-    ...typography.h2,
+  headerPlaceholder: {
+    ...typography.h3,
     color: colors.text.inverse,
+    fontWeight: '600',
   },
-  headerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerIconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerIconText: {
-    fontSize: 22,
-    color: colors.text.inverse,
-    fontWeight: '300',
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
+  fakeSearchBar: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
     borderRadius: spacing.borderRadius.lg,
     paddingHorizontal: spacing.md,
     height: 38,
-    marginTop: spacing.sm,
-  },
-  searchIconContainer: {
-    marginRight: spacing.sm,
-    opacity: 0.7,
-  },
-  searchIcon: { fontSize: 16, marginRight: spacing.sm },
-  searchInput: {
-    flex: 1,
-    ...typography.body,
-    color: colors.text.inverse,
-    paddingVertical: 0,
-  },
-  clearIconContainer: {
-    opacity: 0.7,
-  },
-  clearIcon: { fontSize: 14, color: 'rgba(255,255,255,0.7)' },
-  sectionHeader: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.background.secondary,
-  },
-  sectionTitle: {
-    ...typography.caption,
-    color: colors.text.tertiary,
-    textTransform: 'uppercase',
-    fontWeight: '600',
-  },
-  pendingList: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.sm,
-  },
-  pendingItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background.secondary,
-    borderRadius: spacing.borderRadius.md,
-    padding: spacing.md,
-    marginRight: spacing.sm,
-    width: 160,
   },
-  pendingInfo: { marginLeft: spacing.sm, flex: 1 },
-  pendingName: { ...typography.bodySmall, color: colors.text.primary, fontWeight: '600' },
-  pendingLabel: { ...typography.caption, color: colors.primary, marginTop: 2 },
-  contactItem: {
+  searchLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  searchPlaceholder: {
+    ...typography.body,
+    color: 'rgba(255,255,255,0.65)',
+    marginLeft: spacing.sm,
+  },
+
+  // ── Tabs ──
+  tabsRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.screenPadding,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingBottom: spacing.md,
+  },
+  tabText: {
+    ...typography.body,
+    color: 'rgba(255,255,255,0.65)',
+    fontWeight: '400',
+  },
+  tabTextActive: {
+    color: colors.text.inverse,
+    fontWeight: '700',
+  },
+  tabUnderline: {
+    position: 'absolute',
+    bottom: 0,
+    width: 32,
+    height: 3,
+    backgroundColor: colors.text.inverse,
+    borderRadius: 1.5,
+  },
+
+  // ── Tab Content ──
+  tabContent: {
+    flex: 1,
+    backgroundColor: colors.background.primary,
+  },
+  listContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+
+  // ── List Header (Friends) ──
+  listHeader: {
+    backgroundColor: colors.background.secondary,
+    paddingBottom: spacing.md,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
+  },
+  quickActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.primary,
+    borderRadius: spacing.borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  quickActionIconBg: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: `${colors.primary}18`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  quickActionLabel: {
+    ...typography.bodySmall,
+    color: colors.text.primary,
+    fontWeight: '500',
+    flex: 1,
+  },
+  badge: {
+    backgroundColor: colors.badge.unread,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    ...typography.caption,
+    color: colors.text.inverse,
+    fontWeight: '700',
+    fontSize: 10,
+  },
+
+  // ── Pending section ──
+  pendingSection: {
+    marginTop: spacing.md,
+  },
+  pendingSectionTitle: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    paddingHorizontal: spacing.screenPadding,
+    marginBottom: spacing.sm,
+  },
+  pendingScrollContent: {
+    paddingHorizontal: spacing.screenPadding,
+    gap: spacing.sm,
+  },
+  pendingCard: {
+    alignItems: 'center',
+    width: 72,
+    marginRight: spacing.sm,
+  },
+  pendingName: {
+    ...typography.caption,
+    color: colors.text.primary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+
+  // ── Filter pills ──
+  filterPills: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
+  },
+  filterPill: {
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.md,
+    borderRadius: spacing.borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    backgroundColor: colors.background.primary,
+  },
+  filterPillActive: {
+    backgroundColor: 'rgba(0, 140, 243, 0.08)',
+    borderColor: colors.primary,
+  },
+  filterPillText: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    fontWeight: '500',
+  },
+  filterPillTextActive: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+
+  // ── Section header ──
+  sectionHeader: {
+    backgroundColor: colors.background.secondary,
+    paddingHorizontal: spacing.screenPadding,
+    paddingVertical: spacing.xs,
+  },
+  sectionLetter: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    fontWeight: '700',
+  },
+
+  // ── Friend Item ──
+  friendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.screenPadding,
+    paddingVertical: spacing.sm + 2,
+    backgroundColor: colors.background.primary,
+  },
+  friendName: {
+    ...typography.body,
+    color: colors.text.primary,
+    flex: 1,
+    marginLeft: spacing.md,
+  },
+  actionIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  actionBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Group Item ──
+  groupItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.screenPadding,
     paddingVertical: spacing.listItemPadding,
+    backgroundColor: colors.background.primary,
   },
-  contactInfo: { flex: 1, marginLeft: spacing.md },
-  contactName: { ...typography.subtitle, color: colors.text.primary },
-  contactUsername: { ...typography.caption, color: colors.text.tertiary, marginTop: 2 },
-  onlineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.badge.online,
+  groupInfo: {
+    flex: 1,
+    marginLeft: spacing.md,
+    marginRight: spacing.sm,
   },
+  groupName: {
+    ...typography.body,
+    color: colors.text.primary,
+    fontWeight: '500',
+  },
+  groupDesc: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    marginTop: 2,
+  },
+  groupMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  groupMemberCount: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    marginRight: spacing.xs,
+  },
+  groupChevron: {
+    marginLeft: spacing.xs,
+  },
+
+  // ── OA Item ──
+  oaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.screenPadding,
+    paddingVertical: spacing.listItemPadding,
+    backgroundColor: colors.background.primary,
+  },
+  oaInfo: {
+    flex: 1,
+    marginLeft: spacing.md,
+    marginRight: spacing.sm,
+  },
+  oaName: {
+    ...typography.body,
+    color: colors.text.primary,
+    fontWeight: '500',
+  },
+  oaDesc: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    marginTop: 2,
+  },
+  oaChevron: {
+    marginLeft: spacing.xs,
+  },
+
+  // ── Separators ──
   separator: {
-    height: 0,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border.light,
     marginLeft: spacing.screenPadding + spacing.iconSize.avatar + spacing.md,
   },
+  separatorGroup: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border.light,
+    marginLeft: spacing.screenPadding + spacing.iconSize.avatar + spacing.md,
+  },
+
+  // ── Alphabet Sidebar ──
+  alphabetSidebar: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+  },
+  alphabetLetter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 15,
+  },
+  alphabetLetterText: {
+    ...typography.caption,
+    fontSize: 10,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  alphabetLetterDisabled: {
+    color: colors.text.tertiary,
+  },
+
+  // ── Empty / Loading ──
   emptyContainer: {
     alignItems: 'center',
-    paddingTop: 60,
+    paddingTop: 80,
   },
   emptyIconContainer: {
     marginBottom: spacing.lg,
-    opacity: 0.4,
+    opacity: 0.3,
   },
-  emptyIcon: { fontSize: 64, marginBottom: spacing.lg },
-  emptyText: { ...typography.subtitle, color: colors.text.secondary },
-  emptySubtext: { ...typography.bodySmall, color: colors.text.tertiary, marginTop: spacing.xs },
+  emptyText: {
+    ...typography.subtitle,
+    color: colors.text.secondary,
+  },
+  emptySubtext: {
+    ...typography.bodySmall,
+    color: colors.text.tertiary,
+    marginTop: spacing.xs,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xxxl,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 80,
+  },
 });
 
 export default ContactsScreen;

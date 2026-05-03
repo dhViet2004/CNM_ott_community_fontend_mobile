@@ -206,11 +206,16 @@ export const friendsApi = {
       )
       .then((r) => r.data.data.map((p) => ({
         ...p,
-        // Backend returns sender_display_name, sender_username, sender_avatar_url
+        // Backend returns id = friendshipId (see friendService.getPendingRequests)
+        // Map id → requestId để acceptRequest/rejectRequest dùng đúng field
+        requestId: p.id || p.friendshipId,
+        friendshipId: p.id || p.friendshipId,
+        // sender fields (enriched from userService)
         display_name: p.sender_display_name || p.display_name || '',
         username: p.sender_username || p.username || '',
         avatar_url: p.sender_avatar_url ?? p.avatar_url ?? null,
-        userId: p.sender_id || p.userId,
+        // Người nhận request = current user
+        userId: p.receiver_id || p.userId,
         requested_at: p.created_at,
       }))),
 

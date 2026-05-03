@@ -14,6 +14,7 @@ export type RootStackParamList = {
   Settings: undefined;
   ContactsList: undefined;
   AddContact: undefined;
+  FriendRequests: undefined;
   ForgotPassword: undefined;
   Groups: undefined;
   CreateGroup: undefined;
