@@ -117,7 +117,7 @@ const ActionGridItem: React.FC<ActionGridItemProps> = ({ item }) => (
     onPress={item.onPress}
   >
     <View style={styles.iconWrapper}>
-      <Ionicons name={item.icon as any} size={26} color={item.iconColor} />
+      <Ionicons name={item.icon as any} size={22} color={item.iconColor} />
       {item.badge && (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{item.badge}</Text>
@@ -209,6 +209,8 @@ const styles = StyleSheet.create({
   },
   menuWrapper: {
     width: '100%',
+    maxWidth: 360,
+    alignSelf: 'center',
   },
 
   // ── Reaction Bar ─────────────────────────────────────────────────────────
@@ -216,8 +218,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     borderRadius: 28,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
     alignItems: 'center',
@@ -229,10 +231,10 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   reactionBtn: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: 20,
-    minWidth: 44,
+    minWidth: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -246,9 +248,10 @@ const styles = StyleSheet.create({
   // ── Bottom Sheet ──────────────────────────────────────────────────────────
   sheet: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: spacing.md,
+    borderRadius: 16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingTop: spacing.sm,
     paddingHorizontal: spacing.sm,
     paddingBottom: spacing.sm,
     shadowColor: '#000',
@@ -264,7 +267,7 @@ const styles = StyleSheet.create({
   actionItem: {
     width: '25%',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.xs,
   },
   actionItemPressed: {
@@ -274,8 +277,8 @@ const styles = StyleSheet.create({
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    width: 48,
-    height: 48,
+    width: 40,
+    height: 40,
     marginBottom: 4,
   },
   actionLabel: {
