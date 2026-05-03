@@ -183,7 +183,6 @@ const chatSlice = createSlice({
         (m) => m.id === action.payload.id
       );
       if (!exists) {
-        // Replace the array with a new reference so shallowEqual selectors re-fire
         state.messages[convId] = [...state.messages[convId], action.payload];
       }
 
@@ -193,6 +192,9 @@ const chatSlice = createSlice({
         state.conversations[convIndex].lastMessage = action.payload;
         state.conversations[convIndex].updatedAt = action.payload.timestamp;
       }
+
+      // Force new state reference so shallowEqual selectors re-fire
+      state.messages = { ...state.messages };
     },
 
     addPendingMessage(
@@ -223,15 +225,21 @@ const chatSlice = createSlice({
       if (messages) {
         const idx = messages.findIndex((m) => m.id === tempId);
         if (idx !== -1) {
-          messages[idx].id = realId;
-          messages[idx].senderId = senderId;
-          messages[idx].senderName = senderName;
-          messages[idx].sender_name = senderName;
-          messages[idx].sender_avatar = senderAvatar ?? null;
-          messages[idx].content = content;
-          messages[idx].type = type as Message['type'];
-          messages[idx].file_url = file_url ?? null;
-          messages[idx].status = 'sent';
+          const updated = [...messages];
+          updated[idx] = {
+            ...updated[idx],
+            id: realId,
+            senderId,
+            senderName,
+            sender_name: senderName,
+            sender_avatar: senderAvatar ?? null,
+            content,
+            type: type as Message['type'],
+            file_url: file_url ?? null,
+            status: 'sent',
+          };
+          state.messages[conversationId] = updated;
+          state.messages = { ...state.messages };
         }
       }
     },
@@ -247,9 +255,12 @@ const chatSlice = createSlice({
       const { conversationId, messageId } = action.payload;
       const messages = state.messages[conversationId];
       if (messages) {
-        const msg = messages.find((m) => m.id === messageId);
-        if (msg) {
-          msg.status = 'failed';
+        const idx = messages.findIndex((m) => m.id === messageId);
+        if (idx !== -1) {
+          const updated = [...messages];
+          updated[idx] = { ...updated[idx], status: 'failed' as const };
+          state.messages[conversationId] = updated;
+          state.messages = { ...state.messages };
         }
       }
     },
@@ -268,7 +279,10 @@ const chatSlice = createSlice({
           (m) => m.id === action.payload.messageId
         );
         if (msgIndex !== -1) {
-          messages[msgIndex].status = action.payload.status;
+          const updated = [...messages];
+          updated[msgIndex] = { ...updated[msgIndex], status: action.payload.status };
+          state.messages[action.payload.conversationId] = updated;
+          state.messages = { ...state.messages };
         }
       }
     },
@@ -287,7 +301,10 @@ const chatSlice = createSlice({
           (m) => m.id === action.payload.messageId
         );
         if (msgIndex !== -1) {
-          messages[msgIndex].status = action.payload.status;
+          const updated = [...messages];
+          updated[msgIndex] = { ...updated[msgIndex], status: action.payload.status };
+          state.messages[action.payload.conversationId] = updated;
+          state.messages = { ...state.messages };
         }
       }
     },
@@ -305,7 +322,10 @@ const chatSlice = createSlice({
       if (messages) {
         const msgIndex = messages.findIndex((m) => m.id === messageId);
         if (msgIndex !== -1) {
-          messages[msgIndex] = { ...messages[msgIndex], ...updates };
+          const updated = [...messages];
+          updated[msgIndex] = { ...updated[msgIndex], ...updates };
+          state.messages[conversationId] = updated;
+          state.messages = { ...state.messages };
         }
       }
     },
@@ -320,8 +340,10 @@ const chatSlice = createSlice({
           (m) => m.id === action.payload.messageId
         );
         if (msgIndex !== -1) {
-          messages[msgIndex].isDeleted = true;
-          messages[msgIndex].content = '';
+          const updated = [...messages];
+          updated[msgIndex] = { ...updated[msgIndex], isDeleted: true, content: '' };
+          state.messages[action.payload.conversationId] = updated;
+          state.messages = { ...state.messages };
         }
       }
     },
@@ -331,17 +353,24 @@ const chatSlice = createSlice({
       action: PayloadAction<{ messageId: string; conversationId: string }>
     ) {
       const { messageId, conversationId } = action.payload;
-      state.revokedMessageIds.push(messageId);
+
+      // Add to revokedMessageIds if not already present
+      if (!state.revokedMessageIds.includes(messageId)) {
+        state.revokedMessageIds.push(messageId);
+      }
+
       const messages = state.messages[conversationId];
       if (messages) {
-        // Create a new array reference so shallowEqual selectors re-fire
+        const wasFound = messages.some((m) => m.id === messageId);
         state.messages[conversationId] = messages.map((m) => {
           if (m.id === messageId) {
-            return { ...m, isRevoked: true, content: 'Tin nhắn đã được thu hồi' };
+            return { ...m, isRevoked: true, is_revoked: true, content: 'Tin nhắn đã được thu hồi' };
           }
           return m;
         });
-        console.log(`[ChatSlice] setMessageRevoked: messageId=${messageId} in conversationId=${conversationId}, found=${messages.some((m) => m.id === messageId)}`);
+        // Force new state reference so shallowEqual selectors re-fire
+        state.messages = { ...state.messages };
+        console.log(`[ChatSlice] setMessageRevoked: messageId=${messageId} in conversationId=${conversationId}, found=${wasFound}`);
       } else {
         console.warn(`[ChatSlice] setMessageRevoked: no messages array for conversationId=${conversationId}`);
       }

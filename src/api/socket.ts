@@ -172,11 +172,13 @@ export const connectSocket = (token: string) => {
 
   // Backend emits "message:revoked" (with colon) after message is revoked
   socket.on('message:revoked', ({ messageId, conversationId }: { messageId: string; conversationId: string }) => {
+    console.log('[Socket] ⭐ message:revoked received!', { messageId, conversationId });
     if (!messageId || !conversationId) {
       console.warn('[Socket] message:revoked received with missing messageId or conversationId:', { messageId, conversationId });
       return;
     }
     store.dispatch(setMessageRevoked({ messageId, conversationId }));
+    console.log('[Socket] ⭐ setMessageRevoked dispatched for messageId:', messageId);
   });
 
   // ─── Typing Events ────────────────────────────────────────────────────────
