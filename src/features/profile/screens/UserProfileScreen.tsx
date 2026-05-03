@@ -5,12 +5,14 @@ import { colors, spacing, typography } from '@theme';
 import { Avatar, Button } from '@components/common';
 import { useProfile } from '../hooks';
 import type { RootStackScreenProps } from '@navigation/types';
+import { useAppSelector } from '@store/hooks';
 
 type Props = RootStackScreenProps<'UserProfile'>;
 
 const UserProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   const { userId } = route.params;
   const insets = useSafeAreaInsets();
+  const currentUserId = useAppSelector((s) => s.auth?.user?.userId ?? '');
 
   const { user, isLoading, friendStatus, friendshipId, sendFriendRequest, cancelFriendRequest, acceptFriendRequest, unfriend } =
     useProfile({ userId, autoLoad: true });
@@ -23,8 +25,9 @@ const UserProfileScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const handleBack = () => navigation.goBack();
   const handleSendMessage = () => {
+    const sortedIds = [currentUserId, userId].sort((a, b) => Number(a) - Number(b));
     navigation.navigate('Chat', {
-      conversationId: `dm:${[userId].sort().join(':')}`,
+      conversationId: `dm:${sortedIds.join(':')}`,
       title: user?.fullName || 'Người dùng',
     });
   };

@@ -121,7 +121,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
         if (f.pinnedMessages && Array.isArray(f.pinnedMessages)) {
           const friendId = f.friend_id || f.userId;
           const myId = currentUserId || '';
-          const sortedIds = [myId, friendId].sort();
+          const sortedIds = [myId, friendId].sort((a, b) => Number(a) - Number(b));
           const conversationId = `dm:${sortedIds.join(':')}`;
           dispatch({
             type: 'chat/setPinnedMessages',
@@ -189,7 +189,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
       if (conv.type === 'single') {
         const friendId = conv.friendId;
         const myId = currentUserId || '';
-        const sortedIds = [myId, friendId].sort();
+        const sortedIds = [myId, friendId].sort((a, b) => Number(a) - Number(b));
         const conversationId = `dm:${sortedIds.join(':')}`;
         navigation.navigate('Chat', {
           conversationId,
