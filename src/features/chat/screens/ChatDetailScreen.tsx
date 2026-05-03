@@ -23,7 +23,7 @@ import { Icons, IconSize } from '@components/common';
 import { socketActions } from '@api/socket';
 import { messageApi, friendsApi } from '@api/endpoints';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
-import { confirmPendingMessage, failPendingMessage, setMessageFailed, setMessageRevoked, updateMessage, addMessage } from '@store/slices/chatSlice';
+import { confirmPendingMessage, failPendingMessage, setMessageFailed, setMessageRevoked, updateMessage, addMessage, deleteMessage, addDeletedForMeId } from '@store/slices/chatSlice';
 import { colors, spacing } from '@theme';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 
@@ -48,6 +48,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const focusedMessageIdFromParams = (route.params as any).focusedMessageId;
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<SelectedMessage>(null);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
 
   const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
@@ -595,6 +596,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         visible={selectedMessage !== null}
         onClose={() => setSelectedMessage(null)}
         isOwn={selectedMessage?.isMe ?? false}
+        isDeleting={deletingMessageId === String(selectedMessage?.id)}
         onReply={() => {
           Alert.alert('Trả lời', 'Tính năng đang phát triển');
         }}
@@ -685,13 +687,6 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         onReadText={() => {
           Alert.alert('Đọc văn bản', 'Tính năng đang phát triển');
         }}
-        onDetails={() => {
-          if (!selectedMessage) return;
-          Alert.alert(
-            'Chi tiết tin nhắn',
-            `Nội dung: ${selectedMessage.content}\nLoại: ${selectedMessage.type}\nNgười gửi: ${selectedMessage.senderName || 'Bạn'}`
-          );
-        }}
         onDelete={() => {
           if (!selectedMessage) return;
           Alert.alert(
@@ -702,8 +697,32 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               {
                 text: 'Xóa',
                 style: 'destructive',
-                onPress: () => {
-                  Alert.alert('Thành công', 'Tin nhắn đã được xóa');
+                onPress: async () => {
+                  const msgId = String(selectedMessage.id);
+                  setDeletingMessageId(msgId);
+                  setSelectedMessage(null);
+
+                  // Optimistic: xóa ngay khỏi UI trước khi API trả về
+                  dispatch(deleteMessage({ conversationId, messageId: msgId }));
+                  // Track để socket không re-add tin nhắn đã xóa
+                  dispatch(addDeletedForMeId(msgId));
+
+                  try {
+                    await messageApi.deleteForMe(conversationId, msgId);
+                  } catch (err: any) {
+                    // Rollback: khôi phục lại tin nhắn nếu API lỗi
+                    dispatch(updateMessage({
+                      messageId: msgId,
+                      conversationId,
+                      updates: { isDeleted: false, content: selectedMessage.content },
+                    }));
+                    const errMsg = err?.response?.data?.error
+                      || err?.response?.data?.message
+                      || 'Không thể xóa tin nhắn';
+                    Alert.alert('Lỗi', errMsg);
+                  } finally {
+                    setDeletingMessageId(null);
+                  }
                 },
               },
             ]
