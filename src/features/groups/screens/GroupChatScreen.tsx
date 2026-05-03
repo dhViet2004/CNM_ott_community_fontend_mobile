@@ -471,7 +471,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       });
       const senderName = item.senderName || item.sender_name || 'Unknown';
       const senderAvatar = item.senderAvatar || item.sender_avatar || null;
-      const messageType = item.type === 'video' || item.type === 'audio' ? 'file' : item.type;
+      const messageType = item.type;
       const isFocused = (route.params as any).focusedMessageId === String(item.id);
 
       return (
@@ -661,7 +661,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
               }
 
               if (isNearBottomRef.current) {
-                setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+                setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
               }
             }}
             onVoiceRecord={async (audioUri) => {
@@ -703,7 +703,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
                 }));
 
                 if (isNearBottomRef.current) {
-                  setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+                  setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
                 }
               } catch (err) {
                 console.error('[GroupChat] Error sending voice message:', err);
