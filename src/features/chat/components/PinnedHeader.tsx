@@ -26,16 +26,19 @@ interface PinnedMessage {
   senderAvatar?: string | null;
   file_url?: string | null;
   createdAt?: string;
+  pinnedBy?: string;
 }
 
 interface PinnedHeaderProps {
   pinnedMessages: PinnedMessage[];
+  currentUserId?: string;
   onUnpin: (messageId: string) => void;
   onNavigateToMessage: (messageId: string) => void;
 }
 
 const PinnedHeader: React.FC<PinnedHeaderProps> = ({
   pinnedMessages,
+  currentUserId,
   onUnpin,
   onNavigateToMessage,
 }) => {
@@ -138,13 +141,15 @@ const PinnedHeader: React.FC<PinnedHeaderProps> = ({
                         </Text>
                       </View>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.unpinBtn}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      onPress={() => onUnpin(msg.id)}
-                    >
-                      {Icons.close(14, colors.text.tertiary)}
-                    </TouchableOpacity>
+                    {(!msg.pinnedBy || String(msg.pinnedBy) === String(currentUserId)) && (
+                      <TouchableOpacity
+                        style={styles.unpinBtn}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        onPress={() => onUnpin(msg.id)}
+                      >
+                        {Icons.close(14, colors.text.tertiary)}
+                      </TouchableOpacity>
+                    )}
                   </View>
                 );
               })}

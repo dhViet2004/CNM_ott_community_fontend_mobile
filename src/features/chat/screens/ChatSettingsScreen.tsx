@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize, Avatar } from '@components/common';
-import { friendsApi, userApi, uploadApi } from '@api/endpoints';
+import { friendsApi, userApi, uploadApi, messageApi } from '@api/endpoints';
 import { socketActions } from '@api/socket';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { setFriends } from '@store/slices/chatSlice';
@@ -152,6 +152,14 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
       // Emit socket event for real-time sync
       if (friendId) {
         socketActions.updateChatBackground(currentFriendshipId || '', finalUrl || null, friendId);
+        
+        // Send system message to chat
+        try {
+          const senderName = authUser?.display_name || authUser?.displayName || 'Ai đó';
+          await messageApi.sendMessage(conversationId, `${senderName} hình nền đã được thay đổi`, authUser?.userId || '', 'system');
+        } catch (msgErr) {
+          console.error('Failed to send background change message:', msgErr);
+        }
       }
       
       Alert.alert('Thành công', uri ? 'Đã cập nhật hình nền cuộc trò chuyện' : 'Đã xóa hình nền');
