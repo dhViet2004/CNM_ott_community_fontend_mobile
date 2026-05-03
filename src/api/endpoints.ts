@@ -359,7 +359,7 @@ export const messageApi = {
     conversationId: string,
     content: string,
     senderId: string,
-    contentType: 'text' | 'sticker' | 'emoji' = 'text'
+    contentType: 'text' | 'sticker' | 'emoji' | 'system' = 'text'
   ) =>
     apiClient
       .post<BackendMessage>('/messages', {

@@ -273,6 +273,19 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
 
   const isRevokedOrDeleted = isDeleted || isRevoked;
 
+  // ── Background Change / System Message ────────────────────────────────
+  const isBackgroundChange = type === 'system' || content?.toLowerCase().includes('hình nền đã được thay đổi');
+
+  if (isBackgroundChange) {
+    return (
+      <View style={styles.systemMessageContainer}>
+        <View style={styles.systemMessagePill}>
+          <Text style={styles.systemMessageText}>{content}</Text>
+        </View>
+      </View>
+    );
+  }
+
   const handleLongPress = () => {
     if (onLongPress) {
       onLongPress({ id, content, type, isMe, senderName, senderAvatar, senderId: String(id) });
@@ -521,6 +534,25 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#666',
     fontWeight: '500',
+  },
+  systemMessageContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: spacing.sm,
+    width: '100%',
+  },
+  systemMessagePill: {
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    maxWidth: '85%',
+  },
+  systemMessageText: {
+    ...typography.caption,
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
   },
 
   // ── Delivered Pill ──────────────────────────────────────────────────────

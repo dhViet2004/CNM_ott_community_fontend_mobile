@@ -12,6 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { store } from '@store/store';
 import {
@@ -131,6 +132,53 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   // Track if user is near bottom
   const isNearBottomRef = useRef(true);
   const isInitializedRef = useRef(false);
+  const prevMessagesLengthRef = useRef(0);
+  const messagesRef = useRef<Message[]>(messages);
+  messagesRef.current = messages;
+
+  const lastMarkedReadRef = useRef<{ messageId: string; timestamp: number } | null>(null);
+
+  // ─── Mark as Read ────────────────────────────────────────────────────────────
+  const markAsRead = useCallback(() => {
+    const msgs = messagesRef.current;
+    if (!conversationId || msgs.length === 0) return;
+
+    // Find all unread messages from OTHER users (group chat: recipient may not have sent any messages)
+    const now = Date.now();
+    const THREE_SECONDS = 3000;
+    const lastMarked = lastMarkedReadRef.current;
+    const isRecent = lastMarked && now - lastMarked.timestamp < THREE_SECONDS;
+
+    const unreadMessages = msgs.filter((m) => {
+      const isFromOther = String(m.senderId) !== String(currentUserId);
+      const alreadyReadByMe = m.readBy?.some(
+        (r) => String(r.userId) === String(currentUserId)
+      );
+      return isFromOther && !alreadyReadByMe && m.status !== 'read';
+    });
+
+    if (unreadMessages.length === 0) return;
+
+    // Use the LATEST unread message as the throttle anchor
+    const latestUnread = unreadMessages[unreadMessages.length - 1];
+    const latestUnreadId = String(latestUnread.id);
+
+    if (isRecent && lastMarked.messageId === latestUnreadId) {
+      return; // Already emitted for this latest unread within 3 seconds
+    }
+
+    lastMarkedReadRef.current = { messageId: latestUnreadId, timestamp: now };
+
+    // Emit mark_read for EACH unread message so the sender sees ALL of them as read
+    unreadMessages.forEach((msg) => {
+      const msgId = String(msg.id);
+      console.log('[GroupChatScreen] markAsRead → emitting mark_read:', { conversationId, messageId: msgId });
+      socketActions.markRead(conversationId, msgId);
+    });
+  }, [conversationId, currentUserId]);
+
+  const markAsReadRef = useRef(markAsRead);
+  markAsReadRef.current = markAsRead;
 
   // ─── Load Messages ────────────────────────────────────────────────────────
   // ✅ FIX: Tách loadMessages khỏi dependency defaultChannelId để tránh loop
@@ -413,6 +461,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           defaultName={title}
           isFocused={isFocused}
           onLongPress={setSelectedMessage}
+          readBy={item.readBy}
         />
       );
     },
@@ -421,13 +470,17 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const keyExtractor = useCallback((item: Message) => String(item.id), []);
 
-  // Handle scroll to detect if user is near bottom
+  // Handle scroll to detect if user is near bottom and emit mark_read
   const handleScroll = useCallback((event: any) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
     const paddingToBottom = 100;
     const isNear = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
 
     isNearBottomRef.current = isNear;
+
+    if (isNear) {
+      markAsReadRef.current();
+    }
   }, []);
 
   // Initial scroll to bottom after messages load
@@ -439,6 +492,32 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       }, 100);
     }
   }, [messages.length]);
+
+  // Auto-scroll + markAsRead when new messages arrive while at bottom
+  useEffect(() => {
+    if (!isInitializedRef.current || messages.length === 0) return;
+
+    if (messages.length > prevMessagesLengthRef.current) {
+      if (isNearBottomRef.current) {
+        flatListRef.current?.scrollToEnd({ animated: true });
+
+        setTimeout(() => {
+          markAsReadRef.current();
+        }, 500);
+      }
+    }
+
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages.length]);
+
+  // Emit mark_read when screen becomes focused
+  useFocusEffect(
+    useCallback(() => {
+      if (isNearBottomRef.current && isInitializedRef.current) {
+        markAsRead();
+      }
+    }, [markAsRead]) // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   return (
     <View style={styles.container}>
