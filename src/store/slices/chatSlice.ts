@@ -341,6 +341,9 @@ const chatSlice = createSlice({
           }
           return m;
         });
+        console.log(`[ChatSlice] setMessageRevoked: messageId=${messageId} in conversationId=${conversationId}, found=${messages.some((m) => m.id === messageId)}`);
+      } else {
+        console.warn(`[ChatSlice] setMessageRevoked: no messages array for conversationId=${conversationId}`);
       }
     },
 
