@@ -11,7 +11,7 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { store } from '@store/store';
 import {
@@ -29,7 +29,7 @@ import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import MessageBubble from '@features/chat/components/MessageBubble';
 import PinnedHeader from '@features/chat/components/PinnedHeader';
-import type { RootStackScreenProps } from '@navigation/types';
+import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 import { getGroupMembers } from '../api';
 
 type Props = RootStackScreenProps<'GroupChat'>;
@@ -347,10 +347,56 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
+      <SafeAreaView edges={['top']} style={styles.customHeader}>
+        <View style={styles.headerContent}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            {Icons.back(IconSize.lg, colors.text.inverse)}
+          </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate('GroupDetail', { groupId })
+              }
+              style={styles.headerIcon}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              {Icons.videocam(IconSize.lg, colors.text.inverse)}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                const params: RootStackParamList['MessageSearch'] = {
+                  conversationId,
+                  title,
+                };
+                navigation.navigate('MessageSearch', params);
+              }}
+              style={styles.headerIcon}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              {Icons.search(IconSize.lg, colors.text.inverse)}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate('GroupDetail', { groupId })
+              }
+              style={styles.headerIcon}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              {Icons.menu(IconSize.lg, colors.text.inverse)}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={0}
       >
         <PinnedHeader
           pinnedMessages={pinnedMessages}
@@ -425,6 +471,33 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.chatBg,
+  },
+  customHeader: {
+    backgroundColor: colors.primary,
+  },
+  headerContent: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.screenPadding,
+  },
+  backButton: {
+    paddingVertical: spacing.sm,
+    paddingRight: spacing.md,
+    marginLeft: -spacing.sm,
+  },
+  headerTitle: {
+    flex: 1,
+    ...typography.h3,
+    color: colors.text.inverse,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIcon: {
+    padding: spacing.sm,
+    marginLeft: spacing.xs,
   },
   keyboardView: {
     flex: 1,
