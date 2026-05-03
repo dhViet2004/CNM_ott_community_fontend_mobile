@@ -119,7 +119,7 @@ export const Icons: Record<string, IconFn | IconFnNoColor> = {
   mapPin: (size?: number) => <Feather name="map-pin" size={size ?? IconSize.md} />,
   
   // Actions
-  add: (size?: number) => <Ionicons name="add" size={size ?? IconSize.md} />,
+  add: (size?: number, color?: string) => <Ionicons name="add" size={size ?? IconSize.md} color={color} />,
   addCircle: (size?: number) => <Ionicons name="add-circle" size={size ?? IconSize.md} />,
   remove: (size?: number) => <Ionicons name="remove" size={size ?? IconSize.md} />,
   removeCircle: (size?: number) => <Ionicons name="remove-circle" size={size ?? IconSize.md} />,

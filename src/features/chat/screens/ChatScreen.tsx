@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
-import { MessageListItem } from '@features/chat/components';
+import { MessageListItem, AddMenuModal } from '@features/chat/components';
 import { shallowEqual } from 'react-redux';
 import { useAppDispatch, useAppSelector } from '@store/hooks';
 import { setFriends } from '@store/slices/chatSlice';
@@ -215,17 +215,11 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     Alert.alert('Thông báo', 'Tính năng quét mã QR đang được phát triển');
   }, []);
 
+  const [isAddMenuVisible, setIsAddMenuVisible] = useState(false);
+
   const handleAddNew = useCallback(() => {
-    Alert.alert(
-      'Tạo mới',
-      'Chọn loại mục bạn muốn tạo',
-      [
-        { text: 'Nhóm mới', onPress: () => navigation.navigate('CreateGroup') },
-        { text: 'Thêm bạn', onPress: () => navigation.navigate('ContactsList') },
-        { text: 'Hủy', style: 'cancel' },
-      ]
-    );
-  }, [navigation]);
+    setIsAddMenuVisible(true);
+  }, []);
 
   // Zalo-style header: title row + search bar on the blue background
   const renderHeader = () => (
@@ -338,6 +332,10 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
             colors={[colors.primary]}
           />
         }
+      />
+      <AddMenuModal
+        visible={isAddMenuVisible}
+        onClose={() => setIsAddMenuVisible(false)}
       />
     </View>
   );
