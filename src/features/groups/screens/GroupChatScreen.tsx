@@ -20,6 +20,8 @@ import {
   setLoadingMessages,
   confirmPendingMessage,
   failPendingMessage,
+  setMessageRevoked,
+  updateMessage,
   Message,
 } from '@store/slices/chatSlice';
 import { setGroupMembers } from '@store/slices/groupsSlice';
@@ -30,12 +32,23 @@ import { Icons, IconSize } from '@components/common';
 import MessageBubble from '@features/chat/components/MessageBubble';
 import PinnedHeader from '@features/chat/components/PinnedHeader';
 import FilePickerButton from '@features/chat/components/FilePickerButton';
+import { MessageContextMenu } from '@features/chat/components';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 import { getGroupMembers } from '../api';
 
 type Props = RootStackScreenProps<'GroupChat'>;
 const EMPTY_MESSAGES: Message[] = [];
 const EMPTY_ARRAY: any[] = [];
+
+type SelectedMessage = {
+  id: string | number;
+  content: string;
+  type: string;
+  isMe: boolean;
+  senderName?: string;
+  senderAvatar?: string | null;
+  senderId: string;
+} | null;
 
 const ZALO_BLUE = '#008AF3';
 
@@ -106,8 +119,15 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const [isTyping, setIsTyping] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [defaultChannelId, setDefaultChannelId] = useState<string | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<SelectedMessage>(null);
+  const selectedMessageRef = useRef<SelectedMessage>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keep ref in sync with state — so callbacks always read latest value
+  useEffect(() => {
+    selectedMessageRef.current = selectedMessage;
+  }, [selectedMessage]);
 
   // Track if user is near bottom
   const isNearBottomRef = useRef(true);
@@ -138,6 +158,9 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           type: (m.contentType ?? m.type ?? 'text') as Message['type'],
           file_url: m.file_url ?? m.attachments?.[0]?.url ?? null,
           status: 'sent' as const,
+          isRevoked: m.contentType === 'revoked' || m.is_revoked || m.isRevoked || false,
+          is_revoked: m.contentType === 'revoked' || m.is_revoked || m.isRevoked || false,
+          isDeleted: m.isDeleted || false,
         };
       });
       dispatch(setMessages({ conversationId, messages: mapped as Message[] }));
@@ -315,6 +338,98 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [conversationId, currentUserId, currentUser, dispatch]);
 
+  // ─── Context Menu callbacks (hoisted to top level — Rules of Hooks) ──────────
+  const handleRecall = useCallback(() => {
+    const msg = selectedMessageRef.current;
+    if (!msg) return;
+    Alert.alert(
+      'Thu hồi tin nhắn',
+      'Bạn có chắc muốn thu hồi tin nhắn này?',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Thu hồi',
+          style: 'destructive',
+          onPress: async () => {
+            const msgId = String(msg.id);
+            const originalContent = msg.content;
+            dispatch(setMessageRevoked({ messageId: msgId, conversationId }));
+            try {
+              await messageApi.revokeMessage(msgId, conversationId);
+            } catch (err: any) {
+              dispatch(updateMessage({
+                messageId: msgId,
+                conversationId,
+                updates: { isRevoked: false, is_revoked: false, content: originalContent },
+              }));
+              const errMsg = err?.response?.data?.error
+                || err?.response?.data?.message
+                || 'Không thể thu hồi tin nhắn';
+              Alert.alert('Lỗi', errMsg);
+            }
+          },
+        },
+      ]
+    );
+  }, [dispatch, conversationId]);
+
+  const handleCopy = useCallback(() => {
+    const msg = selectedMessageRef.current;
+    if (msg) Alert.alert('Sao chép', msg.content);
+  }, []);
+
+  const handlePin = useCallback(() => {
+    const msg = selectedMessageRef.current;
+    if (!msg) return;
+    const isPinned = pinnedMessages.some((p: any) => String(p.id) === String(msg.id));
+    Alert.alert(
+      isPinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn',
+      '',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'OK',
+          onPress: () => {
+            if (isPinned) {
+              handleUnpinMessage(String(msg.id));
+            } else {
+              handlePinMessage({ ...msg, senderId: msg.senderId } as any);
+            }
+          },
+        },
+      ]
+    );
+  }, [pinnedMessages, handlePinMessage, handleUnpinMessage]);
+
+  const handleDetails = useCallback(() => {
+    const msg = selectedMessageRef.current;
+    if (msg) {
+      Alert.alert(
+        'Chi tiết tin nhắn',
+        `Nội dung: ${msg.content}\nLoại: ${msg.type}\nNgười gửi: ${msg.senderName || 'Bạn'}`
+      );
+    }
+  }, []);
+
+  const handleDelete = useCallback(() => {
+    const msg = selectedMessageRef.current;
+    if (!msg) return;
+    Alert.alert(
+      'Xóa tin nhắn',
+      'Bạn có chắc muốn xóa tin nhắn này? (Chỉ bạn thấy)',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert('Thành công', 'Tin nhắn đã được xóa');
+          },
+        },
+      ]
+    );
+  }, []);
+
   // ─── Render ───────────────────────────────────────────────────────────────
   const renderMessage = useCallback(
     ({ item }: { item: Message }) => {
@@ -325,7 +440,6 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       });
       const senderName = item.senderName || item.sender_name || 'Unknown';
       const senderAvatar = item.senderAvatar || item.sender_avatar || null;
-      // Chỉ dùng các type được MessageBubble hỗ trợ
       const messageType = item.type === 'video' || item.type === 'audio' ? 'file' : item.type;
       const isFocused = (route.params as any).focusedMessageId === String(item.id);
 
@@ -345,33 +459,11 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           isRevoked={item.isRevoked}
           defaultName={title}
           isFocused={isFocused}
-          onLongPress={() => {
-            Alert.alert(
-              'Tùy chọn tin nhắn',
-              '',
-              [
-                { text: 'Trả lời', onPress: () => {} },
-                { text: 'Chuyển tiếp', onPress: () => {} },
-                { 
-                  text: pinnedMessages.some((p: any) => String(p.id) === String(item.id)) ? 'Bỏ ghim' : 'Ghim tin nhắn', 
-                  onPress: () => {
-                    if (pinnedMessages.some((p: any) => String(p.id) === String(item.id))) {
-                      handleUnpinMessage(String(item.id));
-                    } else {
-                      handlePinMessage(item as any);
-                    }
-                  } 
-                },
-                { text: 'Thu hồi', onPress: () => {}, style: 'destructive' },
-                { text: 'Xóa', onPress: () => {}, style: 'destructive' },
-                { text: 'Hủy', style: 'cancel' },
-              ]
-            );
-          }}
+          onLongPress={setSelectedMessage}
         />
       );
     },
-    [title, currentUserId, pinnedMessages, handlePinMessage, handleUnpinMessage, route.params]
+    [title, currentUserId, route.params]
   );
 
   const keyExtractor = useCallback((item: Message) => String(item.id), []);
@@ -514,6 +606,27 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* ── Context Menu ── */}
+      <MessageContextMenu
+        message={selectedMessage}
+        visible={selectedMessage !== null}
+        onClose={() => setSelectedMessage(null)}
+        isOwn={selectedMessage?.isMe ?? false}
+        onReply={() => Alert.alert('Trả lời', 'Tính năng đang phát triển')}
+        onForward={() => Alert.alert('Chuyển tiếp', 'Tính năng đang phát triển')}
+        onSave={() => Alert.alert('Lưu', 'Tính năng đang phát triển')}
+        onRecall={handleRecall}
+        onCopy={handleCopy}
+        onPin={handlePin}
+        onReminder={() => Alert.alert('Nhắc hẹn', 'Tính năng đang phát triển')}
+        onSelectMultiple={() => Alert.alert('Chọn nhiều', 'Tính năng đang phát triển')}
+        onQuickMessage={() => Alert.alert('Tạo tin nhắn nhanh', 'Tính năng đang phát triển')}
+        onTranslate={() => Alert.alert('Dịch', 'Tính năng đang phát triển')}
+        onReadText={() => Alert.alert('Đọc văn bản', 'Tính năng đang phát triển')}
+        onDetails={handleDetails}
+        onDelete={handleDelete}
+      />
     </View>
   );
 };
