@@ -125,7 +125,15 @@ interface MessageBubbleProps {
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
   isRevoked?: boolean;
-  onLongPress?: () => void;
+  onLongPress?: (msg: {
+    id: string | number;
+    content: string;
+    type: string;
+    isMe: boolean;
+    senderName?: string;
+    senderAvatar?: string | null;
+    senderId: string;
+  }) => void;
   defaultName?: string;
   isFocused?: boolean;
   callType?: CallType;
@@ -197,6 +205,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
 
   const isRevokedOrDeleted = isDeleted || isRevoked;
 
+  const handleLongPress = () => {
+    if (onLongPress) {
+      onLongPress({ id, content, type, isMe, senderName, senderAvatar, senderId: String(id) });
+    }
+  };
+
   // ── Call history bubble ──────────────────────────────────────────────────
   if (type === 'call') {
     const callTitle = isMe
@@ -248,8 +262,13 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
             ]}
           >
             <Text style={[styles.revokedText, isMe && styles.revokedTextMe]}>
-              Tin nhắn đã bị thu hồi
+              Tin nhắn đã được thu hồi
             </Text>
+            <View style={[styles.bubbleFooter, isMe ? styles.bubbleFooterMe : styles.bubbleFooterOther]}>
+              <Text style={[styles.bubbleTime, isMe ? styles.timeMe : styles.timeOther]}>
+                {time}
+              </Text>
+            </View>
           </View>
         </View>
       </View>
@@ -320,7 +339,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
 
   return (
     <TouchableOpacity
-      onLongPress={onLongPress}
+      onLongPress={handleLongPress}
       delayLongPress={500}
       activeOpacity={0.85}
       style={[styles.bubbleRow, isMe ? styles.bubbleRowMe : styles.bubbleRowOther]}
@@ -687,20 +706,23 @@ const styles = StyleSheet.create({
 
   // ── Revoked / Deleted ──────────────────────────────────────────────────
   revokedBubble: {
-    backgroundColor: 'transparent',
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     shadowOpacity: 0,
     elevation: 0,
-    borderWidth: 0,
     paddingHorizontal: 0,
+    minWidth: 120,
   },
   revokedText: {
     ...typography.caption,
-    fontSize: 12,
-    color: colors.text.tertiary,
+    fontSize: 13,
+    color: '#9CA3AF',
     fontStyle: 'italic',
+    textAlign: 'center',
   },
   revokedTextMe: {
-    color: 'rgba(255,255,255,0.45)',
+    color: '#9CA3AF',
   },
 });
 
