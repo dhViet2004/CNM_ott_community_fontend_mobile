@@ -364,56 +364,56 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}
       >
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={keyExtractor}
-          renderItem={renderMessage}
-          contentContainerStyle={[
-            styles.messagesList,
-            { paddingBottom: bottomPadding + spacing.md },
-          ]}
-          onContentSizeChange={handleContentSizeChange}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          onTouchStart={() => Keyboard.dismiss()}
-          ListHeaderComponent={
-            <>
-              <PinnedHeader
-                pinnedMessages={pinnedMessages}
-                onUnpin={handleUnpinMessage}
-                onNavigateToMessage={handleNavigateToMessage}
-              />
-              {typingLabel ? (
+        <View style={styles.chatContent}>
+          <PinnedHeader
+            pinnedMessages={pinnedMessages}
+            onUnpin={handleUnpinMessage}
+            onNavigateToMessage={handleNavigateToMessage}
+          />
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={keyExtractor}
+            renderItem={renderMessage}
+            contentContainerStyle={[
+              styles.messagesList,
+              { paddingBottom: bottomPadding + spacing.md },
+            ]}
+            onContentSizeChange={handleContentSizeChange}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            onTouchStart={() => Keyboard.dismiss()}
+            ListHeaderComponent={
+              typingLabel ? (
                 <View style={styles.typingWrapper}>
                   <TypingIndicator label={typingLabel} />
                 </View>
-              ) : null}
-            </>
-          }
-          ListEmptyComponent={
-            <View key="list-empty">
-              {isLoading ? (
-                <View style={styles.stateContainer}>
-                  <Text style={styles.stateText}>Đang tải tin nhắn...</Text>
-                </View>
-              ) : (
-                <View style={styles.stateContainer}>
-                  <Text style={styles.stateText}>Chưa có tin nhắn nào</Text>
-                  <Text style={styles.stateSubtext}>Gửi lời chào đầu tiên!</Text>
-                </View>
-              )}
-            </View>
-          }
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
-            />
-          }
-        />
+              ) : null
+            }
+            ListEmptyComponent={
+              <View key="list-empty">
+                {isLoading ? (
+                  <View style={styles.stateContainer}>
+                    <Text style={styles.stateText}>Đang tải tin nhắn...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.stateContainer}>
+                    <Text style={styles.stateText}>Chưa có tin nhắn nào</Text>
+                    <Text style={styles.stateSubtext}>Gửi lời chào đầu tiên!</Text>
+                  </View>
+                )}
+              </View>
+            }
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.primary}
+                colors={[colors.primary]}
+              />
+            }
+          />
+        </View>
 
         {/* Footer / Chat Input */}
         <View style={[styles.inputWrapper, { paddingBottom: bottomPadding }]}>
@@ -474,6 +474,9 @@ const styles = StyleSheet.create({
   chatBody: {
     flex: 1,
     backgroundColor: CHAT_BG,
+  },
+  chatContent: {
+    flex: 1,
   },
   messagesList: {
     paddingTop: spacing.sm,
