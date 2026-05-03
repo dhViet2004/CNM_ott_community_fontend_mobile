@@ -15,6 +15,8 @@ import { Avatar, Icons, IconSize } from '@components/common';
 import type { RootStackScreenProps } from '@navigation/types';
 import { friendsApi } from '@api/endpoints';
 import { getGroupMembers, addMembersToGroup } from '../api';
+import { useAppDispatch } from '@store/hooks';
+import { addMemberToGroup } from '@store/slices/groupsSlice';
 
 type Props = RootStackScreenProps<'AddMembers'>;
 
@@ -22,6 +24,7 @@ const AddMembersScreen: React.FC<Props> = ({ route, navigation }) => {
   const groupId = route.params.groupId;
   const insets = useSafeAreaInsets();
   const sectionListRef = useRef<SectionList>(null);
+  const dispatch = useAppDispatch();
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -120,14 +123,29 @@ const AddMembersScreen: React.FC<Props> = ({ route, navigation }) => {
     try {
       const uids = Array.from(selectedIds);
       await addMembersToGroup(groupId, uids);
+      // Nhiệm vụ 3: Dispatch Redux để cập nhật group members
+      uids.forEach((userId) => {
+        dispatch(addMemberToGroup({
+          groupId: String(groupId),
+          member: {
+            userId: String(userId),
+            username: '',
+            display_name: '',
+            avatar_url: null,
+            role: 'MEMBER',
+            joined_at: new Date().toISOString(),
+          },
+        }));
+      });
       Alert.alert('Thành công', 'Đã thêm thành viên vào nhóm');
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert('Lỗi', err?.response?.data?.message || 'Không thể thêm thành viên');
+      console.error('[AddMembers] addMembersToGroup error:', err?.response?.data, err?.message);
+      Alert.alert('Lỗi', err?.response?.data?.message || err?.message || 'Không thể thêm thành viên');
     } finally {
       setSaving(false);
     }
-  }, [selectedIds, groupId, navigation]);
+  }, [selectedIds, groupId, navigation, dispatch]);
 
   const onLetterPress = useCallback((index: number) => {
     sectionListRef.current?.scrollToLocation({

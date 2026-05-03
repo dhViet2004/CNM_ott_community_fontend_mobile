@@ -156,6 +156,39 @@ const chatSlice = createSlice({
       }
     },
 
+    /** Nhiệm vụ 1: Thêm conversation mới (dùng khi user được thêm vào group) */
+    addNewConversation(state, action: PayloadAction<Conversation>) {
+      const exists = state.conversations.find((c) => c.id === action.payload.id);
+      if (!exists) {
+        state.conversations.unshift(action.payload);
+      }
+    },
+
+    /** Nhiệm vụ 1: Xóa conversation (dùng khi group bị giải tán hoặc user bị kick) */
+    removeConversationById(state, action: PayloadAction<string>) {
+      state.conversations = state.conversations.filter(
+        (c) => c.id !== action.payload
+      );
+      // Also remove messages for this conversation
+      if (state.messages[action.payload]) {
+        delete state.messages[action.payload];
+      }
+    },
+
+    /** Nhiệm vụ 1: Cập nhật số lượng thành viên nhóm trong conversation list */
+    updateConversationMembersCount(
+      state,
+      action: PayloadAction<{ conversationId: string; participantsCount: number }>
+    ) {
+      const { conversationId, participantsCount } = action.payload;
+      const conv = state.conversations.find((c) => c.id === conversationId);
+      if (conv) {
+        conv.participants = Array(participantsCount).fill('');
+        // Force update to trigger re-render
+        state.conversations = [...state.conversations];
+      }
+    },
+
     removeConversation(state, action: PayloadAction<string>) {
       state.conversations = state.conversations.filter((c) => c.id !== action.payload);
     },
@@ -543,7 +576,10 @@ export const {
   setConversations,
   addConversation,
   updateConversation,
+  addNewConversation,
   removeConversation,
+  removeConversationById,
+  updateConversationMembersCount,
   setActiveConversation,
   setMessages,
   prependMessages,

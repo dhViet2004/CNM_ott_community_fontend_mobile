@@ -11,6 +11,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import { MessageListItem, AddMenuModal } from '@features/chat/components';
@@ -82,22 +83,38 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     };
   }), [friends, onlineUsers, currentUserId]);
 
-  const groupConversations: ChatConversation[] = useMemo(() => groups.map((group) => ({
+  const groupConversations: ChatConversation[] = useMemo(() => groups.map((group: any) => ({
     id: `group:${group.groupId}`,
     type: 'group' as const,
-    name: group.name || '',
-    avatar: group.avatar_url || undefined,
-    lastMessage: group.description || `${group.member_count || 0} thành viên`,
-    time: group.created_at || '',
+    name: group.groupName || 'Nhóm',
+    originalName: group.groupName || 'Nhóm',
+    avatar: group.groupAvatar || undefined,
+    lastMessage: group.lastMessage?.content || 'Nhóm mới tạo',
+    time: group.lastMessage?.createdAt || group.createdAt || '',
     unreadCount: 0,
     isPinned: false,
     isMuted: false,
+    isOnline: false,
     groupId: group.groupId,
   })), [groups]);
 
+  // AI Bot conversation item
+  const aiBotConversation: ChatConversation = {
+    id: 'bot:ai',
+    type: 'single',
+    name: 'AI Bot',
+    lastMessage: 'Trợ lý thông minh, trả lời nhanh cho bạn',
+    time: '',
+    unreadCount: 0,
+    isPinned: false,
+    isMuted: false,
+    isOnline: true,
+    friendId: 'bot:ai',
+  };
+
   const allConversations = useMemo(
-    () => [...dmConversations, ...groupConversations],
-    [dmConversations, groupConversations]
+    () => [aiBotConversation, ...dmConversations, ...groupConversations],
+    [aiBotConversation, dmConversations, groupConversations]
   );
 
   const loadFriends = useCallback(async () => {
@@ -169,6 +186,12 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleConversationPress = useCallback(
     (conv: ChatConversation) => {
+      // Handle AI Bot conversation
+      if (conv.id === 'bot:ai') {
+        navigation.navigate('BotChat');
+        return;
+      }
+
       if (conv.type === 'single') {
         const friendId = conv.friendId;
         const myId = currentUserId || '';

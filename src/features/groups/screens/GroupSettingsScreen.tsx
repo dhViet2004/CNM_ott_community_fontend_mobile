@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { setSelectedGroup } from '@store/slices/groupsSlice';
+import { removeConversationById } from '@store/slices/chatSlice';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import type { RootStackScreenProps } from '@navigation/types';
@@ -67,16 +68,17 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
 
       const userIdStr = String(userId || '');
       setCurrentUserId(userIdStr);
-      setGroupName(group.name || '');
-      setGroupDescription(group.description || '');
-      setApprovalRequired(Boolean(group.isApprovalRequired));
+      const g = group as any;
+      setGroupName(g.name || '');
+      setGroupDescription(g.description || '');
+      setApprovalRequired(Boolean(g.isApprovalRequired));
       setAllowSendLinks(
-        group.allowSendLinks === 'ADMINS_ONLY' ? 'ADMINS_ONLY' : 'ALL'
+        g.allowSendLinks === 'ADMINS_ONLY' ? 'ADMINS_ONLY' : 'ALL'
       );
       setSpamFilterLevel(
-        group.spamFilterLevel === 0
+        g.spamFilterLevel === 0
           ? 0
-          : group.spamFilterLevel === 2
+          : g.spamFilterLevel === 2
           ? 2
           : 1
       );
@@ -114,9 +116,10 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
       });
       Alert.alert('Thành công', 'Đã lưu cài đặt nhóm');
     } catch (err: any) {
+      console.error('[GroupSettings] updateGroupSettings error:', err?.response?.data, err?.message);
       Alert.alert(
         'Lỗi',
-        err?.response?.data?.message || 'Không thể lưu cài đặt'
+        err?.response?.data?.message || err?.message || 'Không thể lưu cài đặt'
       );
     } finally {
       setSaving(false);
@@ -131,9 +134,10 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
       await updateGroupSettings(groupId, { isApprovalRequired: next });
     } catch (err: any) {
       setApprovalRequired(!next);
+      console.error('[GroupSettings] toggleApproval error:', err?.response?.data, err?.message);
       Alert.alert(
         'Lỗi',
-        err?.response?.data?.message || 'Không thể cập nhật'
+        err?.response?.data?.message || err?.message || 'Không thể cập nhật'
       );
     }
   }, [approvalRequired, groupId]);
@@ -141,6 +145,12 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
   // Kick member
   const handleKickMember = useCallback(
     async (memberId: string | number, memberName: string) => {
+      const uId = String(memberId || '').trim();
+      if (!uId) {
+        console.error('[GroupSettings] handleKickMember: memberId is empty:', memberId);
+        Alert.alert('Lỗi', 'Không xác định được ID thành viên để xóa');
+        return;
+      }
       Alert.alert(
         'Xác nhận',
         `Bạn có chắc muốn xóa ${memberName} khỏi nhóm?`,
@@ -151,15 +161,16 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
             style: 'destructive',
             onPress: async () => {
               try {
-                await removeMemberFromGroup(groupId, memberId);
+                await removeMemberFromGroup(groupId, uId);
                 setMembers((prev) =>
-                  prev.filter((m) => String(m.userId || m.id) !== String(memberId))
+                  prev.filter((m) => String(m.userId || m.id) !== uId)
                 );
                 Alert.alert('Thành công', 'Đã xóa thành viên');
               } catch (err: any) {
+                console.error('[GroupSettings] kickMember error:', err?.response?.data, err?.message);
                 Alert.alert(
                   'Lỗi',
-                  err?.response?.data?.message || 'Không thể xóa thành viên'
+                  err?.response?.data?.message || err?.message || 'Không thể xóa thành viên'
                 );
               }
             },
@@ -184,9 +195,10 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
         );
         Alert.alert('Thành công', `Đã cập nhật vai trò thành viên`);
       } catch (err: any) {
+        console.error('[GroupSettings] updateRole error:', err?.response?.data, err?.message);
         Alert.alert(
           'Lỗi',
-          err?.response?.data?.message || 'Không thể cập nhật vai trò'
+          err?.response?.data?.message || err?.message || 'Không thể cập nhật vai trò'
         );
       }
     },
@@ -206,9 +218,10 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
           action === 'APPROVE' ? 'Đã phê duyệt yêu cầu' : 'Đã từ chối yêu cầu'
         );
       } catch (err: any) {
+        console.error('[GroupSettings] handleRequest error:', err?.response?.data, err?.message);
         Alert.alert(
           'Lỗi',
-          err?.response?.data?.message || 'Không thể xử lý yêu cầu'
+          err?.response?.data?.message || err?.message || 'Không thể xử lý yêu cầu'
         );
       }
     },
@@ -235,6 +248,8 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
             onPress: async () => {
               try {
                 await leaveGroup(groupId, newOwnerId);
+                // Nhiệm vụ 3: Dispatch Redux khi rời nhóm thành công
+                dispatch(removeConversationById(String(groupId)));
                 Alert.alert('Thành công', 'Bạn đã rời nhóm', [
                   {
                     text: 'OK',
@@ -242,9 +257,10 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
                   },
                 ]);
               } catch (err: any) {
+                console.error('[GroupSettings] leaveGroup error:', err?.response?.data, err?.message);
                 Alert.alert(
                   'Lỗi',
-                  err?.response?.data?.message || 'Không thể rời nhóm'
+                  err?.response?.data?.message || err?.message || 'Không thể rời nhóm'
                 );
               }
             },
@@ -252,7 +268,7 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
         ]
       );
     },
-    [groupId, groupName, isOwner, navigation]
+    [groupId, groupName, isOwner, navigation, dispatch]
   );
 
   // Disband group
@@ -268,6 +284,8 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
           onPress: async () => {
             try {
               await disbandGroup(groupId);
+              // Nhiệm vụ 3: Dispatch Redux khi giải tán nhóm thành công
+              dispatch(removeConversationById(String(groupId)));
               Alert.alert('Thành công', 'Nhóm đã bị giải tán', [
                 {
                   text: 'OK',
@@ -275,16 +293,17 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
                 },
               ]);
             } catch (err: any) {
+              console.error('[GroupSettings] disbandGroup error:', err?.response?.data, err?.message);
               Alert.alert(
                 'Lỗi',
-                err?.response?.data?.message || 'Không thể giải tán nhóm'
+                err?.response?.data?.message || err?.message || 'Không thể giải tán nhóm'
               );
             }
           },
         },
       ]
     );
-  }, [groupId, navigation]);
+  }, [groupId, navigation, dispatch]);
 
   // Spam filter options
   const spamFilterOptions = [

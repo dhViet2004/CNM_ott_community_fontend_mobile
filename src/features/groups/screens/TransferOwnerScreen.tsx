@@ -13,13 +13,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import type { RootStackScreenProps } from '@navigation/types';
-import { getGroupMembers } from '../api';
+import { getGroupMembers, leaveGroup } from '../api';
+import { useAppDispatch } from '@store/hooks';
+import { removeConversationById } from '@store/slices/chatSlice';
 
 type Props = RootStackScreenProps<'TransferOwner'>;
 
 const TransferOwnerScreen: React.FC<Props> = ({ route, navigation }) => {
   const { groupId, groupName } = route.params;
   const insets = useSafeAreaInsets();
+  const dispatch = useAppDispatch();
 
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,7 +41,7 @@ const TransferOwnerScreen: React.FC<Props> = ({ route, navigation }) => {
       );
       setMembers(eligibleMembers);
     } catch (err) {
-      console.error('Failed to load members:', err);
+      console.error('[TransferOwner] loadMembers error:', (err as any)?.response?.data, (err as any)?.message);
       Alert.alert('Lỗi', 'Không thể tải danh sách thành viên');
     } finally {
       setLoading(false);
@@ -75,9 +78,9 @@ const TransferOwnerScreen: React.FC<Props> = ({ route, navigation }) => {
           onPress: async () => {
             setTransferring(true);
             try {
-              // Use leaveGroup with newOwnerId to transfer ownership
-              const { leaveGroup } = require('../api');
               await leaveGroup(groupId, selectedMember.userId || selectedMember.id);
+              // Nhiệm vụ 3: Dispatch Redux khi chuyển quyền thành công
+              dispatch(removeConversationById(String(groupId)));
               Alert.alert('Thành công', 'Đã chuyển quyền Trưởng nhóm', [
                 {
                   text: 'OK',
@@ -85,9 +88,10 @@ const TransferOwnerScreen: React.FC<Props> = ({ route, navigation }) => {
                 },
               ]);
             } catch (err: any) {
+              console.error('[TransferOwner] transferOwner error:', err?.response?.data, err?.message);
               Alert.alert(
                 'Lỗi',
-                err?.response?.data?.message || 'Không thể chuyển quyền'
+                err?.response?.data?.message || err?.message || 'Không thể chuyển quyền'
               );
             } finally {
               setTransferring(false);
@@ -96,7 +100,7 @@ const TransferOwnerScreen: React.FC<Props> = ({ route, navigation }) => {
         },
       ]
     );
-  }, [groupId, selectedMember, navigation]);
+  }, [groupId, selectedMember, navigation, dispatch]);
 
   // Render member item
   const renderMemberItem = ({ item }: { item: any }) => {

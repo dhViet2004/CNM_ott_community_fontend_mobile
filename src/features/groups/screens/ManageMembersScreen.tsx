@@ -21,6 +21,8 @@ import {
   fetchPendingRequests,
   getUserIdFromStorage,
 } from '../api';
+import { useAppDispatch } from '@store/hooks';
+import { removeMemberAsync } from '@store/slices/groupsSlice';
 
 type Props = RootStackScreenProps<'ManageMembers'>;
 
@@ -29,6 +31,7 @@ type TabType = 'all' | 'deputy' | 'member' | 'pending';
 const ManageMembersScreen: React.FC<Props> = ({ route, navigation }) => {
   const { groupId } = route.params;
   const insets = useSafeAreaInsets();
+  const dispatch = useAppDispatch();
 
   // State
   const [loading, setLoading] = useState(true);
@@ -64,7 +67,7 @@ const ManageMembersScreen: React.FC<Props> = ({ route, navigation }) => {
       );
       setCurrentUserRole((currentMember?.role || '').toUpperCase());
     } catch (err) {
-      console.error('Failed to load members:', err);
+      console.error('[ManageMembers] loadData error:', (err as any)?.response?.data, (err as any)?.message);
       Alert.alert('Lỗi', 'Không thể tải danh sách thành viên');
     } finally {
       setLoading(false);
@@ -122,6 +125,12 @@ const ManageMembersScreen: React.FC<Props> = ({ route, navigation }) => {
 
   // Handle kick member
   const handleKick = useCallback(async (member: any) => {
+    const memberId = String(member.userId || member.id || '').trim();
+    if (!memberId) {
+      console.error('[ManageMembers] handleKick: member.userId and member.id are both empty. member object:', JSON.stringify(member));
+      Alert.alert('Lỗi', 'Không xác định được ID thành viên để xóa');
+      return;
+    }
     Alert.alert(
       'Xác nhận',
       `Bạn có chắc muốn xóa ${member.displayName || member.username} khỏi nhóm?`,
@@ -131,18 +140,20 @@ const ManageMembersScreen: React.FC<Props> = ({ route, navigation }) => {
           text: 'Xóa',
           style: 'destructive',
           onPress: async () => {
-            const memberId = String(member.userId || member.id || '');
             setActionLoading(memberId);
             try {
               await removeMemberFromGroup(groupId, memberId);
               setMembers((prev) =>
                 prev.filter((m) => String(m.userId || m.id) !== memberId)
               );
+              // Nhiệm vụ 3: Dispatch Redux khi kick thành công
+              dispatch(removeMemberAsync({ groupId, targetUserId: memberId }));
               Alert.alert('Thành công', 'Đã xóa thành viên');
             } catch (err: any) {
+              console.error('[ManageMembers] kickMember error:', err?.response?.data, err?.message);
               Alert.alert(
                 'Lỗi',
-                err?.response?.data?.message || 'Không thể xóa thành viên'
+                err?.response?.data?.message || err?.message || 'Không thể xóa thành viên'
               );
             } finally {
               setActionLoading(null);
@@ -151,7 +162,7 @@ const ManageMembersScreen: React.FC<Props> = ({ route, navigation }) => {
         },
       ]
     );
-  }, [groupId]);
+  }, [groupId, dispatch]);
 
   // Handle promote to deputy
   const handlePromote = useCallback(async (member: any) => {
@@ -166,9 +177,10 @@ const ManageMembersScreen: React.FC<Props> = ({ route, navigation }) => {
       );
       Alert.alert('Thành công', 'Đã thăng thành Phó nhóm');
     } catch (err: any) {
+      console.error('[ManageMembers] promoteMember error:', err?.response?.data, err?.message);
       Alert.alert(
         'Lỗi',
-        err?.response?.data?.message || 'Không thể thăng vai trò'
+        err?.response?.data?.message || err?.message || 'Không thể thăng vai trò'
       );
     } finally {
       setActionLoading(null);
@@ -188,9 +200,10 @@ const ManageMembersScreen: React.FC<Props> = ({ route, navigation }) => {
       );
       Alert.alert('Thành công', 'Đã hạ xuống Thành viên');
     } catch (err: any) {
+      console.error('[ManageMembers] demoteMember error:', err?.response?.data, err?.message);
       Alert.alert(
         'Lỗi',
-        err?.response?.data?.message || 'Không thể hạ vai trò'
+        err?.response?.data?.message || err?.message || 'Không thể hạ vai trò'
       );
     } finally {
       setActionLoading(null);
@@ -211,9 +224,10 @@ const ManageMembersScreen: React.FC<Props> = ({ route, navigation }) => {
         action === 'APPROVE' ? 'Đã phê duyệt yêu cầu' : 'Đã từ chối yêu cầu'
       );
     } catch (err: any) {
+      console.error('[ManageMembers] handleRequest error:', err?.response?.data, err?.message);
       Alert.alert(
         'Lỗi',
-        err?.response?.data?.message || 'Không thể xử lý yêu cầu'
+        err?.response?.data?.message || err?.message || 'Không thể xử lý yêu cầu'
       );
     } finally {
       setActionLoading(null);

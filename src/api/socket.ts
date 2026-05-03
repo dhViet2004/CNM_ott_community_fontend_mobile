@@ -10,7 +10,17 @@ import {
   updateMessageStatus,
   addFriend as addFriendToChat,
   addReaderToMessage,
+  addNewConversation,
+  removeConversationById,
 } from '@store/slices/chatSlice';
+import {
+  removeGroup,
+  addGroup,
+  socketAddMember,
+  socketRemoveMember,
+  socketUpdateRole,
+  socketReloadMembers,
+} from '@store/slices/groupsSlice';
 import {
   addPendingRequest,
   addContact,
@@ -40,6 +50,9 @@ const REGISTERED_EVENTS = [
   'user_joined', 'user_left', 'room_joined', 'message_read',
   'live_location_started', 'live_location_updated', 'live_location_stopped',
   'message_pinned_updated',
+  // Nhiệm vụ 2: Group management socket events
+  'group:members_added', 'group:member_removed', 'group:member_left',
+  'group:you_were_removed', 'group:you_were_added', 'group:deleted',
 ];
 
 function removeAllListeners() {
@@ -426,9 +439,262 @@ export const connectSocket = (token: string) => {
 
   socket.on('chat_background_updated', (data: { friendshipId: string; bgUrl: string | null; updatedBy: string }) => {
     console.log('[Socket] Chat background updated for friendship:', data.friendshipId);
-    // We'll need a way to notify screens about this. 
-    // Since backgrounds are usually fetched per-screen, we can dispatch a global event or update store
-    // For now, let's just log it. In a real app, you might update the friendship in the store.
+  });
+
+  // ─── Nhiệm vụ 2: Group Management Socket Events ─────────────────────────────────
+  // Đồng bộ từ Web (useGroupSocket.ts) sang Mobile
+
+  // Khi thành viên được thêm vào nhóm
+  socket.on('group:members_added', (data: {
+    groupId: string;
+    newMembers: Array<{ userId: string; username?: string; display_name?: string; displayName?: string; avatar_url?: string; avatarUrl?: string; role?: string }>;
+    addedBy: string;
+  }) => {
+    console.log('[Socket] ⭐ group:members_added received:', JSON.stringify(data));
+    if (!data.groupId) return;
+
+    const currentUserId = store.getState().auth?.user?.userId;
+    const gIdStr = String(data.groupId);
+
+    // Reload toàn bộ danh sách members cho group hiện tại
+    store.dispatch(socketReloadMembers({
+      groupId: gIdStr,
+      members: data.newMembers.map((m: any) => ({
+        userId: m.userId,
+        username: m.username || '',
+        display_name: m.display_name || m.displayName || m.username || '',
+        avatar_url: m.avatar_url ?? m.avatarUrl ?? null,
+        role: m.role || 'MEMBER',
+        joined_at: new Date().toISOString(),
+      })),
+    }));
+
+    // Nếu user hiện tại là người được thêm → thêm vào conversation list
+    if (currentUserId && data.newMembers.some((m) => String(m.userId) === String(currentUserId))) {
+      const conversationId = gIdStr;
+      const existingConv = store.getState().chat?.conversations?.find(
+        (c: any) => String(c.id) === conversationId
+      );
+      if (!existingConv) {
+        store.dispatch(addNewConversation({
+          id: conversationId,
+          type: 'group',
+          name: 'Nhóm mới',
+          avatar: undefined,
+          participants: data.newMembers.map((m) => String(m.userId)),
+          unreadCount: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }));
+      }
+    }
+  });
+
+  // Khi user VỪA ĐƯỢC THÊM VÀO nhóm — nhận thông tin đầy đủ của group để hiển thị trong Chat List
+  socket.on('group:added_to_group', (data: {
+    groupDetails: {
+      groupId: string;
+      name: string;
+      description?: string;
+      avatarUrl?: string | null;
+      memberCount?: number;
+      createdBy?: string;
+      createdAt?: string;
+      isApprovalRequired?: boolean;
+    };
+    addedBy: string;
+  }) => {
+    console.log('[Socket] ⭐ group:added_to_group received:', JSON.stringify(data));
+    if (!data.groupDetails?.groupId) return;
+
+    const currentUserId = store.getState().auth?.user?.userId;
+    const gDetails = data.groupDetails;
+
+    // Thêm nhóm mới vào danh sách chat
+    const conversationId = String(gDetails.groupId);
+    const existingConv = store.getState().chat?.conversations?.find(
+      (c: any) => String(c.id) === conversationId
+    );
+
+    if (!existingConv) {
+      store.dispatch(addNewConversation({
+        id: conversationId,
+        type: 'group',
+        name: gDetails.name || 'Nhóm mới',
+        avatar: gDetails.avatarUrl || undefined,
+        participants: [],
+        unreadCount: 0,
+        createdAt: gDetails.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }));
+      console.log('[Socket] group:added_to_group → addNewConversation dispatched');
+    }
+
+    // Thêm nhóm vào groups.myGroups (để ChatScreen hiển thị đúng)
+    const existingMyGroup = store.getState().groups?.myGroups?.find(
+      (g: any) => String(g.groupId) === String(gDetails.groupId)
+    );
+    console.log('[Socket] group:added_to_group → existingMyGroup check:', !!existingMyGroup, '| groupId:', gDetails.groupId);
+
+    if (!existingMyGroup) {
+      const groupPayload = {
+        groupId: String(gDetails.groupId),
+        name: gDetails.name || 'Nhóm mới',
+        description: gDetails.description || '',
+        avatar_url: gDetails.avatarUrl ?? null,
+        is_private: false,
+        invite_code: '',
+        member_count: gDetails.memberCount ?? 0,
+        created_by: gDetails.createdBy || '',
+        created_at: gDetails.createdAt || new Date().toISOString(),
+        members: [] as any[],
+      };
+      console.log('[Socket] group:added_to_group → dispatching addGroup with payload:', JSON.stringify(groupPayload));
+      store.dispatch(addGroup(groupPayload));
+      console.log('[Socket] group:added_to_group → addGroup dispatched, myGroups now:', store.getState().groups?.myGroups?.length);
+    }
+  });
+
+  // Khi thành viên bị kick khỏi nhóm
+  socket.on('group:member_removed', (data: {
+    groupId: string;
+    removedMember: string;
+    kickedBy: string;
+  }) => {
+    console.log('[Socket] ⭐ group:member_removed received:', JSON.stringify(data));
+    if (!data.groupId || !data.removedMember) return;
+
+    const currentUserId = store.getState().auth?.user?.userId;
+    const gIdStr = String(data.groupId);
+
+    // Nếu user hiện tại là người bị kick → xóa khỏi myGroups và conversations
+    if (currentUserId && String(data.removedMember) === String(currentUserId)) {
+      store.dispatch(removeGroup(gIdStr));
+      store.dispatch(removeConversationById(gIdStr));
+      console.log('[Socket] Current user was kicked, removing from store');
+    } else {
+      // Cập nhật danh sách members cho những user khác
+      store.dispatch(socketRemoveMember({
+        groupId: gIdStr,
+        userId: String(data.removedMember),
+      }));
+    }
+  });
+
+  // Khi thành viên tự rời nhóm
+  socket.on('group:member_left', (data: {
+    groupId: string;
+    leftMember: string;
+  }) => {
+    console.log('[Socket] ⭐ group:member_left received:', JSON.stringify(data));
+    if (!data.groupId || !data.leftMember) return;
+
+    const currentUserId = store.getState().auth?.user?.userId;
+    const gIdStr = String(data.groupId);
+
+    // Nếu user hiện tại tự rời → xóa khỏi myGroups và conversations
+    if (currentUserId && String(data.leftMember) === String(currentUserId)) {
+      store.dispatch(removeGroup(gIdStr));
+      store.dispatch(removeConversationById(gIdStr));
+      console.log('[Socket] Current user left the group, removing from store');
+    } else {
+      store.dispatch(socketRemoveMember({
+        groupId: gIdStr,
+        userId: String(data.leftMember),
+      }));
+    }
+  });
+
+  // Khi user hiện tại bị xóa khỏi nhóm (bị admin kick)
+  socket.on('group:you_were_removed', (data: {
+    groupId: string;
+  }) => {
+    console.log('[Socket] ⭐ group:you_were_removed received:', JSON.stringify(data));
+    if (!data.groupId) return;
+
+    const gIdStr = String(data.groupId);
+    store.dispatch(removeGroup(gIdStr));
+    store.dispatch(removeConversationById(gIdStr));
+    console.log('[Socket] User was removed from group:', gIdStr);
+  });
+
+  // Khi user hiện tại được thêm vào nhóm mới
+  socket.on('group:you_were_added', (data: {
+    groupData: {
+      groupId?: string | number;
+      id?: string | number;
+      name?: string;
+      avatar_url?: string;
+      avatarUrl?: string;
+      description?: string;
+      memberCount?: number;
+    };
+    addedBy: string;
+  }) => {
+    console.log('[Socket] ⭐ group:you_were_added received:', JSON.stringify(data));
+    if (!data.groupData) return;
+
+    const groupId = String(data.groupData.groupId || data.groupData.id || '');
+    if (!groupId) return;
+
+    const conversationId = groupId;
+    const existingConv = store.getState().chat?.conversations?.find(
+      (c: any) => String(c.id) === conversationId
+    );
+
+    console.log('[Socket] group:you_were_added → existingConv check:', !!existingConv, '| conversationId:', conversationId);
+
+    if (!existingConv) {
+      store.dispatch(addNewConversation({
+        id: conversationId,
+        type: 'group',
+        name: data.groupData.name || 'Nhóm mới',
+        avatar: data.groupData.avatar_url ?? data.groupData.avatarUrl ?? undefined,
+        participants: [],
+        unreadCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }));
+      console.log('[Socket] group:you_were_added → addNewConversation dispatched');
+    }
+
+    // Thêm nhóm vào groups.myGroups (để ChatScreen hiển thị đúng)
+    const existingMyGroup = store.getState().groups?.myGroups?.find(
+      (g: any) => String(g.groupId) === groupId
+    );
+    console.log('[Socket] group:you_were_added → existingMyGroup check:', !!existingMyGroup, '| groupId:', groupId);
+
+    if (!existingMyGroup) {
+      const groupPayload = {
+        groupId,
+        name: data.groupData.name || 'Nhóm mới',
+        description: data.groupData.description || '',
+        avatar_url: data.groupData.avatar_url ?? data.groupData.avatarUrl ?? null,
+        is_private: false,
+        invite_code: '',
+        member_count: data.groupData.memberCount ?? 0,
+        created_by: data.addedBy || '',
+        created_at: new Date().toISOString(),
+        members: [] as any[],
+      };
+      console.log('[Socket] group:you_were_added → dispatching addGroup with payload:', JSON.stringify(groupPayload));
+      store.dispatch(addGroup(groupPayload));
+      console.log('[Socket] group:you_were_added → addGroup dispatched, myGroups now:', store.getState().groups?.myGroups?.length);
+    }
+  });
+
+  // Khi nhóm bị giải tán
+  socket.on('group:deleted', (data: {
+    groupId: string;
+    disbandedBy: string;
+  }) => {
+    console.log('[Socket] ⭐ group:deleted received:', JSON.stringify(data));
+    if (!data.groupId) return;
+
+    const gIdStr = String(data.groupId);
+    store.dispatch(removeGroup(gIdStr));
+    store.dispatch(removeConversationById(gIdStr));
+    console.log('[Socket] Group deleted:', gIdStr);
   });
 };
 
