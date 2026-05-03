@@ -313,6 +313,31 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       return <Text style={styles.stickerText}>{content}</Text>;
     }
 
+    // File attachment
+    if (type === 'file' && file_url) {
+      const fileName = decodeURIComponent(file_url.split('/').pop() || 'Tệp đính kèm');
+      return (
+        <TouchableOpacity
+          style={styles.fileContainer}
+          onPress={() => {
+            const { Linking } = require('react-native');
+            Linking.openURL(file_url);
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.fileIconContainer}>
+            {Icons.file(28, colors.primary)}
+          </View>
+          <View style={styles.fileInfo}>
+            <Text style={styles.fileName} numberOfLines={2}>
+              {fileName}
+            </Text>
+            <Text style={styles.fileHint}>Nhấn để mở tệp</Text>
+          </View>
+        </TouchableOpacity>
+      );
+    }
+
     // Text
     return (
       <Text
@@ -724,6 +749,39 @@ const styles = StyleSheet.create({
   },
   revokedTextMe: {
     color: '#9CA3AF',
+  },
+
+  // ── File Attachment ──────────────────────────────────────────────────
+  fileContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs,
+    minWidth: 180,
+  },
+  fileIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: spacing.borderRadius.md,
+    backgroundColor: 'rgba(0, 138, 243, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  fileInfo: {
+    flex: 1,
+  },
+  fileName: {
+    ...typography.body,
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text.primary,
+  },
+  fileHint: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.text.tertiary,
+    marginTop: 2,
   },
 });
 

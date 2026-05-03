@@ -411,6 +411,17 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             value={inputText}
             onChangeText={onTextChange}
             onSend={handleSend}
+            conversationId={conversationId}
+            senderId={currentUserId || undefined}
+            receiverId={route.params.userId}
+            onUploadSuccess={async (url, name, size) => {
+              // FilePickerButton đã upload và tạo message qua backend rồi
+              // Backend broadcast qua socket, nên không cần gọi lại API
+              // Chỉ cần scroll xuống nếu ở cuối
+              if (isNearBottomRef.current) {
+                setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+              }
+            }}
           />
         </View>
       </KeyboardAvoidingView>
