@@ -22,7 +22,7 @@ import { Icons, IconSize } from '@components/common';
 import { socketActions } from '@api/socket';
 import { messageApi, friendsApi } from '@api/endpoints';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
-import { confirmPendingMessage, failPendingMessage, setMessageFailed, setMessageRevoked } from '@store/slices/chatSlice';
+import { confirmPendingMessage, failPendingMessage, setMessageFailed, setMessageRevoked, updateMessage } from '@store/slices/chatSlice';
 import { colors, spacing } from '@theme';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 
@@ -523,10 +523,16 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
                 style: 'destructive',
                 onPress: async () => {
                   const msgId = String(selectedMessage.id);
+                  const originalContent = selectedMessage.content;
                   dispatch(setMessageRevoked({ messageId: msgId, conversationId }));
                   try {
                     await messageApi.revokeMessage(msgId, conversationId);
                   } catch (err: any) {
+                    dispatch(updateMessage({
+                      messageId: msgId,
+                      conversationId,
+                      updates: { isRevoked: false, is_revoked: false, content: originalContent },
+                    }));
                     const errMsg = err?.response?.data?.error
                       || err?.response?.data?.message
                       || 'Không thể thu hồi tin nhắn';
