@@ -111,14 +111,22 @@ export const connectSocket = (token: string) => {
 
   socket.on('receive_message', (message: SocketMessage) => {
     console.log('[Socket] receive_message received:', JSON.stringify(message).substring(0, 100));
-    
+
     const currentUserId = store.getState().auth?.user?.userId;
     const senderId = message.senderId ? String(message.senderId) : '';
-    
+
     console.log('[Socket] currentUserId:', currentUserId, 'senderId:', senderId, 'match:', currentUserId === senderId);
-    
+
     if (currentUserId && senderId && senderId === String(currentUserId)) {
       console.log('[Socket] Skipping own message');
+      return;
+    }
+
+    // Skip if user already deleted this message for themselves
+    const msgId = String(message.id);
+    const deletedForMeIds = store.getState().chat?.deletedForMeIds || [];
+    if (msgId && deletedForMeIds.includes(msgId)) {
+      console.log('[Socket] Skipping message already deleted-for-me:', msgId);
       return;
     }
 

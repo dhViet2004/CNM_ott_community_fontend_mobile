@@ -37,6 +37,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     cancelFriendRequest,
     acceptFriendRequest,
     unfriend,
+    updateMyProfile,
     updateStatus,
   } = useProfile();
 
@@ -105,12 +106,11 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         type === 'avatar' ? 'avatars' : 'covers'
       );
       
-      const s3Url = uploadRes.file_url;
+      const s3Url = uploadRes.url;
       if (type === 'avatar') {
         await updateMyProfile({ avatarUrl: s3Url });
       } else {
-        // coverImage logic might need back-end update
-        // for now just update locally if possible or through profile update
+        await updateMyProfile({ coverUrl: s3Url });
       }
       Alert.alert('Thành công', 'Đã cập nhật ảnh');
     } catch (err) {

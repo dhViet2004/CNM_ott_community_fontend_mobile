@@ -18,6 +18,7 @@ import {
 } from '@store/slices/groupsSlice';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
+import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
 import type { RootStackScreenProps } from '@navigation/types';
 import {
   fetchGroupById,
@@ -79,6 +80,7 @@ const GroupDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const [isHidden, setIsHidden] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [approvalRequired, setApprovalRequired] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Role-based permissions
   const currentMember = members.find(
@@ -320,7 +322,7 @@ const GroupDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         onEditName={() => handlePlaceholder('Đổi tên nhóm')}
         onEditDescription={() => handlePlaceholder('Thêm mô tả nhóm')}
         onAddMembers={handleAddMembers}
-        onSearch={() => handlePlaceholder('Tìm tin nhắn')}
+        onSearch={() => setIsSearchOpen(true)}
         onChangeWallpaper={() => handlePlaceholder('Đổi hình nền')}
         onMute={() => handlePlaceholder('Tắt thông báo')}
       />
@@ -505,6 +507,41 @@ const GroupDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       >
         <Text style={styles.startChatBtnText}>Nhắn tin nhóm</Text>
       </TouchableOpacity>
+
+      {/* ── Search Panel ── */}
+      <MessageSearchPanel
+        visible={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        conversationId={groupId}
+        currentUserId={currentUserId}
+        onResultClick={(item) => {
+          setIsSearchOpen(false);
+          if (String(item.conversationId) === String(groupId)) {
+            handleStartChat(); // Navigate to group chat first
+            // We might need to pass focusedMessageId to handleStartChat
+            navigation.navigate('GroupChat', {
+              groupId,
+              title: selectedGroup?.name || 'Nhóm',
+              focusedMessageId: String(item.id),
+            });
+          } else {
+            // Navigate to other conversation
+            if (item.conversationId.startsWith('dm:')) {
+              navigation.navigate('Chat', {
+                conversationId: item.conversationId,
+                title: item.senderDisplayName || 'Cuộc trò chuyện',
+                focusedMessageId: String(item.id),
+              });
+            } else {
+              navigation.navigate('GroupChat', {
+                groupId: item.conversationId,
+                title: 'Nhóm',
+                focusedMessageId: String(item.id),
+              });
+            }
+          }
+        }}
+      />
     </ScrollView>
     </View>
   );

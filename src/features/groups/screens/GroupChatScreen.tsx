@@ -23,6 +23,8 @@ import {
   failPendingMessage,
   setMessageRevoked,
   updateMessage,
+  deleteMessage,
+  addDeletedForMeId,
   Message,
 } from '@store/slices/chatSlice';
 import { setGroupMembers } from '@store/slices/groupsSlice';
@@ -32,6 +34,7 @@ import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import MessageBubble from '@features/chat/components/MessageBubble';
 import PinnedHeader from '@features/chat/components/PinnedHeader';
+import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
 import { MessageContextMenu, ChatInput } from '@features/chat/components';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 import { getGroupMembers } from '../api';
@@ -120,9 +123,11 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [defaultChannelId, setDefaultChannelId] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<SelectedMessage>(null);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const selectedMessageRef = useRef<SelectedMessage>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Keep ref in sync with state — so callbacks always read latest value
   useEffect(() => {
@@ -423,13 +428,38 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         {
           text: 'Xóa',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert('Thành công', 'Tin nhắn đã được xóa');
+          onPress: async () => {
+            const msgId = String(msg.id);
+            const originalContent = msg.content;
+            setDeletingMessageId(msgId);
+            setSelectedMessage(null);
+
+            // Optimistic: xóa ngay khỏi UI trước khi API trả về
+            dispatch(deleteMessage({ conversationId, messageId: msgId }));
+            // Track để socket không re-add tin nhắn đã xóa
+            dispatch(addDeletedForMeId(msgId));
+
+            try {
+              await messageApi.deleteForMe(conversationId, msgId);
+            } catch (err: any) {
+              // Rollback: khôi phục lại tin nhắn nếu API lỗi
+              dispatch(updateMessage({
+                messageId: msgId,
+                conversationId,
+                updates: { isDeleted: false, content: originalContent },
+              }));
+              const errMsg = err?.response?.data?.error
+                || err?.response?.data?.message
+                || 'Không thể xóa tin nhắn';
+              Alert.alert('Lỗi', errMsg);
+            } finally {
+              setDeletingMessageId(null);
+            }
           },
         },
       ]
     );
-  }, []);
+  }, [dispatch, conversationId]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
   const renderMessage = useCallback(
@@ -542,13 +572,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
               {Icons.videocam(IconSize.lg, colors.text.inverse)}
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => {
-                const params: RootStackParamList['MessageSearch'] = {
-                  conversationId,
-                  title,
-                };
-                navigation.navigate('MessageSearch', params);
-              }}
+              onPress={() => setIsSearchOpen(true)}
               style={styles.headerIcon}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
@@ -696,6 +720,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         visible={selectedMessage !== null}
         onClose={() => setSelectedMessage(null)}
         isOwn={selectedMessage?.isMe ?? false}
+        isDeleting={deletingMessageId === String(selectedMessage?.id)}
         onReply={() => Alert.alert('Trả lời', 'Tính năng đang phát triển')}
         onForward={() => Alert.alert('Chuyển tiếp', 'Tính năng đang phát triển')}
         onSave={() => Alert.alert('Lưu', 'Tính năng đang phát triển')}
@@ -709,6 +734,36 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         onReadText={() => Alert.alert('Đọc văn bản', 'Tính năng đang phát triển')}
         onDetails={handleDetails}
         onDelete={handleDelete}
+      />
+
+      {/* ── Search Panel ── */}
+      <MessageSearchPanel
+        visible={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        conversationId={conversationId}
+        currentUserId={currentUserId || ''}
+        onResultClick={(item) => {
+          setIsSearchOpen(false);
+          if (String(item.conversationId) === String(conversationId)) {
+            handleNavigateToMessage(String(item.id));
+          } else {
+            // Navigate to the other conversation (DM or Group)
+            // If it's a DM, conversationId starts with "dm:"
+            if (item.conversationId.startsWith('dm:')) {
+              navigation.replace('Chat', {
+                conversationId: item.conversationId,
+                title: item.senderDisplayName || 'Cuộc trò chuyện',
+                focusedMessageId: String(item.id),
+              });
+            } else {
+              navigation.replace('GroupChat', {
+                groupId: item.conversationId,
+                title: 'Nhóm', // fallback
+                focusedMessageId: String(item.id),
+              });
+            }
+          }
+        }}
       />
     </View>
   );

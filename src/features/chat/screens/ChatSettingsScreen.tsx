@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize, Avatar } from '@components/common';
 import { friendsApi, userApi, uploadApi, messageApi } from '@api/endpoints';
+import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
 import { socketActions } from '@api/socket';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { setFriends } from '@store/slices/chatSlice';
@@ -53,6 +54,7 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [isLoadingBg, setIsLoadingBg] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Get missing info from friends list
   const currentFriendshipId = friendshipId || friends?.find(f => 
@@ -224,7 +226,7 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
           )}
 
           <View style={styles.quickActions}>
-            <TouchableOpacity style={styles.quickActionItem} onPress={() => Alert.alert('Thông báo', 'Tính năng đang phát triển')}>
+            <TouchableOpacity style={styles.quickActionItem} onPress={() => setIsSearchOpen(true)}>
               <View style={styles.quickActionIcon}>{Icons.search(IconSize.md, colors.text.primary)}</View>
               <Text style={styles.quickActionLabel}>Tìm tin nhắn</Text>
             </TouchableOpacity>
@@ -373,6 +375,23 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.loadingText}>Đang cập nhật hình nền...</Text>
         </View>
       )}
+
+      {/* ── Search Panel ── */}
+      <MessageSearchPanel
+        visible={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        conversationId={conversationId}
+        currentUserId={authUser?.userId || ''}
+        onResultClick={(item) => {
+          setIsSearchOpen(false);
+          // Navigate to Chat and focus message
+          navigation.navigate('Chat', {
+            conversationId: item.conversationId,
+            title: item.senderDisplayName || 'Cuộc trò chuyện',
+            focusedMessageId: String(item.id),
+          });
+        }}
+      />
     </View>
   );
 };
