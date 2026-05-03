@@ -36,8 +36,9 @@ export const Icons = {
   image: (size?: number) => <Ionicons name="image" size={size ?? IconSize.md} />,
   document: (size?: number) => <Ionicons name="document" size={size ?? IconSize.md} />,
   paperPlane: (size?: number) => <Ionicons name="paper-plane" size={size ?? IconSize.md} />,
-  checkmark: (size?: number) => <Ionicons name="checkmark" size={size ?? IconSize.md} />,
-  checkmarkDone: (size?: number) => <Ionicons name="checkmark-done" size={size ?? IconSize.md} />,
+  checkmark: (size?: number, color?: string) => <Ionicons name="checkmark" size={size ?? IconSize.md} color={color} />,
+  check: (size?: number, color?: string) => <Ionicons name="checkmark" size={size ?? IconSize.md} color={color} />,
+  checkmarkDone: (size?: number, color?: string) => <Ionicons name="checkmark-done" size={size ?? IconSize.md} color={color} />,
   
   // Users & Contacts
   person: (size?: number) => <Ionicons name="person" size={size ?? IconSize.md} />,
@@ -156,6 +157,8 @@ export const Icons = {
   arrowDown: (size?: number) => <Ionicons name="arrow-down" size={size ?? IconSize.md} />,
   chevronRight: (size?: number) => <Ionicons name="chevron-forward" size={size ?? IconSize.md} />,
   chevronLeft: (size?: number) => <Ionicons name="chevron-back" size={size ?? IconSize.md} />,
+  chevronDown: (size?: number, color?: string) => <Ionicons name="chevron-down" size={size ?? IconSize.md} color={color} />,
+  chevronUp: (size?: number, color?: string) => <Ionicons name="chevron-up" size={size ?? IconSize.md} color={color} />,
   arrowUndo: (size?: number) => <Feather name="corner-down-left" size={size ?? IconSize.md} />,
   
   // Files
@@ -171,9 +174,9 @@ export const Icons = {
   flag: (size?: number) => <Feather name="flag" size={size ?? IconSize.md} />,
   bookmark: (size?: number) => <Ionicons name="bookmark" size={size ?? IconSize.md} />,
   bookmarkOutline: (size?: number) => <Ionicons name="bookmark-outline" size={size ?? IconSize.md} />,
-  pin: (size?: number) => <Ionicons name="pin" size={size ?? IconSize.md} />,
-  pushPin: (size?: number) => <MaterialCommunityIcons name="pin" size={size ?? IconSize.md} />,
-  pinOff: (size?: number) => <MaterialCommunityIcons name="pin-off" size={size ?? IconSize.md} />,
+  pin: (size?: number, color?: string) => <Ionicons name="pin" size={size ?? IconSize.md} color={color} />,
+  pushPin: (size?: number, color?: string) => <MaterialCommunityIcons name="pin" size={size ?? IconSize.md} color={color} />,
+  pinOff: (size?: number, color?: string) => <MaterialCommunityIcons name="pin-off" size={size ?? IconSize.md} color={color} />,
   
   // Visibility
   visibility: (size?: number) => <Ionicons name="eye" size={size ?? IconSize.md} />,

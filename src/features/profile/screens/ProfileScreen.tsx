@@ -6,11 +6,14 @@ import {
   Animated,
   RefreshControl,
   StatusBar,
+  Alert,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
 import { CoverHeader, UserInfo, ProfileMenu } from '../components';
 import { useProfile } from '../hooks';
+import { uploadApi } from '@api/endpoints';
 import type { MainTabScreenProps } from '@navigation/types';
 
 type Props = MainTabScreenProps<'ProfileTab'>;
@@ -53,12 +56,59 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     navigation.navigate('Settings');
   };
 
-  const handleChangeCover = () => {
-    // TODO: Open image picker for cover
+  const handleChangeCover = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      uploadImage(result.assets[0].uri, 'cover');
+    }
   };
 
-  const handleChangeAvatar = () => {
-    // TODO: Open image picker for avatar
+  const handleChangeAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      uploadImage(result.assets[0].uri, 'avatar');
+    }
+  };
+
+  const uploadImage = async (uri: string, type: 'avatar' | 'cover') => {
+    try {
+      const fileName = uri.split('/').pop() || `${type}.jpg`;
+      const fileType = 'image/jpeg';
+      
+      const uploadRes = await uploadApi.uploadDirect(
+        { uri, name: fileName, type: fileType },
+        type === 'avatar' ? 'avatars' : 'covers'
+      );
+      
+      const s3Url = uploadRes.file_url;
+      if (type === 'avatar') {
+        await updateMyProfile({ avatarUrl: s3Url });
+      } else {
+        // coverImage logic might need back-end update
+        // for now just update locally if possible or through profile update
+      }
+      Alert.alert('Thành công', 'Đã cập nhật ảnh');
+    } catch (err) {
+      Alert.alert('Lỗi', 'Không thể tải ảnh lên');
+    }
   };
 
   const headerOpacity = scrollY.interpolate({

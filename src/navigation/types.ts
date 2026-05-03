@@ -4,7 +4,7 @@ import type { CompositeScreenProps } from '@react-navigation/native';
 
 export type RootStackParamList = {
   MainTabs: undefined;
-  Chat: { conversationId: string; title: string; userId?: string };
+  Chat: { conversationId: string; title: string; userId?: string; originalName?: string };
   GroupChat: { groupId: string; title: string };
   UserProfile: { userId: string };
   Login: undefined;
@@ -22,6 +22,9 @@ export type RootStackParamList = {
   GroupSettings: { groupId: string };
   ManageMembers: { groupId: string };
   TransferOwner: { groupId: string; groupName: string };
+  ChatSettings: { conversationId: string; friendshipId?: string; friendId?: string; title: string; avatarUrl?: string | null; originalName?: string };
+  MessageSearch: { conversationId: string; title: string };
+  ChangePassword: undefined;
 };
 
 export type MainTabParamList = {

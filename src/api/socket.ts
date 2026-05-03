@@ -38,6 +38,7 @@ const REGISTERED_EVENTS = [
   'incoming-call', 'call-accepted', 'call-ended', 'call-timeout', 'group-call-request',
   'user_joined', 'user_left', 'room_joined', 'message_read',
   'live_location_started', 'live_location_updated', 'live_location_stopped',
+  'message_pinned_updated',
 ];
 
 function removeAllListeners() {
@@ -73,7 +74,7 @@ export const connectSocket = (token: string) => {
 
   socket = io(SOCKET_URL, {
     auth: { token },
-    transports: ['websocket', 'polling'],
+    transports: ['polling', 'websocket'],
     reconnection: true,
     reconnectionAttempts: 10,
     reconnectionDelay: 1000,
@@ -381,6 +382,22 @@ export const connectSocket = (token: string) => {
   }) => {
     console.log('[Socket] Successfully joined room:', roomId);
   });
+
+  socket.on('message_pinned_updated', (data: { roomId: string; pinnedMessages: any[] }) => {
+    console.log('[Socket] Pinned messages updated for room:', data.roomId);
+    // Dispatch to store if we have pinned messages in state
+    store.dispatch({
+      type: 'chat/setPinnedMessages',
+      payload: { conversationId: data.roomId, pinnedMessages: data.pinnedMessages }
+    });
+  });
+
+  socket.on('chat_background_updated', (data: { friendshipId: string; bgUrl: string | null; updatedBy: string }) => {
+    console.log('[Socket] Chat background updated for friendship:', data.friendshipId);
+    // We'll need a way to notify screens about this. 
+    // Since backgrounds are usually fetched per-screen, we can dispatch a global event or update store
+    // For now, let's just log it. In a real app, you might update the friendship in the store.
+  });
 };
 
 // ─── Reconnect Logic ──────────────────────────────────────────────────────────
@@ -490,5 +507,18 @@ export const socketActions = {
 
   stopLiveLocation: (roomId: string) => {
     socket?.emit('stop_live_location', { roomId });
+  },
+
+  // Pinning
+  pinMessage: (roomId: string, message: any, callback?: (res: any) => void) => {
+    socket?.emit('pin_message', { roomId, message }, callback);
+  },
+
+  unpinMessage: (roomId: string, messageId: string, callback?: (res: any) => void) => {
+    socket?.emit('unpin_message', { roomId, messageId }, callback);
+  },
+
+  updateChatBackground: (friendshipId: string, bgUrl: string | null, receiverId: string) => {
+    socket?.emit('chat_background_updated', { friendshipId, bgUrl, receiverId });
   },
 };

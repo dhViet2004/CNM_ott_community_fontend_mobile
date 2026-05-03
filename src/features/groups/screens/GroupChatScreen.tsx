@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
@@ -27,25 +28,67 @@ import { socketActions } from '@api/socket';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import MessageBubble from '@features/chat/components/MessageBubble';
+import PinnedHeader from '@features/chat/components/PinnedHeader';
 import type { RootStackScreenProps } from '@navigation/types';
 import { getGroupMembers } from '../api';
 
 type Props = RootStackScreenProps<'GroupChat'>;
 const EMPTY_MESSAGES: Message[] = [];
+const EMPTY_ARRAY: any[] = [];
 
 const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const { groupId, title } = route.params;
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
 
+  const conversationId = String(groupId);
+  const pinnedMessages = useAppSelector((state) => state.chat.pinnedMessages[conversationId] || EMPTY_ARRAY);
+
+  const handlePinMessage = useCallback((msg: Message) => {
+    const pinData = {
+      id: msg.id,
+      content: msg.content,
+      contentType: msg.type,
+      senderId: msg.senderId,
+      senderName: msg.senderName || 'Người dùng',
+      createdAt: new Date().toISOString(),
+    };
+
+    socketActions.pinMessage(conversationId, pinData, (res: any) => {
+      if (res.ok) {
+        Alert.alert('Thành công', 'Đã ghim tin nhắn');
+      } else {
+        Alert.alert('Lỗi', res.error || 'Không thể ghim tin nhắn');
+      }
+    });
+  }, [conversationId]);
+
+  const handleUnpinMessage = useCallback((messageId: string) => {
+    socketActions.unpinMessage(conversationId, messageId, (res: any) => {
+      if (res.ok) {
+        Alert.alert('Thành công', 'Đã bỏ ghim tin nhắn');
+      } else {
+        Alert.alert('Lỗi', res.error || 'Không thể bỏ ghim tin nhắn');
+      }
+    });
+  }, [conversationId]);
+
+  const handleNavigateToMessage = useCallback((messageId: string) => {
+    const index = messages.findIndex(m => String(m.id) === String(messageId));
+    if (index !== -1) {
+      navigation.setParams({ focusedMessageId: String(messageId) } as any);
+      flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+      
+      setTimeout(() => {
+        navigation.setParams({ focusedMessageId: undefined } as any);
+      }, 3000);
+    }
+  }, [messages, navigation]);
+
   // Bottom padding cho input
   const bottomPadding = Platform.OS === 'ios'
     ? insets.bottom
     : Math.max(insets.bottom, spacing.md);
-
-  // Dùng groupId trực tiếp như web để tương thích với backend
-  // Backend lưu messages dưới key = groupId (ví dụ: "group_1777567390968")
-  const conversationId = String(groupId);
 
   // ✅ FIX: Đọc messages trực tiếp từ Redux store
   const messages = useAppSelector(
@@ -234,6 +277,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       const senderAvatar = item.senderAvatar || item.sender_avatar || null;
       // Chỉ dùng các type được MessageBubble hỗ trợ
       const messageType = item.type === 'video' || item.type === 'audio' ? 'file' : item.type;
+      const isFocused = (route.params as any).focusedMessageId === String(item.id);
 
       return (
         <MessageBubble
@@ -250,11 +294,34 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           isDeleted={item.isDeleted}
           isRevoked={item.isRevoked}
           defaultName={title}
-          onLongPress={() => {}}
+          isFocused={isFocused}
+          onLongPress={() => {
+            Alert.alert(
+              'Tùy chọn tin nhắn',
+              '',
+              [
+                { text: 'Trả lời', onPress: () => {} },
+                { text: 'Chuyển tiếp', onPress: () => {} },
+                { 
+                  text: pinnedMessages.some((p: any) => String(p.id) === String(item.id)) ? 'Bỏ ghim' : 'Ghim tin nhắn', 
+                  onPress: () => {
+                    if (pinnedMessages.some((p: any) => String(p.id) === String(item.id))) {
+                      handleUnpinMessage(String(item.id));
+                    } else {
+                      handlePinMessage(item as any);
+                    }
+                  } 
+                },
+                { text: 'Thu hồi', onPress: () => {}, style: 'destructive' },
+                { text: 'Xóa', onPress: () => {}, style: 'destructive' },
+                { text: 'Hủy', style: 'cancel' },
+              ]
+            );
+          }}
         />
       );
     },
-    [title, currentUserId]
+    [title, currentUserId, pinnedMessages, handlePinMessage, handleUnpinMessage, route.params]
   );
 
   const keyExtractor = useCallback((item: Message) => String(item.id), []);
@@ -285,6 +352,11 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
+        <PinnedHeader
+          pinnedMessages={pinnedMessages}
+          onUnpin={handleUnpinMessage}
+          onNavigateToMessage={handleNavigateToMessage}
+        />
         <FlatList
           ref={flatListRef}
           data={messages as Message[]}

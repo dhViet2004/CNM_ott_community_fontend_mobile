@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Image,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ViewStyle,
+  ActivityIndicator,
 } from 'react-native';
 import { colors, spacing, typography, shadows } from '@theme';
 
@@ -76,15 +77,28 @@ const Avatar: React.FC<AvatarProps> = ({
     return nameStr.substring(0, 2).toUpperCase();
   };
 
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
   const sizeValue = getSizeValue();
   const initials = getInitials(name);
   const indicatorSize = getIndicatorSize();
 
-  const avatarContent = uri ? (
-    <Image
-      source={{ uri }}
-      style={[styles.image, { width: sizeValue, height: sizeValue, borderRadius: sizeValue / 2 }]}
-    />
+  const avatarContent = (uri && !hasError) ? (
+    <View>
+      <Image
+        source={{ uri }}
+        style={[styles.image, { width: sizeValue, height: sizeValue, borderRadius: sizeValue / 2 }]}
+        onLoadStart={() => setIsLoading(true)}
+        onLoadEnd={() => setIsLoading(false)}
+        onError={() => setHasError(true)}
+      />
+      {isLoading && (
+        <View style={[StyleSheet.absoluteFill, styles.placeholder, { borderRadius: sizeValue / 2 }]}>
+          <ActivityIndicator size="small" color={colors.text.inverse} />
+        </View>
+      )}
+    </View>
   ) : (
     <View
       style={[
@@ -118,7 +132,7 @@ const Avatar: React.FC<AvatarProps> = ({
       >
         {avatarContent}
       </View>
-      {showOnlineIndicator && online !== undefined && (
+      {showOnlineIndicator && online === true && (
         <View
           style={[
             styles.onlineIndicator,
@@ -126,7 +140,7 @@ const Avatar: React.FC<AvatarProps> = ({
               width: indicatorSize,
               height: indicatorSize,
               borderRadius: indicatorSize / 2,
-              backgroundColor: online ? colors.badge.online : colors.badge.offline,
+              backgroundColor: colors.badge.online,
               borderWidth: sizeValue >= 48 ? 2 : 1,
               borderColor: colors.background.primary,
             },

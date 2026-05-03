@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef, useMemo } from 'react';
+import { shallowEqual } from 'react-redux';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { setMessages, setLoadingMessages, addMessage } from '@store/slices/chatSlice';
 import { messageApi } from '@api/endpoints';
@@ -34,6 +35,8 @@ interface UseMessagesReturn {
   addOptimisticMessage: (message: Omit<MessageItem, 'id' | 'time' | 'isMe' | 'status'>) => string;
 }
 
+const EMPTY_ARRAY: any[] = [];
+
 export const useMessages = ({
   conversationId,
   autoLoad = true,
@@ -50,7 +53,8 @@ export const useMessages = ({
   // Memoized selectors
   const currentUserId = useAppSelector((state) => state.auth?.user?.userId);
   const rawMessages = useAppSelector(
-    (state) => state.chat?.messages?.[conversationId] ?? []
+    (state) => state.chat?.messages?.[conversationId] || EMPTY_ARRAY,
+    shallowEqual
   );
   const isLoading = useAppSelector(
     (state) => state.chat?.isLoadingMessages ?? false

@@ -21,6 +21,7 @@ interface MessageBubbleProps {
   isRevoked?: boolean;
   onLongPress?: () => void;
   defaultName?: string;
+  isFocused?: boolean;
 }
 
 const StatusIcon: React.FC<{ status: string }> = ({ status }) => {
@@ -53,6 +54,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   isRevoked,
   onLongPress,
   defaultName,
+  isFocused,
 }) => {
   const isRevokedOrDeleted = isDeleted || isRevoked;
 
@@ -136,17 +138,23 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
     >
       {!isMe && (
-        <Avatar
-          uri={senderAvatar ?? undefined}
-          name={senderName || defaultName || 'User'}
-          size="xs"
-        />
+        <View style={styles.avatarContainer}>
+          <Avatar
+            uri={senderAvatar ?? undefined}
+            name={senderName || defaultName || 'User'}
+            size="xs"
+          />
+        </View>
       )}
       <View style={[styles.bubbleWrapper, isMe && styles.bubbleWrapperMe]}>
-        {!isMe && senderName && (
-          <Text style={styles.senderName}>{senderName}</Text>
+        {senderName && (
+          <Text style={[styles.senderName, isMe && { marginRight: spacing.sm }]}>{senderName}</Text>
         )}
-        <View style={[styles.messageBubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+        <View style={[
+          styles.messageBubble,
+          isMe ? styles.bubbleMe : styles.bubbleOther,
+          isFocused && styles.focusedBubble
+        ]}>
           {renderContent()}
           {renderFooter()}
         </View>
@@ -162,11 +170,17 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     prevProps.status === nextProps.status &&
     prevProps.isMe === nextProps.isMe &&
     prevProps.isDeleted === nextProps.isDeleted &&
-    prevProps.isRevoked === nextProps.isRevoked
+    prevProps.isRevoked === nextProps.isRevoked &&
+    prevProps.isFocused === nextProps.isFocused
   );
 });
 
 const styles = StyleSheet.create({
+  focusedBubble: {
+    backgroundColor: '#E3F2FD', // Light blue highlight
+    borderColor: '#2196F3',
+    borderWidth: 1,
+  },
   // Layout containers
   messageRow: {
     flexDirection: 'row',
@@ -190,12 +204,17 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
 
-  // Sender name (for group chat)
+  // Sender name
   senderName: {
     ...typography.caption,
     color: colors.text.secondary,
     marginBottom: 2,
-    marginLeft: spacing.sm,
+    marginLeft: 4,
+    textAlign: 'left',
+  },
+  avatarContainer: {
+    marginRight: 8,
+    marginBottom: 4,
   },
 
   // Message bubble
