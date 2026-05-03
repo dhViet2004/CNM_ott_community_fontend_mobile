@@ -171,6 +171,7 @@ export const friendsApi = {
         username: f.friend_username || f.username || '',
         avatar_url: f.friend_avatar_url ?? f.avatar_url ?? null,
         userId: f.friend_id || f.userId,
+        friend_original_name: f.friend_original_name || f.display_name || '',
       }))),
 
   // Backend expects receiverId (NOT friend_id)
@@ -212,6 +213,24 @@ export const friendsApi = {
         userId: p.sender_id || p.userId,
         requested_at: p.created_at,
       }))),
+
+  updateNickname: (payload: { friendshipId: string; nickname: string | null }) =>
+    apiClient
+      .put<{ message: string }>('/friends/nickname', payload)
+      .then((r) => r.data),
+
+  updateChatBackground: (payload: { friendshipId: string; bgUrl: string | null; bothSides?: boolean }) =>
+    apiClient
+      .put<{ message: string; data: { friendshipId: string; chatBgUrl: string | null } }>(
+        '/friends/chat-background',
+        payload
+      )
+      .then((r) => r.data),
+
+  getChatBackground: (friendshipId: string) =>
+    apiClient
+      .get<{ chatBgUrl: string | null }>(`/friends/chat-background/${encodeURIComponent(friendshipId)}`)
+      .then((r) => r.data),
 };
 
 // ─── Groups ──────────────────────────────────────────────────────────────────
@@ -413,6 +432,28 @@ export const messageApi = {
         sourceConversationId,
         targetConversationIds,
       })
+      .then((r) => r.data),
+
+  searchMessages: (params: {
+    conversationId: string;
+    keyword?: string;
+    senderId?: string;
+    fromDate?: string;
+    toDate?: string;
+    limit?: number;
+  }) =>
+    apiClient
+      .get<{ data: BackendMessage[]; count: number }>('/messages/search', { params })
+      .then((r) => r.data),
+
+  searchGlobalMessages: (params: {
+    keyword?: string;
+    fromDate?: string;
+    toDate?: string;
+    limit?: number;
+  }) =>
+    apiClient
+      .get<{ data: BackendMessage[]; count: number }>('/messages/search/global', { params })
       .then((r) => r.data),
 };
 

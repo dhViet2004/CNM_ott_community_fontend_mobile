@@ -30,6 +30,11 @@ const MessageListItem: React.FC<MessageListItemProps> = ({
   onLongPress,
   style,
 }) => {
+  const getStatusText = () => {
+    if (isGroup) return null;
+    return isOnline ? 'Hoạt động' : '';
+  };
+
   return (
     <TouchableOpacity
       activeOpacity={0.7}
@@ -56,11 +61,6 @@ const MessageListItem: React.FC<MessageListItemProps> = ({
       <View style={styles.content}>
         <View style={styles.topRow}>
           <View style={styles.nameRow}>
-            {isGroup && (
-              <View style={styles.groupBadgeContainer}>
-                {Icons.people(IconSize.xs)}
-              </View>
-            )}
             <Text style={styles.name} numberOfLines={1}>
               {name}
             </Text>
@@ -68,9 +68,14 @@ const MessageListItem: React.FC<MessageListItemProps> = ({
           <Text style={styles.time}>{time}</Text>
         </View>
         <View style={styles.bottomRow}>
-          <Text style={styles.lastMessage} numberOfLines={1}>
-            {lastMessage}
-          </Text>
+          <View style={styles.messageContent}>
+            <Text style={[styles.lastMessage, unreadCount > 0 && styles.unreadMessage]} numberOfLines={1}>
+              {lastMessage === 'accepted' ? 'Đã chấp nhận lời mời' : (lastMessage || 'Bắt đầu trò chuyện')}
+            </Text>
+            {isOnline && !isGroup && (
+              <Text style={styles.statusText}> • Hoạt động</Text>
+            )}
+          </View>
           {unreadCount > 0 && (
             <Badge count={unreadCount} variant="unread" size="sm" />
           )}
@@ -146,7 +151,21 @@ const styles = StyleSheet.create({
     flex: 1,
     ...typography.bodySmall,
     color: colors.text.secondary,
+  },
+  unreadMessage: {
+    color: colors.text.primary,
+    fontWeight: '700',
+  },
+  messageContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     marginRight: spacing.sm,
+  },
+  statusText: {
+    ...typography.caption,
+    color: '#4CAF50',
+    fontWeight: '600',
   },
 });
 

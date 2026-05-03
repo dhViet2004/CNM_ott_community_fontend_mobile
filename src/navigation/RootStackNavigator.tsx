@@ -23,6 +23,9 @@ import AddMembersScreen from '@features/groups/screens/AddMembersScreen';
 import GroupSettingsScreen from '@features/groups/screens/GroupSettingsScreen';
 import ManageMembersScreen from '@features/groups/screens/ManageMembersScreen';
 import TransferOwnerScreen from '@features/groups/screens/TransferOwnerScreen';
+import ChatSettingsScreen from '@features/chat/screens/ChatSettingsScreen';
+import MessageSearchScreen from '@features/chat/screens/MessageSearchScreen';
+import ChangePasswordScreen from '@features/profile/screens/ChangePasswordScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -70,13 +73,38 @@ const RootStackNavigator: React.FC = () => {
       <Stack.Screen
         name="Chat"
         component={ChatDetailScreen}
-        options={({ route }) => ({
+        options={({ route, navigation }) => ({
           headerShown: true,
           title: route.params.title,
+          headerTitleAlign: 'left',
           headerStyle: { backgroundColor: colors.primary },
           headerTintColor: colors.text.inverse,
           headerTitleStyle: { ...typography.h3, color: colors.text.inverse },
           headerBackTitleVisible: false,
+          headerRight: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('MessageSearch', {
+                  conversationId: route.params.conversationId,
+                  title: route.params.title,
+                })}
+                style={{ padding: 8, marginRight: 8 }}
+              >
+                {Icons.search(IconSize.lg, colors.text.inverse)}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('ChatSettings', {
+                  conversationId: route.params.conversationId,
+                  title: route.params.title,
+                  originalName: route.params.originalName,
+                  friendId: route.params.userId,
+                })}
+                style={{ padding: 8, marginRight: -4 }}
+              >
+                {Icons.menu(IconSize.lg, colors.text.inverse)}
+              </TouchableOpacity>
+            </View>
+          ),
         })}
       />
       <Stack.Screen
@@ -103,7 +131,7 @@ const RootStackNavigator: React.FC = () => {
                   >
                     {Icons.back(IconSize.lg, colors.text.inverse)}
                   </TouchableOpacity>
-                  <Text style={{ ...typography.h3, color: colors.text.inverse }}>
+                  <Text style={{ ...typography.h3, color: colors.text.inverse, flex: 1, marginLeft: 0 }}>
                     {route.params.title}
                   </Text>
                 </View>
@@ -120,7 +148,10 @@ const RootStackNavigator: React.FC = () => {
 
                   <TouchableOpacity
                     onPress={() =>
-                      navigation.navigate('GroupDetail', { groupId: route.params.groupId })
+                      navigation.navigate('MessageSearch', {
+                        conversationId: route.params.groupId,
+                        title: route.params.title,
+                      })
                     }
                     style={{ padding: 8, marginLeft: 8 }}
                   >
@@ -131,7 +162,7 @@ const RootStackNavigator: React.FC = () => {
                     onPress={() =>
                       navigation.navigate('GroupDetail', { groupId: route.params.groupId })
                     }
-                    style={{ padding: 8, marginLeft: 8, marginRight: -8 }}
+                    style={{ padding: 8, marginRight: -4 }}
                   >
                     {Icons.menu(IconSize.lg, colors.text.inverse)}
                   </TouchableOpacity>
@@ -265,6 +296,30 @@ const RootStackNavigator: React.FC = () => {
       <Stack.Screen
         name="TransferOwner"
         component={TransferOwnerScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="ChatSettings"
+        component={ChatSettingsScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="MessageSearch"
+        component={MessageSearchScreen}
+        options={{
+          headerShown: false,
+          animation: 'fade',
+        }}
+      />
+      <Stack.Screen
+        name="ChangePassword"
+        component={ChangePasswordScreen}
         options={{
           headerShown: false,
           animation: 'slide_from_right',

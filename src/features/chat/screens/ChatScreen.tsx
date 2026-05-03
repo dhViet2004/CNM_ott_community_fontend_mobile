@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   FlatList,
@@ -8,12 +8,18 @@ import {
   Text,
   Alert,
   RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+  StatusBar,
+  ImageBackground,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize, SearchBar } from '@components/common';
 import { MessageListItem } from '@features/chat/components';
-import { useAppSelector, useAppDispatch } from '@store/hooks';
+import { shallowEqual } from 'react-redux';
+import { useAppDispatch, useAppSelector } from '@store/hooks';
 import { setFriends } from '@store/slices/chatSlice';
 import { setMyGroups } from '@store/slices/groupsSlice';
 import { friendsApi, groupsApi } from '@api/endpoints';
@@ -25,6 +31,7 @@ interface ChatConversation {
   id: string;
   type: 'single' | 'group';
   name: string;
+  originalName?: string;
   avatar?: string;
   lastMessage: string;
   time: string;
@@ -36,6 +43,8 @@ interface ChatConversation {
   groupId?: string;
 }
 
+const EMPTY_ARRAY: any[] = [];
+
 const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
@@ -43,15 +52,15 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const friends = useAppSelector((state) => state.chat.friends);
-  const onlineUsers = useAppSelector((state) => state.chat.onlineUsers);
+  const friends = useAppSelector((state) => state.chat.friends, shallowEqual);
+  const onlineUsers = useAppSelector((state) => state.chat.onlineUsers, shallowEqual);
   const currentUserId = useAppSelector((state) => state.auth.user?.userId);
   
   // Get groups from groupsSlice
-  const groups = useAppSelector((state) => state.groups.myGroups);
+  const groups = useAppSelector((state) => state.groups.myGroups, shallowEqual);
 
   // Build DM conversations from friends list
-  const dmConversations: ChatConversation[] = friends.map((friend) => {
+  const dmConversations: ChatConversation[] = useMemo(() => friends.map((friend) => {
     const friendId = friend.friend_id || friend.userId || '';
     const myId = currentUserId || '';
     const sortedIds = [myId, friendId].sort();
@@ -59,6 +68,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
       id: `dm:${sortedIds.join(':')}`,
       type: 'single' as const,
       name: friend.display_name || friend.friend_display_name || '',
+      originalName: friend.friend_original_name || friend.display_name || '',
       avatar: friend.avatar_url || friend.friend_avatar_url || undefined,
       lastMessage: friend.status || '',
       time: friend.friends_since || '',
@@ -68,10 +78,10 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
       isOnline: !!onlineUsers[friendId],
       friendId,
     };
-  });
+  }), [friends, onlineUsers, currentUserId]);
 
   // Build group conversations from groups list
-  const groupConversations: ChatConversation[] = groups.map((group) => ({
+  const groupConversations: ChatConversation[] = useMemo(() => groups.map((group) => ({
     id: `group:${group.groupId}`,
     type: 'group' as const,
     name: group.name || '',
@@ -82,16 +92,30 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     isPinned: false,
     isMuted: false,
     groupId: group.groupId,
-  }));
+  })), [groups]);
 
   // Combine DM and group conversations
-  const allConversations = [...dmConversations, ...groupConversations];
+  const allConversations = useMemo(() => [...dmConversations, ...groupConversations], [dmConversations, groupConversations]);
 
   const loadFriends = useCallback(async () => {
     setIsLoading(true);
     try {
       const list = await friendsApi.getFriends().catch(() => []);
       dispatch(setFriends(list));
+      
+      // Update pinned messages for each conversation
+      list.forEach((f: any) => {
+        if (f.pinnedMessages && Array.isArray(f.pinnedMessages)) {
+          const friendId = f.friend_id || f.userId;
+          const myId = currentUserId || '';
+          const sortedIds = [myId, friendId].sort();
+          const conversationId = `dm:${sortedIds.join(':')}`;
+          dispatch({
+            type: 'chat/setPinnedMessages',
+            payload: { conversationId, pinnedMessages: f.pinnedMessages }
+          });
+        }
+      });
     } catch (err) {
       console.error('Failed to load friends:', err);
     } finally {
@@ -104,6 +128,17 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     try {
       const groupsList = await groupsApi.getMyGroups(currentUserId);
       dispatch(setMyGroups(groupsList));
+      
+      // Update pinned messages for each group
+      groupsList.forEach((g: any) => {
+        if (g.pinnedMessages && Array.isArray(g.pinnedMessages)) {
+          const conversationId = `group:${g.groupId}`;
+          dispatch({
+            type: 'chat/setPinnedMessages',
+            payload: { conversationId, pinnedMessages: g.pinnedMessages }
+          });
+        }
+      });
     } catch (err) {
       console.error('Failed to load groups:', err);
     }
@@ -143,6 +178,8 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
         navigation.navigate('Chat', {
           conversationId,
           title: conv.name || 'Chat',
+          originalName: conv.originalName,
+          userId: friendId,
         });
       } else {
         // Group conversation

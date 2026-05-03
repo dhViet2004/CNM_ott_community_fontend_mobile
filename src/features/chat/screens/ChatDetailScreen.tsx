@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Text, RefreshControl, Keyboard, StatusBar } from 'react-native';
+import { View, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Text, RefreshControl, Keyboard, StatusBar, ImageBackground, TouchableOpacity } from 'react-native';
+import { shallowEqual } from 'react-redux';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useMessages, MessageItem } from '@features/chat/hooks/useMessages';
 import { useTypingIndicator } from '@features/chat/hooks/useTypingIndicator';
-import { MessageBubble, TypingIndicator, ChatInput } from '@features/chat/components';
+import { MessageBubble, TypingIndicator, ChatInput, PinnedHeader } from '@features/chat/components';
 import { socketActions } from '@api/socket';
-import { messageApi } from '@api/endpoints';
+import { messageApi, friendsApi } from '@api/endpoints';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { confirmPendingMessage, failPendingMessage, setMessageFailed } from '@store/slices/chatSlice';
 import { colors, spacing, typography } from '@theme';
@@ -13,11 +14,90 @@ import { Alert } from 'react-native';
 import type { RootStackScreenProps } from '@navigation/types';
 
 type Props = RootStackScreenProps<'Chat'>;
+const EMPTY_ARRAY: any[] = [];
 
 const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const { conversationId, title } = route.params;
+  const focusedMessageIdFromParams = (route.params as any).focusedMessageId;
+  const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
+  
   const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
+  
+  const pinnedMessages = useAppSelector((state) => state.chat.pinnedMessages[conversationId] || EMPTY_ARRAY, shallowEqual);
+  const friends = useAppSelector((state) => state.chat.friends, shallowEqual);
+  const [chatBgUrl, setChatBgUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const friend = friends.find(f => (f.friend_id || f.userId || f.friendId) === route.params.userId);
+    const fId = friend?.friendshipId;
+    
+    if (fId) {
+      friendsApi.getChatBackground(fId).then(res => {
+        setChatBgUrl(res.chatBgUrl);
+      }).catch(console.error);
+
+      // Listen for real-time background updates
+      const listener = (data: { friendshipId: string; bgUrl: string | null }) => {
+        if (data.friendshipId === fId) {
+          setChatBgUrl(data.bgUrl);
+        }
+      };
+      
+      const socket = require('@api/socket').socket;
+      socket?.on('chat_background_updated', listener);
+      
+      return () => {
+        socket?.off('chat_background_updated', listener);
+      };
+    }
+  }, [conversationId, friends, route.params.userId]);
+
+  const handlePinMessage = useCallback((msg: MessageItem) => {
+    const pinData = {
+      id: msg.id,
+      content: msg.content,
+      contentType: msg.type,
+      senderId: msg.senderId,
+      senderName: msg.senderName || 'Người dùng',
+      createdAt: new Date().toISOString(),
+    };
+
+    socketActions.pinMessage(conversationId, pinData, (res: any) => {
+      if (res.ok) {
+        Alert.alert('Thành công', 'Đã ghim tin nhắn');
+      } else {
+        Alert.alert('Lỗi', res.error || 'Không thể ghim tin nhắn');
+      }
+    });
+  }, [conversationId]);
+
+  const handleUnpinMessage = useCallback((messageId: string) => {
+    socketActions.unpinMessage(conversationId, messageId, (res: any) => {
+      if (res.ok) {
+        Alert.alert('Thành công', 'Đã bỏ ghim tin nhắn');
+      } else {
+        Alert.alert('Lỗi', res.error || 'Không thể bỏ ghim tin nhắn');
+      }
+    });
+  }, [conversationId]);
+
+  const handleNavigateToMessage = useCallback((messageId: string) => {
+    const index = messages.findIndex(m => String(m.id) === String(messageId));
+    if (index !== -1) {
+      setFocusedMessageId(String(messageId));
+      flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+      
+      setTimeout(() => {
+        setFocusedMessageId(null);
+      }, 3000);
+    } else {
+      // Nếu không tìm thấy, thử cuộn tới vị trí gần đúng hoặc thông báo
+      console.warn(`Message ${messageId} not found in current list of ${messages.length} messages`);
+      Alert.alert('Thông báo', 'Tin nhắn này hiện chưa được tải về, vui lòng cuộn lên để tìm lại');
+    }
+  }, [messages]);
+
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [inputText, setInputText] = useState('');
 
@@ -82,6 +162,24 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     // Không gọi lại socketActions.joinConversation đ ở đây vì useMessages hook đã gọi rồi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
+
+  useEffect(() => {
+    if (focusedMessageIdFromParams && messages.length > 0) {
+      const index = messages.findIndex(m => String(m.id) === String(focusedMessageIdFromParams));
+      if (index !== -1) {
+        setFocusedMessageId(String(focusedMessageIdFromParams));
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+        }, 500);
+
+        // Clear highlight after 3 seconds
+        const timer = setTimeout(() => {
+          setFocusedMessageId(null);
+        }, 3000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [focusedMessageIdFromParams, messages]);
 
   const handleSend = useCallback(
     async (text: string) => {
@@ -154,10 +252,33 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         isDeleted={item.isDeleted}
         isRevoked={item.isRevoked}
         defaultName={title}
-        onLongPress={() => {}}
+        isFocused={String(item.id) === focusedMessageId}
+        onLongPress={() => {
+          Alert.alert(
+            'Tùy chọn tin nhắn',
+            '',
+            [
+              { text: 'Trả lời', onPress: () => {} },
+              { text: 'Chuyển tiếp', onPress: () => {} },
+              { 
+                text: pinnedMessages.some((p: any) => String(p.id) === String(item.id)) ? 'Bỏ ghim' : 'Ghim tin nhắn', 
+                onPress: () => {
+                  if (pinnedMessages.some((p: any) => String(p.id) === String(item.id))) {
+                    handleUnpinMessage(String(item.id));
+                  } else {
+                    handlePinMessage(item);
+                  }
+                } 
+              },
+              { text: 'Thu hồi', onPress: () => {}, style: 'destructive' },
+              { text: 'Xóa', onPress: () => {}, style: 'destructive' },
+              { text: 'Hủy', style: 'cancel' },
+            ]
+          );
+        }}
       />
     ),
-    [title]
+    [title, focusedMessageId, pinnedMessages, handleUnpinMessage, handlePinMessage]
   );
 
   const keyExtractor = useCallback((item: MessageItem) => String(item.id), []);
@@ -184,71 +305,82 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [messages.length]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} translucent />
+      
+      <ImageBackground 
+        source={chatBgUrl ? { uri: chatBgUrl } : undefined} 
+        style={styles.backgroundImage}
+        imageStyle={{ opacity: 0.8 }}
       >
-        {/* Messages list */}
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={keyExtractor}
-          renderItem={renderMessage}
-          contentContainerStyle={[
-            styles.messagesList,
-            { paddingBottom: bottomPadding + spacing.md }
-          ]}
-          onContentSizeChange={handleContentSizeChange}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          onTouchStart={() => Keyboard.dismiss()}
-          ListHeaderComponent={
-            typingLabel ? (
-              <View style={styles.typingWrapper}>
-                <TypingIndicator label={typingLabel} />
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            <View key="list-empty">
-              {isLoading ? (
-                <View style={styles.loadingContainer}>
-                  <Text style={styles.loadingText}>Đang tải tin nhắn...</Text>
-                </View>
-              ) : (
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>Chưa có tin nhắn nào</Text>
-                  <Text style={styles.emptySubtext}>Gửi lời chào đầu tiên!</Text>
-                </View>
-              )}
-            </View>
-          }
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
-            />
-          }
-        />
-
-        {/* Input area - đảm bảo không bị che */}
-        <View style={[
-          styles.inputWrapper,
-          { paddingBottom: bottomPadding }
-        ]}>
-          <ChatInput
-            value={inputText}
-            onChangeText={onTextChange}
-            onSend={handleSend}
+        <KeyboardAvoidingView
+          style={styles.keyboardView}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
+          <PinnedHeader
+            pinnedMessages={pinnedMessages}
+            onUnpin={handleUnpinMessage}
+            onNavigateToMessage={handleNavigateToMessage}
           />
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={keyExtractor}
+            renderItem={renderMessage}
+            contentContainerStyle={[
+              styles.messagesList,
+              { paddingBottom: bottomPadding + spacing.md }
+            ]}
+            onContentSizeChange={handleContentSizeChange}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            onTouchStart={() => Keyboard.dismiss()}
+            ListHeaderComponent={
+              typingLabel ? (
+                <View style={styles.typingWrapper}>
+                  <TypingIndicator label={typingLabel} />
+                </View>
+              ) : null
+            }
+            ListEmptyComponent={
+              <View key="list-empty">
+                {isLoading ? (
+                  <View style={styles.loadingContainer}>
+                    <Text style={styles.loadingText}>Đang tải tin nhắn...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>Chưa có tin nhắn nào</Text>
+                    <Text style={styles.emptySubtext}>Gửi lời chào đầu tiên!</Text>
+                  </View>
+                )}
+              </View>
+            }
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.primary}
+                colors={[colors.primary]}
+              />
+            }
+          />
+
+          <View style={[
+            styles.inputWrapper,
+            { paddingBottom: bottomPadding }
+          ]}>
+            <ChatInput
+              value={inputText}
+              onChangeText={onTextChange}
+              onSend={handleSend}
+            />
+          </View>
+        </KeyboardAvoidingView>
+      </ImageBackground>
+    </View>
   );
 };
 
@@ -256,6 +388,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.chatBg,
+  },
+  backgroundImage: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
   },
   keyboardView: {
     flex: 1,

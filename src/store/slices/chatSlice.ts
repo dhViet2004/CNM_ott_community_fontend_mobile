@@ -88,6 +88,9 @@ interface ChatState {
 
   // Revoked messages
   revokedMessageIds: string[];
+
+  // Pinned messages
+  pinnedMessages: Record<string, any[]>;
 }
 
 const initialState: ChatState = {
@@ -106,6 +109,7 @@ const initialState: ChatState = {
   error: null,
   searchQuery: '',
   revokedMessageIds: [],
+  pinnedMessages: {},
 };
 
 // ─── Slice ───────────────────────────────────────────────────────────────────
@@ -446,6 +450,10 @@ const chatSlice = createSlice({
     clearChat(state) {
       return { ...initialState };
     },
+
+    setPinnedMessages(state, action: PayloadAction<{ conversationId: string; pinnedMessages: any[] }>) {
+      state.pinnedMessages[action.payload.conversationId] = action.payload.pinnedMessages;
+    },
   },
 });
 
@@ -481,6 +489,7 @@ export const {
   setSearchQuery,
   clearChatError,
   clearChat,
+  setPinnedMessages,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

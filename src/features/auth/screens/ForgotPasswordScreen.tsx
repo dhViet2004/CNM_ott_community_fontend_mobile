@@ -27,8 +27,11 @@ const ForgotPasswordScreen: React.FC<Props> = ({ navigation }) => {
   const [error, setError] = useState('');
 
   const handleSendOtp = useCallback(async () => {
-    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError('Vui lòng nhập email hợp lệ');
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const isPhone = /^\d{10,11}$/.test(email);
+    
+    if (!email.trim() || (!isEmail && !isPhone)) {
+      setError('Vui lòng nhập email hoặc số điện thoại hợp lệ');
       return;
     }
     setLoading(true);
@@ -75,9 +78,10 @@ const ForgotPasswordScreen: React.FC<Props> = ({ navigation }) => {
     setLoading(true);
     setError('');
     try {
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
       await userApi.resetPassword({
         identifier: email,
-        type: 'email',
+        type: isEmail ? 'email' : 'phone',
         otp,
         newPassword,
       });
@@ -105,20 +109,19 @@ const ForgotPasswordScreen: React.FC<Props> = ({ navigation }) => {
         <Text style={styles.title}>Quên mật khẩu</Text>
         <Text style={styles.subtitle}>
           {step === 'email'
-            ? 'Nhập email đã đăng ký để nhận mã OTP'
+            ? 'Nhập email hoặc số điện thoại đã đăng ký để nhận mã OTP'
             : step === 'otp'
-            ? 'Nhập mã OTP đã được gửi đến email'
+            ? 'Nhập mã OTP đã được gửi'
             : 'Nhập mật khẩu mới'}
         </Text>
 
         {step === 'email' && (
           <View style={styles.formSection}>
             <Input
-              label="Email"
-              placeholder="email@example.com"
+              label="Email hoặc Số điện thoại"
+              placeholder="Nhập email hoặc sđt"
               value={email}
               onChangeText={(text) => { setEmail(text); setError(''); }}
-              keyboardType="email-address"
               autoCapitalize="none"
               size="lg"
               containerStyle={styles.inputContainer}
