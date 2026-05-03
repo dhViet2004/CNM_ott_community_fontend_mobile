@@ -22,8 +22,10 @@ export interface FilePickerButtonProps {
    * @param url - URL của file đã upload (từ backend trả về)
    * @param name - Tên file gốc
    * @param size - Kích thước file (bytes)
+   * @param size - Kích thước file (bytes)
+   * @param messageData - Full message object returned from backend
    */
-  onUploadSuccess: (url: string, name: string, size: number) => void;
+  onUploadSuccess: (url: string, name: string, size: number, messageData?: any) => void;
 
   /**
    * Callback khi upload thất bại
@@ -50,6 +52,8 @@ export interface FilePickerButtonProps {
    * Channel/Group ID - cho group chat
    */
   channelId?: string;
+
+  groupId?: string;
 
   /**
    * Custom style cho nút
@@ -92,6 +96,7 @@ export const FilePickerButton: React.FC<FilePickerButtonProps> = ({
   senderId,
   receiverId,
   channelId,
+  groupId,
   style,
   iconSize = 24,
 }) => {
@@ -156,8 +161,14 @@ export const FilePickerButton: React.FC<FilePickerButtonProps> = ({
       if (channelId) {
         formData.append('channel_id', channelId);
       }
+      if (conversationId) {
+        formData.append('conversationId', conversationId);
+      }
+      if (groupId) {
+        formData.append('group_id', groupId);
+      }
 
-      console.log('[FilePicker] Uploading with channelId:', channelId, 'senderId:', senderId);
+      console.log('[FilePicker] Uploading with conversationId:', conversationId, 'senderId:', senderId);
 
       // Upload lên backend
       const response = await apiClient.post('/messages/file', formData, {
@@ -182,9 +193,10 @@ export const FilePickerButton: React.FC<FilePickerButtonProps> = ({
       }
 
       // Thành công - callback với URL, tên file, kích thước
+      // Thành công - callback với URL, tên file, kích thước, và message obj
       console.log('[FilePicker] Upload SUCCESS, URL:', fileUrl);
       setCurrentFile(null);
-      onUploadSuccess(fileUrl, fileInfo.name, fileInfo.size);
+      onUploadSuccess(fileUrl, fileInfo.name, fileInfo.size, messageData);
     } catch (error) {
       console.error('[FilePicker] Upload FAILED:', error);
       const errorMessage =

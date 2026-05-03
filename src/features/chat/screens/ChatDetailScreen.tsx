@@ -504,10 +504,25 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             conversationId={conversationId}
             senderId={currentUserId || undefined}
             receiverId={route.params.userId}
-            onUploadSuccess={async (url, name, size) => {
-              // FilePickerButton đã upload và tạo message qua backend rồi
-              // Backend broadcast qua socket, nên không cần gọi lại API
-              // Chỉ cần scroll xuống nếu ở cuối
+            onUploadSuccess={async (url, name, size, msgData) => {
+              if (msgData) {
+                dispatch(addMessage({
+                  id: String(msgData.id || msgData.messageId || Date.now()),
+                  conversationId: msgData.conversationId || conversationId,
+                  senderId: String(msgData.senderId || currentUserId),
+                  senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+                  sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+                  sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+                  type: (msgData.contentType || 'file') as any,
+                  content: msgData.content || name || url,
+                  file_url: msgData.file_url || msgData.attachments?.[0]?.url || url,
+                  file_name: msgData.file_name || name || null,
+                  file_size: msgData.file_size || size || null,
+                  timestamp: msgData.createdAt || msgData.created_at || new Date().toISOString(),
+                  status: 'sent',
+                }));
+              }
+
               if (isNearBottomRef.current) {
                 setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
               }

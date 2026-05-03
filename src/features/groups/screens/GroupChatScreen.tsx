@@ -32,8 +32,7 @@ import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import MessageBubble from '@features/chat/components/MessageBubble';
 import PinnedHeader from '@features/chat/components/PinnedHeader';
-import FilePickerButton from '@features/chat/components/FilePickerButton';
-import { MessageContextMenu } from '@features/chat/components';
+import { MessageContextMenu, ChatInput } from '@features/chat/components';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 import { getGroupMembers } from '../api';
 
@@ -339,52 +338,6 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  // Xử lý upload file cho group - nhận URL và gọi API tạo message
-  const handleFileUploadSuccess = useCallback(async (fileUrl: string, fileName: string, fileSize: number) => {
-    console.log('[GroupChat] File uploaded, creating message...');
-    
-    const tempId = `temp_${Date.now()}`;
-    const optimisticMsg: Message = {
-      id: tempId,
-      conversationId,
-      senderId: currentUserId || '',
-      senderName: currentUser?.display_name || 'Tôi',
-      senderAvatar: currentUser?.avatar_url ?? null,
-      sender_name: currentUser?.display_name || 'Tôi',
-      sender_avatar: currentUser?.avatar_url ?? null,
-      content: fileUrl, // URL file làm content
-      timestamp: new Date().toISOString(),
-      type: 'file',
-      status: 'sending',
-    };
-    dispatch(addMessage(optimisticMsg));
-
-    if (isNearBottomRef.current) {
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
-    }
-
-    try {
-      // Gọi API tạo message với file_url
-      const result = await messageApi.sendMessage(conversationId, fileUrl, currentUserId || '', 'file');
-      const realId = String(result.id ?? result.messageId ?? tempId);
-
-      dispatch(
-        confirmPendingMessage({
-          tempId,
-          realId,
-          conversationId,
-          senderId: String(result.senderId),
-          senderName: (result as any).senderDisplayName || (result as any).sender_name || currentUser?.display_name || 'Tôi',
-          senderAvatar: (result as any).senderAvatarUrl ?? (result as any).sender_avatar ?? null,
-          content: result.content ?? fileUrl,
-          type: 'file' as Message['type'],
-          file_url: fileUrl,
-        })
-      );
-    } catch {
-      dispatch(failPendingMessage(tempId));
-    }
-  }, [conversationId, currentUserId, currentUser, dispatch]);
 
   // ─── Context Menu callbacks (hoisted to top level — Rules of Hooks) ──────────
   const handleRecall = useCallback(() => {
@@ -658,31 +611,82 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           }
         />
         <View style={[styles.inputWrapper, { paddingBottom: bottomPadding }]}>
-          <View style={styles.inputBar}>
-            <FilePickerButton
-              onUploadSuccess={handleFileUploadSuccess}
-              senderId={currentUserId ? String(currentUserId) : undefined}
-              channelId={String(groupId)}
-              iconSize={22}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Nhập tin nhắn..."
-              placeholderTextColor={colors.text.placeholder}
-              value={inputText}
-              onChangeText={handleTextChange}
-              multiline
-            />
-            <TouchableOpacity
-              style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
-              onPress={handleSend}
-              disabled={!inputText.trim()}
-            >
-              <View style={styles.sendIconContainer}>
-                {Icons.send(IconSize.lg, inputText.trim() ? colors.text.inverse : colors.text.tertiary)}
-              </View>
-            </TouchableOpacity>
-          </View>
+          <ChatInput
+            value={inputText}
+            onChangeText={handleTextChange}
+            onSend={handleSend}
+            conversationId={conversationId}
+            senderId={currentUserId ? String(currentUserId) : undefined}
+            onUploadSuccess={async (url, name, size, msgData) => {
+              if (msgData) {
+                dispatch(addMessage({
+                  id: String(msgData.id || msgData.messageId || Date.now()),
+                  conversationId: msgData.conversationId || conversationId,
+                  senderId: String(msgData.senderId || currentUserId),
+                  senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+                  sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+                  sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+                  type: (msgData.contentType || 'file') as any,
+                  content: msgData.content || name || url,
+                  file_url: msgData.file_url || msgData.attachments?.[0]?.url || url,
+                  file_name: msgData.file_name || name || null,
+                  file_size: msgData.file_size || size || null,
+                  timestamp: msgData.createdAt || msgData.created_at || new Date().toISOString(),
+                  status: 'sent',
+                }));
+              }
+
+              if (isNearBottomRef.current) {
+                setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+              }
+            }}
+            onVoiceRecord={async (audioUri) => {
+              try {
+                const formData = new FormData();
+                const fileUri = audioUri;
+                const fileName = `voice_${Date.now()}.m4a`;
+
+                formData.append('file', {
+                  uri: fileUri,
+                  name: fileName,
+                  type: 'audio/m4a',
+                } as unknown as Blob);
+
+                if (currentUserId) {
+                  formData.append('sender_id', String(currentUserId));
+                }
+                
+                formData.append('group_id', String(groupId));
+                formData.append('conversationId', conversationId);
+
+                const sentMsg = await messageApi.sendFileMessage(conversationId, formData);
+                console.log('[GroupChat] Voice message sent successfully');
+
+                dispatch(addMessage({
+                  id: String(sentMsg.id || Date.now()),
+                  conversationId: sentMsg.conversationId || conversationId,
+                  senderId: String(sentMsg.senderId || currentUserId),
+                  senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+                  sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+                  sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+                  type: (sentMsg.contentType || 'voice') as any,
+                  content: sentMsg.content || '',
+                  file_url: sentMsg.file_url || sentMsg.attachments?.[0]?.url || null,
+                  file_name: sentMsg.file_name || null,
+                  file_size: sentMsg.file_size || null,
+                  timestamp: sentMsg.createdAt || sentMsg.created_at || new Date().toISOString(),
+                  status: 'sent',
+                }));
+
+                if (isNearBottomRef.current) {
+                  setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+                }
+              } catch (err) {
+                console.error('[GroupChat] Error sending voice message:', err);
+                Alert.alert('Lỗi', 'Không thể gửi tin nhắn thoại. Vui lòng thử lại.');
+              }
+            }}
+          />
         </View>
       </KeyboardAvoidingView>
 
