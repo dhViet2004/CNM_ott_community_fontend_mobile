@@ -6,6 +6,7 @@ import {
   confirmPendingMessage,
   failPendingMessage,
   setMessageFailed,
+  setMessageRevoked,
 } from '@store/slices/chatSlice';
 import { messageApi } from '@api/endpoints';
 import type { MessageItem } from './useMessages';
@@ -92,7 +93,7 @@ export const useOptimisticMessage = ({
       try {
         await messageApi.revokeMessage(String(messageId), conversationId);
         dispatch(
-          setMessageFailed({ conversationId, messageId }) as any
+          setMessageRevoked({ messageId, conversationId })
         );
       } catch {
         Alert.alert('Lỗi', 'Không thể thu hồi tin nhắn');

@@ -183,7 +183,8 @@ const chatSlice = createSlice({
         (m) => m.id === action.payload.id
       );
       if (!exists) {
-        state.messages[convId].push(action.payload);
+        // Replace the array with a new reference so shallowEqual selectors re-fire
+        state.messages[convId] = [...state.messages[convId], action.payload];
       }
 
       // Update conversation last message
@@ -340,6 +341,9 @@ const chatSlice = createSlice({
           }
           return m;
         });
+        console.log(`[ChatSlice] setMessageRevoked: messageId=${messageId} in conversationId=${conversationId}, found=${messages.some((m) => m.id === messageId)}`);
+      } else {
+        console.warn(`[ChatSlice] setMessageRevoked: no messages array for conversationId=${conversationId}`);
       }
     },
 
