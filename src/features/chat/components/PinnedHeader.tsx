@@ -32,6 +32,8 @@ interface PinnedMessage {
 interface PinnedHeaderProps {
   pinnedMessages: PinnedMessage[];
   currentUserId?: string;
+  isExpanded: boolean;
+  onToggle: (expanded: boolean) => void;
   onUnpin: (messageId: string) => void;
   onNavigateToMessage: (messageId: string) => void;
 }
@@ -39,18 +41,20 @@ interface PinnedHeaderProps {
 const PinnedHeader: React.FC<PinnedHeaderProps> = ({
   pinnedMessages,
   currentUserId,
+  isExpanded,
+  onToggle,
   onUnpin,
   onNavigateToMessage,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-
   if (pinnedMessages.length === 0) return null;
 
-  const latest = pinnedMessages[0];
+  // Newest pinned at top (assuming pinnedMessages is chronological)
+  const sortedPinned = [...pinnedMessages].reverse();
+  const latest = sortedPinned[0];
 
   const toggleExpand = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setIsExpanded((prev) => !prev);
+    onToggle(!isExpanded);
   };
 
   const handleNavigate = (msgId: string) => {
@@ -114,7 +118,7 @@ const PinnedHeader: React.FC<PinnedHeaderProps> = ({
               showsVerticalScrollIndicator={false}
               nestedScrollEnabled
             >
-              {pinnedMessages.map((msg) => {
+              {sortedPinned.map((msg) => {
                 const msgIsImage = msg.contentType === 'image' || msg.file_url;
                 const msgTitle = msgIsImage ? '[Hình ảnh]' : msg.content;
                 const msgSubtitle = msg.senderName

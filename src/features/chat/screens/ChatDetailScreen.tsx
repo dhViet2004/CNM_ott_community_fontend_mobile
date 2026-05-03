@@ -19,6 +19,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useMessages, MessageItem } from '@features/chat/hooks/useMessages';
 import { useTypingIndicator } from '@features/chat/hooks/useTypingIndicator';
 import { MessageBubble, TypingIndicator, ChatInput, PinnedHeader, MessageContextMenu } from '@features/chat/components';
+import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
 import { Icons, IconSize } from '@components/common';
 import { socketActions } from '@api/socket';
 import { messageApi, friendsApi } from '@api/endpoints';
@@ -64,6 +65,14 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const currentUser = useAppSelector((state) => state.auth?.user);
 
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+  const [isPinnedExpanded, setIsPinnedExpanded] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  const handleChatTouch = () => {
+    if (isPinnedExpanded) {
+      setIsPinnedExpanded(false);
+    }
+  };
 
   // Bottom padding — account for home indicator on iOS
   // When keyboard is visible, we don't need the bottom inset
@@ -397,6 +406,13 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         {/* Right: Phone, Video, Menu icons */}
         <View style={styles.headerRight}>
           <TouchableOpacity
+            onPress={() => setIsSearchOpen(true)}
+            style={styles.headerIconBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+          >
+            <Ionicons name="search" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => Alert.alert('Thông báo', 'Tính năng gọi thoại đang phát triển')}
             style={styles.headerIconBtn}
             hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
@@ -444,47 +460,51 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           <PinnedHeader
             pinnedMessages={pinnedMessages}
             currentUserId={currentUserId}
+            isExpanded={isPinnedExpanded}
+            onToggle={setIsPinnedExpanded}
             onUnpin={handleUnpinMessage}
             onNavigateToMessage={handleNavigateToMessage}
           />
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={keyExtractor}
-            renderItem={renderMessage}
-            inverted
-            contentContainerStyle={[
-              styles.messagesList,
-              { paddingBottom: bottomPadding + spacing.md },
-            ]}
-            onContentSizeChange={handleContentSizeChange}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-            keyboardDismissMode="on-drag"
-            keyboardShouldPersistTaps="handled"
-            ListEmptyComponent={
-              <View key="list-empty">
-                {isLoading ? (
-                  <View style={styles.stateContainer}>
-                    <Text style={styles.stateText}>Đang tải tin nhắn...</Text>
-                  </View>
-                ) : (
-                  <View style={styles.stateContainer}>
-                    <Text style={styles.stateText}>Chưa có tin nhắn nào</Text>
-                    <Text style={styles.stateSubtext}>Gửi lời chào đầu tiên!</Text>
-                  </View>
-                )}
-              </View>
-            }
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={handleRefresh}
-                tintColor={colors.primary}
-                colors={[colors.primary]}
-              />
-            }
-          />
+          <View style={{ flex: 1 }} onTouchStart={handleChatTouch}>
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={keyExtractor}
+              renderItem={renderMessage}
+              inverted
+              contentContainerStyle={[
+                styles.messagesList,
+                { paddingBottom: bottomPadding + spacing.md },
+              ]}
+              onContentSizeChange={handleContentSizeChange}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              keyboardDismissMode="on-drag"
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                <View key="list-empty">
+                  {isLoading ? (
+                    <View style={styles.stateContainer}>
+                      <Text style={styles.stateText}>Đang tải tin nhắn...</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.stateContainer}>
+                      <Text style={styles.stateText}>Chưa có tin nhắn nào</Text>
+                      <Text style={styles.stateSubtext}>Gửi lời chào đầu tiên!</Text>
+                    </View>
+                  )}
+                </View>
+              }
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={handleRefresh}
+                  tintColor={colors.primary}
+                  colors={[colors.primary]}
+                />
+              }
+            />
+          </View>
 
           {/* Typing indicator — placed outside FlatList to appear above input (not at top of list) */}
           {typingLabel ? (
@@ -693,6 +713,26 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               },
             ]
           );
+        }}
+      />
+      {/* ── Search Panel ── */}
+      <MessageSearchPanel
+        visible={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        conversationId={conversationId}
+        currentUserId={currentUserId || ''}
+        onResultClick={(item) => {
+          setIsSearchOpen(false);
+          if (String(item.conversationId) === String(conversationId)) {
+            handleNavigateToMessage(String(item.id));
+          } else {
+            // Navigate to the other conversation
+            navigation.replace('Chat', {
+              conversationId: item.conversationId,
+              title: item.senderDisplayName || 'Cuộc trò chuyện',
+              focusedMessageId: String(item.id),
+            });
+          }
         }}
       />
     </View>

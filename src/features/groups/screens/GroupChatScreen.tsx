@@ -32,6 +32,7 @@ import { Icons, IconSize } from '@components/common';
 import MessageBubble from '@features/chat/components/MessageBubble';
 import PinnedHeader from '@features/chat/components/PinnedHeader';
 import FilePickerButton from '@features/chat/components/FilePickerButton';
+import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
 import { MessageContextMenu } from '@features/chat/components';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 import { getGroupMembers } from '../api';
@@ -123,6 +124,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const selectedMessageRef = useRef<SelectedMessage>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Keep ref in sync with state — so callbacks always read latest value
   useEffect(() => {
@@ -510,13 +512,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
               {Icons.videocam(IconSize.lg, colors.text.inverse)}
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => {
-                const params: RootStackParamList['MessageSearch'] = {
-                  conversationId,
-                  title,
-                };
-                navigation.navigate('MessageSearch', params);
-              }}
+              onPress={() => setIsSearchOpen(true)}
               style={styles.headerIcon}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
@@ -626,6 +622,36 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         onReadText={() => Alert.alert('Đọc văn bản', 'Tính năng đang phát triển')}
         onDetails={handleDetails}
         onDelete={handleDelete}
+      />
+
+      {/* ── Search Panel ── */}
+      <MessageSearchPanel
+        visible={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        conversationId={conversationId}
+        currentUserId={currentUserId || ''}
+        onResultClick={(item) => {
+          setIsSearchOpen(false);
+          if (String(item.conversationId) === String(conversationId)) {
+            handleNavigateToMessage(String(item.id));
+          } else {
+            // Navigate to the other conversation (DM or Group)
+            // If it's a DM, conversationId starts with "dm:"
+            if (item.conversationId.startsWith('dm:')) {
+              navigation.replace('Chat', {
+                conversationId: item.conversationId,
+                title: item.senderDisplayName || 'Cuộc trò chuyện',
+                focusedMessageId: String(item.id),
+              });
+            } else {
+              navigation.replace('GroupChat', {
+                groupId: item.conversationId,
+                title: 'Nhóm', // fallback
+                focusedMessageId: String(item.id),
+              });
+            }
+          }
+        }}
       />
     </View>
   );
