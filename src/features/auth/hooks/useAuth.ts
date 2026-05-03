@@ -136,9 +136,13 @@ export const useAuth = () => {
         dispatch(registerFailure('Vui lòng nhập mật khẩu'));
         return { success: false, error: 'Vui lòng nhập mật khẩu' };
       }
-      if (params.password.length < 6) {
-        dispatch(registerFailure('Mật khẩu phải có ít nhất 6 ký tự'));
-        return { success: false, error: 'Mật khẩu phải có ít nhất 6 ký tự' };
+      if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}$/.test(params.password)) {
+        dispatch(
+          registerFailure(
+            'Mật khẩu phải có ít nhất 6 ký tự, bao gồm chữ hoa, chữ thường và số'
+          )
+        );
+        return { success: false, error: 'Mật khẩu không đủ độ mạnh' };
       }
       if (!params.phone.trim()) {
         dispatch(registerFailure('Vui lòng nhập số điện thoại'));

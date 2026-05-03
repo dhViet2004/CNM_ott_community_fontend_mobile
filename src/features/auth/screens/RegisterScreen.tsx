@@ -27,9 +27,23 @@ const RegisterScreen: React.FC<Props> = ({ navigation }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  const sanitizeUsername = (text: string) => {
+    // Chuyển thành chữ thường, bỏ dấu, bỏ khoảng trắng và ký tự đặc biệt
+    const sanitized = text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[đĐ]/g, 'd')
+      .replace(/[^a-z0-9]/g, '');
+    setUsername(sanitized);
+  };
+
   const handleRegister = useCallback(async () => {
+    if (!username || !displayName || !phoneNumber || !password) {
+      return;
+    }
     if (password !== confirmPassword) {
-      return; // useAuth handles this
+      return;
     }
     await register({
       username,
@@ -56,13 +70,14 @@ const RegisterScreen: React.FC<Props> = ({ navigation }) => {
       <View style={styles.formSection}>
         <Input
           label="Tên đăng nhập"
-          placeholder="3-30 ký tự, không dấu cách"
+          placeholder="Ví dụ: thiennguyen (không dấu)"
           value={username}
-          onChangeText={setUsername}
+          onChangeText={sanitizeUsername}
           autoCapitalize="none"
           autoCorrect={false}
           size="lg"
           containerStyle={styles.inputContainer}
+          error={authError?.toLowerCase().includes('tên đăng nhập') ? authError : undefined}
         />
 
         <Input
@@ -93,7 +108,7 @@ const RegisterScreen: React.FC<Props> = ({ navigation }) => {
           keyboardType="phone-pad"
           size="lg"
           containerStyle={styles.inputContainer}
-          error={authError ?? undefined}
+          error={authError?.toLowerCase().includes('số điện thoại') ? authError : undefined}
         />
 
         <Input
@@ -104,6 +119,7 @@ const RegisterScreen: React.FC<Props> = ({ navigation }) => {
           secureTextEntry={!showPassword}
           size="lg"
           containerStyle={styles.inputContainer}
+          error={authError?.toLowerCase().includes('mật khẩu') && !authError?.toLowerCase().includes('xác nhận') ? authError : undefined}
           rightIcon={
             <Text style={styles.showHideText}>
               {showPassword ? '🙈' : '👁'}
@@ -123,11 +139,13 @@ const RegisterScreen: React.FC<Props> = ({ navigation }) => {
           error={
             confirmPassword && password !== confirmPassword
               ? 'Mật khẩu xác nhận không khớp'
-              : authError ?? undefined
+              : authError?.toLowerCase().includes('xác nhận') ? authError : undefined
           }
         />
 
-        {error && !confirmPassword && (
+        {error && !authError?.toLowerCase().includes('số điện thoại') && 
+                  !authError?.toLowerCase().includes('mật khẩu') && 
+                  !authError?.toLowerCase().includes('tên đăng nhập') && (
           <Text style={styles.errorText}>{error}</Text>
         )}
 
