@@ -18,7 +18,7 @@ import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native';
 import { useMessages, MessageItem } from '@features/chat/hooks/useMessages';
 import { useTypingIndicator } from '@features/chat/hooks/useTypingIndicator';
-import { MessageBubble, TypingIndicator, ChatInput, PinnedHeader, MessageContextMenu } from '@features/chat/components';
+import { MessageBubble, TypingIndicator, ChatInput, PinnedHeader, MessageContextMenu, ForwardMessageModal } from '@features/chat/components';
 import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
 import { Icons, IconSize } from '@components/common';
 import { socketActions } from '@api/socket';
@@ -50,6 +50,10 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<SelectedMessage>(null);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [forwardMessageState, setForwardMessageState] = useState<{
+    messageId: string;
+    content: string;
+  } | null>(null);
 
   const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
@@ -621,7 +625,12 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           Alert.alert('Trả lời', 'Tính năng đang phát triển');
         }}
         onForward={() => {
-          Alert.alert('Chuyển tiếp', 'Tính năng đang phát triển');
+          if (!selectedMessage) return;
+          setSelectedMessage(null);
+          setForwardMessageState({
+            messageId: String(selectedMessage.id),
+            content: selectedMessage.content,
+          });
         }}
         onSave={() => {
           Alert.alert('Lưu', 'Tính năng đang phát triển');
@@ -768,6 +777,14 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             });
           }
         }}
+      />
+      {/* ── Forward Modal ── */}
+      <ForwardMessageModal
+        isOpen={forwardMessageState !== null}
+        onClose={() => setForwardMessageState(null)}
+        messageId={forwardMessageState?.messageId ?? ''}
+        messageContent={forwardMessageState?.content ?? ''}
+        sourceConversationId={conversationId}
       />
     </View>
   );
