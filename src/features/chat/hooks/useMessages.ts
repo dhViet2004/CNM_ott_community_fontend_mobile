@@ -19,6 +19,12 @@ interface MessageItem {
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
   isRevoked?: boolean;
+  readBy?: Array<{
+    userId: string;
+    readerName?: string;
+    readerAvatar?: string | null;
+    readAt?: string;
+  }>;
 }
 
 interface UseMessagesOptions {
@@ -77,6 +83,7 @@ export const useMessages = ({
         status: m.status || 'sent',
         isDeleted: m.is_revoked || m.isDeleted,
         isRevoked: m.is_revoked || m.isRevoked,
+        readBy: m.readBy,
       };
     });
   }, [rawMessages, currentUserId, conversationId]);

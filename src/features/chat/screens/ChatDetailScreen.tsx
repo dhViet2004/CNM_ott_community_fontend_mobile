@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { shallowEqual } from 'react-redux';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useMessages, MessageItem } from '@features/chat/hooks/useMessages';
 import { useTypingIndicator } from '@features/chat/hooks/useTypingIndicator';
 import { MessageBubble, TypingIndicator, ChatInput, PinnedHeader, MessageContextMenu } from '@features/chat/components';
@@ -138,15 +139,6 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const { typingLabel, handleTextChange } = useTypingIndicator({ conversationId });
 
-  // Auto-scroll when new message arrives while user is at bottom
-  useEffect(() => {
-    if (!isInitializedRef.current || messages.length === 0) return;
-    if (messages.length > prevMessagesLengthRef.current && isNearBottomRef.current) {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-    }
-    prevMessagesLengthRef.current = messages.length;
-  }, [messages.length]);
-
   useEffect(() => {
     const showSub = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
@@ -176,8 +168,90 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   useEffect(() => {
     loadMessages();
     isInitializedRef.current = false;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
+
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
+  const lastMarkedReadRef = useRef<{ messageId: string; timestamp: number } | null>(null);
+
+  const markAsRead = useCallback(() => {
+    const msgs = messagesRef.current;
+    if (!conversationId || msgs.length === 0) return;
+
+    const lastReceivedMessage = msgs.find((m) => !m.isMe);
+    if (!lastReceivedMessage) return;
+
+    const messageId = String(lastReceivedMessage.id);
+    const now = Date.now();
+    const THREE_SECONDS = 3000;
+    if (
+      lastMarkedReadRef.current &&
+      lastMarkedReadRef.current.messageId === messageId &&
+      now - lastMarkedReadRef.current.timestamp < THREE_SECONDS
+    ) {
+      return;
+    }
+
+    // Bỏ qua nếu tin nhắn này vốn đã được đánh dấu là "read" bởi mình
+    const isAlreadyReadByMe = lastReceivedMessage.readBy?.some(
+      (reader) => String(reader.userId) === String(currentUserId)
+    );
+    if (isAlreadyReadByMe || lastReceivedMessage.status === 'read') return;
+
+    lastMarkedReadRef.current = { messageId, timestamp: now };
+    console.log('[ChatDetailScreen] markAsRead → emitting mark_read:', { conversationId, messageId });
+    socketActions.markRead(conversationId, messageId);
+  }, [conversationId, currentUserId]);
+
+  const markAsReadRef = useRef(markAsRead);
+  markAsReadRef.current = markAsRead;
+
+  // Merged scroll handler: updates isNearBottomRef AND emits mark_read when at bottom
+  const handleScroll = useCallback((event: any) => {
+    const { layoutMeasurement, contentOffset } = event.nativeEvent;
+    const paddingFromTop = 100;
+    // With inverted=true: scrollOffset 0 = newest content visible at top of screen.
+    // User is at bottom when contentOffset.y <= paddingFromTop.
+    const isNear = contentOffset.y <= paddingFromTop;
+    isNearBottomRef.current = isNear;
+
+    if (isNear) {
+      markAsReadRef.current();
+    }
+  }, []);
+
+  // Merged effect: auto-scroll AND emit mark_read with 500ms debounce when new message arrives while at bottom
+  useEffect(() => {
+    if (!isInitializedRef.current || messages.length === 0) return;
+
+    // Chỉ chạy khi có tin nhắn mới thêm vào
+    if (messages.length > prevMessagesLengthRef.current) {
+      if (isNearBottomRef.current) {
+        // 1. Tự động cuộn xuống tin nhắn mới nhất
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+
+        // 2. Thêm một khoảng trễ nhỏ (500ms) để đợi UI cập nhật và Backend lưu xong tin nhắn
+        // Dùng markAsReadRef.current() thay vì markAsRead() để không bị lỗi Stale Closure
+        setTimeout(() => {
+          markAsReadRef.current();
+        }, 500);
+      }
+    }
+
+    // Cập nhật lại độ dài mảng tin nhắn
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages.length]);
+
+  // Emit mark_read when screen becomes focused and user is at bottom
+  useFocusEffect(
+    useCallback(() => {
+      // Đảm bảo màn hình đã load xong list thì mới báo đã xem
+      if (isNearBottomRef.current && isInitializedRef.current) {
+        markAsRead();
+      }
+    }, [markAsRead]) // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   useEffect(() => {
     if (focusedMessageIdFromParams && messages.length > 0) {
@@ -254,6 +328,8 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     (text: string) => {
       setInputText(text);
       handleTextChange(text);
+      // Gọi markAsRead khi người dùng đang gõ phím
+      markAsReadRef.current();
     },
     [handleTextChange]
   );
@@ -275,6 +351,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         isRevoked={item.isRevoked}
         defaultName={title}
         isFocused={String(item.id) === focusedMessageId}
+        readBy={item.readBy}
         onLongPress={(msg) => {
           setSelectedMessage(msg);
         }}
@@ -285,31 +362,14 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const keyExtractor = useCallback((item: MessageItem) => String(item.id), []);
 
-  // Inverted FlatList: scroll direction is reversed. "Near top" = auto-scroll to new messages.
-  const handleScroll = useCallback((event: any) => {
-    const { layoutMeasurement, contentOffset } = event.nativeEvent;
-    const paddingFromTop = 100;
-    // With inverted=true, scrollOffset 0 = bottom of real content (newest messages visible).
-    // User is "at bottom" when contentOffset.y <= paddingFromTop.
-    const isNear = contentOffset.y <= paddingFromTop;
-    isNearBottomRef.current = isNear;
-  }, []);
-
-  // Auto-scroll on new messages only when at bottom
-  useEffect(() => {
-    if (!isInitializedRef.current || messages.length === 0) return;
-    if (messages.length > prevMessagesLengthRef.current && isNearBottomRef.current) {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-    }
-    prevMessagesLengthRef.current = messages.length;
-  }, [messages.length]);
-
   // Initial scroll to bottom (inverted: offset 0 = bottom of content)
   const handleContentSizeChange = useCallback(() => {
     if (!isInitializedRef.current && messages.length > 0) {
       isInitializedRef.current = true;
       setTimeout(() => {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+        // Gửi sự kiện "đã xem" ngay khi load xong tin nhắn
+        markAsReadRef.current();
       }, 100);
     }
   }, [messages.length]);
@@ -401,13 +461,6 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             scrollEventThrottle={16}
             keyboardDismissMode="on-drag"
             keyboardShouldPersistTaps="handled"
-            ListFooterComponent={
-              typingLabel ? (
-                <View style={styles.typingWrapper}>
-                  <TypingIndicator label={typingLabel} />
-                </View>
-              ) : null
-            }
             ListEmptyComponent={
               <View key="list-empty">
                 {isLoading ? (
@@ -431,6 +484,13 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               />
             }
           />
+
+          {/* Typing indicator — placed outside FlatList to appear above input (not at top of list) */}
+          {typingLabel ? (
+            <View style={styles.typingWrapper}>
+              <TypingIndicator label={typingLabel} />
+            </View>
+          ) : null}
         </View>
 
         {/* Footer / Chat Input */}
@@ -438,6 +498,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           <ChatInput
             value={inputText}
             onChangeText={onTextChange}
+            onFocus={() => markAsReadRef.current()}
             onSend={handleSend}
             conversationId={conversationId}
             senderId={currentUserId || undefined}
