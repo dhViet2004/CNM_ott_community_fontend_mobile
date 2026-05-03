@@ -265,7 +265,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
               Tin nhắn đã được thu hồi
             </Text>
             <View style={[styles.bubbleFooter, isMe ? styles.bubbleFooterMe : styles.bubbleFooterOther]}>
-              <Text style={[styles.bubbleTime, isMe ? styles.timeMe : styles.timeOther]}>
+              <Text style={[styles.bubbleTime, { color: '#999' }]}>
                 {time}
               </Text>
             </View>
@@ -709,9 +709,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     shadowOpacity: 0,
     elevation: 0,
-    paddingHorizontal: 0,
     minWidth: 120,
   },
   revokedText: {
