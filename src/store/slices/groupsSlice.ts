@@ -317,7 +317,21 @@ const groupsSlice = createSlice({
         (g) => String(g.groupId) === String(action.payload.groupId)
       );
       if (!exists) {
-        state.myGroups.unshift(action.payload);
+        // Normalize field names từ backend (camelCase) sang interface (snake_case)
+        const raw = action.payload;
+        const normalized: Group = {
+          groupId: String(raw.groupId || raw.id || ''),
+          name: raw.name || '',
+          description: raw.description || '',
+          avatar_url: raw.avatar_url ?? raw.avatarUrl ?? null,
+          is_private: raw.is_private ?? false,
+          invite_code: raw.invite_code || raw.inviteCode || '',
+          member_count: raw.member_count ?? raw.memberCount ?? 0,
+          created_by: raw.created_by ?? raw.createdBy ?? '',
+          created_at: raw.created_at ?? raw.createdAt ?? new Date().toISOString(),
+          members: raw.members,
+        };
+        state.myGroups.unshift(normalized);
       }
     },
     updateGroup(state, action: PayloadAction<Group>) {
@@ -425,6 +439,136 @@ const groupsSlice = createSlice({
     },
     clearGroups(state) {
       return { ...initialState };
+    },
+
+    // ─── Socket Event Reducers ─────────────────────────────────────────────────
+    /** Nhiệm vụ 2: Thêm thành viên mới qua socket (dùng khi có group:members_added) */
+    socketAddMember(
+      state,
+      action: PayloadAction<{ groupId: string; member: any }>
+    ) {
+      const { groupId, member } = action.payload;
+      const gIdStr = String(groupId);
+
+      if (!state.groupMembers[gIdStr]) {
+        state.groupMembers[gIdStr] = [];
+      }
+      const exists = state.groupMembers[gIdStr].find(
+        (m) => String(m.userId) === String(member.userId || member.id)
+      );
+      if (!exists) {
+        state.groupMembers[gIdStr].push({
+          userId: String(member.userId || member.id || ''),
+          username: member.username || '',
+          display_name: member.display_name || member.displayName || member.username || '',
+          avatar_url: member.avatar_url ?? member.avatarUrl ?? null,
+          role: member.role || 'MEMBER',
+          joined_at: member.joined_at || member.joinedAt || new Date().toISOString(),
+        });
+      }
+
+      // Also add to selectedGroup if it matches
+      if (
+        state.selectedGroup &&
+        String(state.selectedGroup.groupId) === gIdStr
+      ) {
+        if (!state.selectedGroup.members) {
+          state.selectedGroup.members = [];
+        }
+        const existsInSelected = state.selectedGroup.members.find(
+          (m) => String(m.userId) === String(member.userId || member.id)
+        );
+        if (!existsInSelected) {
+          state.selectedGroup.members.push({
+            userId: String(member.userId || member.id || ''),
+            username: member.username || '',
+            display_name: member.display_name || member.displayName || member.username || '',
+            avatar_url: member.avatar_url ?? member.avatarUrl ?? null,
+            role: member.role || 'MEMBER',
+            joined_at: member.joined_at || member.joinedAt || new Date().toISOString(),
+          });
+        }
+      }
+    },
+
+    /** Nhiệm vụ 2: Xóa thành viên qua socket (dùng khi có group:member_removed hoặc group:member_left) */
+    socketRemoveMember(
+      state,
+      action: PayloadAction<{ groupId: string; userId: string }>
+    ) {
+      const { groupId, userId } = action.payload;
+      const gIdStr = String(groupId);
+
+      if (state.groupMembers[gIdStr]) {
+        state.groupMembers[gIdStr] = state.groupMembers[gIdStr].filter(
+          (m) => String(m.userId) !== String(userId)
+        );
+      }
+
+      if (
+        state.selectedGroup &&
+        String(state.selectedGroup.groupId) === gIdStr &&
+        state.selectedGroup.members
+      ) {
+        state.selectedGroup.members = state.selectedGroup.members.filter(
+          (m) => String(m.userId) !== String(userId)
+        );
+      }
+    },
+
+    /** Nhiệm vụ 2: Cập nhật vai trò thành viên qua socket */
+    socketUpdateRole(
+      state,
+      action: PayloadAction<{ groupId: string; userId: string; newRole: string }>
+    ) {
+      const { groupId, userId, newRole } = action.payload;
+      const gIdStr = String(groupId);
+
+      if (state.groupMembers[gIdStr]) {
+        const member = state.groupMembers[gIdStr].find(
+          (m) => String(m.userId) === String(userId)
+        );
+        if (member) {
+          member.role = newRole as any;
+        }
+      }
+
+      if (
+        state.selectedGroup &&
+        String(state.selectedGroup.groupId) === gIdStr &&
+        state.selectedGroup.members
+      ) {
+        const member = state.selectedGroup.members.find(
+          (m) => String(m.userId) === String(userId)
+        );
+        if (member) {
+          member.role = newRole as any;
+        }
+      }
+    },
+
+    /** Nhiệm vụ 2: Reload members khi nhận socket event */
+    socketReloadMembers(
+      state,
+      action: PayloadAction<{ groupId: string; members: any[] }>
+    ) {
+      const { groupId, members } = action.payload;
+      const gIdStr = String(groupId);
+      state.groupMembers[gIdStr] = members.map((m: any) => ({
+        userId: String(m.userId || m.id || ''),
+        username: m.username || '',
+        display_name: m.display_name || m.displayName || m.username || '',
+        avatar_url: m.avatar_url ?? m.avatarUrl ?? null,
+        role: m.role || 'MEMBER',
+        joined_at: m.joined_at || m.joinedAt || null,
+      }));
+
+      if (
+        state.selectedGroup &&
+        String(state.selectedGroup.groupId) === gIdStr
+      ) {
+        state.selectedGroup.members = state.groupMembers[gIdStr];
+      }
     },
   },
   extraReducers: (builder) => {
@@ -706,6 +850,10 @@ export const {
   addMemberToGroup,
   removeMemberFromSelectedGroup,
   updateMemberRoleInGroup,
+  socketAddMember,
+  socketRemoveMember,
+  socketUpdateRole,
+  socketReloadMembers,
   setLoading,
   setError,
   clearError,

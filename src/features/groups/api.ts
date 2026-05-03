@@ -220,14 +220,25 @@ export async function addMembersToGroup(
 
 /**
  * Xóa thành viên khỏi nhóm
- * DELETE /groups/:groupId/members/:targetUserId
+ * DELETE /groups/:groupId/members/:userId
  */
 export async function removeMemberFromGroup(
   groupId: string | number,
-  targetUserId: string | number
+  targetUserId: string | number,
 ): Promise<any> {
+  const gId = String(groupId || '').trim();
+  const uId = String(targetUserId || '').trim();
+
+  if (!gId) {
+    throw new Error('groupId không được rỗng khi xóa thành viên');
+  }
+  if (!uId) {
+    throw new Error('targetUserId không được rỗng khi xóa thành viên');
+  }
+
+  console.log(`[removeMemberFromGroup] DELETE /groups/${gId}/members/${uId}`);
   const response = await apiClient.delete(
-    `/groups/${groupId}/members/${targetUserId}`
+    `/groups/${gId}/members/${uId}`,
   );
   return response.data;
 }
