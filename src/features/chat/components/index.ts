@@ -12,3 +12,4 @@ export { default as VoiceMessageBubble } from './VoiceMessageBubble';
 export { default as FilePickerButton } from './FilePickerButton';
 export { default as AddMenuModal } from './AddMenuModal';
 export { default as ForwardMessageModal } from './ForwardMessageModal';
+export * from './ImagePickerButton';
