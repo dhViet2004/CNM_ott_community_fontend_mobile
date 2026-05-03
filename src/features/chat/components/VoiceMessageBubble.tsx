@@ -82,6 +82,7 @@ const VoiceMessageBubble: React.FC<VoiceMessageBubbleProps> = ({
 
     setPlaybackStatus('loading');
     setError(null);
+    console.log('[VoiceMessageBubble] Loading audio from URI:', uri);
 
     try {
       await setupAudioMode();

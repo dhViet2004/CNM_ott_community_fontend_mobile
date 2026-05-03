@@ -149,7 +149,7 @@ export const connectSocket = (token: string) => {
       sender_avatar: senderAvatar,
       type: (message.contentType ?? 'text') as 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'emoji',
       content: message.content ?? '',
-      file_url: message.file_url ?? null,
+      file_url: message.file_url ?? (message as any).attachments?.[0]?.url ?? null,
       file_name: message.file_name ?? null,
       file_size: message.file_size ?? null,
       timestamp: message.createdAt ?? (message as any).created_at ?? '',

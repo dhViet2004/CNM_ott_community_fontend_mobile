@@ -22,7 +22,7 @@ import { Icons, IconSize } from '@components/common';
 import { socketActions } from '@api/socket';
 import { messageApi, friendsApi } from '@api/endpoints';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
-import { confirmPendingMessage, failPendingMessage, setMessageFailed, setMessageRevoked, updateMessage } from '@store/slices/chatSlice';
+import { confirmPendingMessage, failPendingMessage, setMessageFailed, setMessageRevoked, updateMessage, addMessage } from '@store/slices/chatSlice';
 import { colors, spacing } from '@theme';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 
@@ -447,7 +447,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               // Backend broadcast qua socket, nên không cần gọi lại API
               // Chỉ cần scroll xuống nếu ở cuối
               if (isNearBottomRef.current) {
-                setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+                setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
               }
             }}
             onVoiceRecord={async (audioUri) => {
@@ -460,7 +460,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
                 formData.append('file', {
                   uri: fileUri,
                   name: fileName,
-                  type: 'audio/mp4',
+                  type: 'audio/m4a',
                 } as unknown as Blob);
 
                 if (currentUserId) {
@@ -480,12 +480,28 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
                   formData.append('conversationId', conversationId);
                 }
 
-                await messageApi.sendFileMessage(conversationId, formData);
+                const sentMsg = await messageApi.sendFileMessage(conversationId, formData);
                 console.log('[ChatDetail] Voice message sent successfully');
 
-                // Scroll xuống nếu ở cuối
+                dispatch(addMessage({
+                  id: String(sentMsg.id || Date.now()),
+                  conversationId: sentMsg.conversationId || conversationId,
+                  senderId: String(sentMsg.senderId || currentUserId),
+                  senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+                  sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+                  sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+                  type: (sentMsg.contentType || 'voice') as any,
+                  content: sentMsg.content || '',
+                  file_url: sentMsg.file_url || sentMsg.attachments?.[0]?.url || null,
+                  file_name: sentMsg.file_name || null,
+                  file_size: sentMsg.file_size || null,
+                  timestamp: sentMsg.createdAt || sentMsg.created_at || new Date().toISOString(),
+                  status: 'sent',
+                }));
+
+                // Scroll xuống nếu ở cuối (offset 0 cho list inverted)
                 if (isNearBottomRef.current) {
-                  setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+                  setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
                 }
               } catch (err) {
                 console.error('[ChatDetail] Error sending voice message:', err);
