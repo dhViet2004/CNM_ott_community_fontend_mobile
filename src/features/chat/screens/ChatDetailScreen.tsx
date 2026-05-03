@@ -63,8 +63,13 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const currentUserId = useAppSelector((state) => state.auth?.user?.userId);
   const currentUser = useAppSelector((state) => state.auth?.user);
 
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+
   // Bottom padding — account for home indicator on iOS
-  const bottomPadding = Platform.OS === 'ios'
+  // When keyboard is visible, we don't need the bottom inset
+  const bottomPadding = isKeyboardVisible
+    ? 0
+    : Platform.OS === 'ios'
     ? insets.bottom
     : Math.max(insets.bottom, spacing.md);
 
@@ -135,12 +140,23 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const { typingLabel, handleTextChange } = useTypingIndicator({ conversationId });
 
   useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', () => {
-      if (isNearBottomRef.current) {
-        setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => {
+        setKeyboardVisible(true);
+        if (isNearBottomRef.current) {
+          setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+        }
       }
-    });
-    return () => showSub.remove();
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardVisible(false)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
   }, []);
 
   const handleRefresh = useCallback(async () => {
@@ -493,6 +509,48 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               // Chỉ cần scroll xuống nếu ở cuối
               if (isNearBottomRef.current) {
                 setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+              }
+            }}
+            onVoiceRecord={async (audioUri) => {
+              // Upload voice file lên backend - giống web
+              try {
+                const formData = new FormData();
+                const fileUri = audioUri;
+                const fileName = `voice_${Date.now()}.m4a`;
+
+                formData.append('file', {
+                  uri: fileUri,
+                  name: fileName,
+                  type: 'audio/mp4',
+                } as unknown as Blob);
+
+                if (currentUserId) {
+                  formData.append('sender_id', String(currentUserId));
+                }
+                
+                let actualReceiverId = route.params.userId;
+                if (!actualReceiverId && conversationId?.startsWith('dm:')) {
+                  const parts = conversationId.replace('dm:', '').split(':');
+                  actualReceiverId = parts.find(id => String(id) !== String(currentUserId));
+                }
+                
+                if (actualReceiverId) {
+                  formData.append('receiver_id', String(actualReceiverId));
+                }
+                if (conversationId) {
+                  formData.append('conversationId', conversationId);
+                }
+
+                await messageApi.sendFileMessage(conversationId, formData);
+                console.log('[ChatDetail] Voice message sent successfully');
+
+                // Scroll xuống nếu ở cuối
+                if (isNearBottomRef.current) {
+                  setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+                }
+              } catch (err) {
+                console.error('[ChatDetail] Error sending voice message:', err);
+                Alert.alert('Lỗi', 'Không thể gửi tin nhắn thoại. Vui lòng thử lại.');
               }
             }}
           />

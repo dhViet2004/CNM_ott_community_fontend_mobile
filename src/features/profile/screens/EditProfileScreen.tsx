@@ -16,7 +16,6 @@ const EditProfileScreen: React.FC<Props> = ({ navigation }) => {
   const currentUser = useAppSelector((state) => state.auth.user);
 
   const [name, setName] = useState(currentUser?.display_name ?? '');
-  const [bio, setBio] = useState(currentUser?.status ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -31,9 +30,6 @@ const EditProfileScreen: React.FC<Props> = ({ navigation }) => {
       const updated = await userApi.updateProfile({
         display_name: name.trim(),
       });
-      if (bio !== currentUser?.status) {
-        // Status update would need a separate field in backend
-      }
       dispatch(updateUser(updated));
       Alert.alert('Thành công', 'Hồ sơ đã được cập nhật', [
         { text: 'OK', onPress: () => navigation.goBack() },
@@ -54,20 +50,12 @@ const EditProfileScreen: React.FC<Props> = ({ navigation }) => {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
         keyboardShouldPersistTaps="handled"
       >
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
         <Input
           label="Tên hiển thị"
           value={name}
           onChangeText={setName}
           size="lg"
-          containerStyle={styles.inputContainer}
-        />
-        <Input
-          label="Bio"
-          value={bio}
-          onChangeText={setBio}
-          placeholder="Giới thiệu bản thân"
-          size="lg"
-          multiline
           containerStyle={styles.inputContainer}
         />
         <Button
@@ -101,6 +89,12 @@ const styles = StyleSheet.create({
   content: { padding: spacing.screenPadding },
   inputContainer: { marginBottom: spacing.lg },
   saveButton: { marginBottom: spacing.md },
+  errorText: {
+    color: colors.status.error,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+    ...typography.bodySmall,
+  },
 });
 
 export default EditProfileScreen;

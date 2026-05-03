@@ -144,47 +144,6 @@ const UserInfo: React.FC<UserInfoProps> = ({
       {/* Tên người dùng */}
       <Text style={styles.userName}>{user.fullName}</Text>
 
-      {/* Tiểu sử / Trạng thái */}
-      <View style={styles.bioSection}>
-        {isEditingStatus ? (
-          <View style={styles.statusEditContainer}>
-            <TextInput
-              style={styles.statusInput}
-              placeholder="Cập nhật trạng thái..."
-              placeholderTextColor={colors.text.placeholder}
-              value={statusText}
-              onChangeText={setStatusText}
-              autoFocus
-              multiline
-              maxLength={120}
-            />
-            <View style={styles.statusActions}>
-              <TouchableOpacity
-                onPress={() => setIsEditingStatus(false)}
-                style={styles.statusCancelBtn}
-              >
-                <Text style={styles.statusCancelText}>Hủy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleSaveStatus}
-                style={styles.statusSaveBtn}
-              >
-                <Text style={styles.statusSaveText}>Lưu</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <TouchableOpacity
-            onPress={isMyProfile ? () => setIsEditingStatus(true) : undefined}
-            activeOpacity={isMyProfile ? 0.7 : 1}
-          >
-            <Text style={styles.bioText}>
-              {user.bio || (isMyProfile ? 'Nhấn để cập nhật trạng thái' : '')}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
       {/* Thống kê (bạn bè, ảnh, bài viết) */}
       <View style={styles.statsRow}>
         <TouchableOpacity style={styles.statItem} activeOpacity={0.7}>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { shallowEqual } from 'react-redux';
 import { useAppSelector } from '@store/hooks';
 import { socketActions } from '@api/socket';
 
@@ -25,7 +26,7 @@ export const useTypingIndicator = ({
   const typingUsers = useAppSelector((state) => {
     const users = state.chat?.typingUsers?.[conversationId] || [];
     return users;
-  });
+  }, shallowEqual);
   const currentUserId = useAppSelector((state) => state.auth?.user?.userId);
 
   const handleTextChange = useCallback(

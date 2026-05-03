@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import { FilePickerButton } from './FilePickerButton';
+import { VoiceRecorderButton } from './VoiceRecorderButton';
 
 interface ChatInputProps {
   value: string;
@@ -15,6 +16,11 @@ interface ChatInputProps {
    * Nhận (url, name, size) sau khi file được upload
    */
   onUploadSuccess?: (url: string, name: string, size: number) => void;
+  /**
+   * Callback khi ghi âm hoàn tất
+   * Nhận audioUri sau khi ghi âm xong
+   */
+  onVoiceRecord?: (audioUri: string) => void;
   /**
    * Conversation ID để gửi file message
    */
@@ -39,16 +45,16 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onSend,
   placeholder = 'Nhập tin nhắn...',
   onUploadSuccess,
+  onVoiceRecord,
   conversationId,
   senderId,
   receiverId,
   onFocus,
 }) => {
-  const insets = useSafeAreaInsets();
   const canSend = value.trim().length > 0;
 
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+    <View style={styles.container}>
       <View style={styles.inputBar}>
         {/* Left: File picker button */}
         <View style={styles.attachBtnContainer}>
@@ -85,22 +91,37 @@ const ChatInput: React.FC<ChatInputProps> = ({
           textAlignVertical="center"
         />
 
-        {/* Right: Send button */}
-        <TouchableOpacity
-          style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
-          onPress={() => {
-            if (canSend) onSend(value.trim());
-          }}
-          disabled={!canSend}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <View style={styles.sendIconContainer}>
-            {Icons.send(
-              IconSize.lg,
-              canSend ? colors.text.inverse : colors.text.tertiary
-            )}
-          </View>
-        </TouchableOpacity>
+        {/* Right: Actions / Send button */}
+        <View style={styles.rightActions}>
+          {!canSend ? (
+            <View style={styles.actionIconsRow}>
+              <TouchableOpacity style={styles.actionIconBtn}>
+                <Ionicons name="ellipsis-horizontal" size={24} color={colors.text.secondary} />
+              </TouchableOpacity>
+              <VoiceRecorderButton
+                onRecordingComplete={(audioUri) => {
+                  onVoiceRecord?.(audioUri);
+                }}
+                iconSize={24}
+              />
+              <TouchableOpacity style={styles.actionIconBtn}>
+                <Ionicons name="image-outline" size={24} color={colors.text.secondary} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.sendBtn}
+              onPress={() => {
+                if (canSend) onSend(value.trim());
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <View style={styles.sendIconContainer}>
+                {Icons.send(IconSize.lg, colors.text.inverse)}
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -151,14 +172,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: spacing.sm,
-  },
-  sendBtnDisabled: {
-    backgroundColor: colors.background.tertiary,
   },
   sendIconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  rightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: spacing.xs,
+  },
+  actionIconsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionIconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 2,
   },
 });
 
