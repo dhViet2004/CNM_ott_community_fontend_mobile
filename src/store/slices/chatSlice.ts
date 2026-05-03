@@ -27,6 +27,13 @@ export interface Message {
   isDeleted?: boolean;
   isRevoked?: boolean;
   is_revoked?: boolean;
+  // Read receipts: danh sách người đã đọc tin nhắn này
+  readBy?: Array<{
+    userId: string;
+    readerName?: string;
+    readerAvatar?: string | null;
+    readAt?: string;
+  }>;
 }
 
 export interface Conversation {
@@ -376,6 +383,38 @@ const chatSlice = createSlice({
       }
     },
 
+    addReaderToMessage(
+      state,
+      action: PayloadAction<{
+        conversationId: string;
+        messageId: string;
+        reader: { userId: string; readerName?: string; readerAvatar?: string | null; readAt?: string };
+      }>
+    ) {
+      const { conversationId, messageId, reader } = action.payload;
+      const messages = state.messages[conversationId];
+      if (messages) {
+        const msgIndex = messages.findIndex((m) => String(m.id) === String(messageId));
+        if (msgIndex !== -1) {
+          const msg = messages[msgIndex];
+          // Avoid duplicate reader
+          if (!msg.readBy) {
+            msg.readBy = [];
+          }
+          const alreadyExists = msg.readBy.some((r) => String(r.userId) === String(reader.userId));
+          if (!alreadyExists) {
+            msg.readBy.push(reader);
+          }
+          // Update status to 'read' if not already
+          if (msg.status !== 'read') {
+            msg.status = 'read';
+          }
+          state.messages[conversationId] = [...messages];
+          state.messages = { ...state.messages };
+        }
+      }
+    },
+
     // ─── Friends ─────────────────────────────────────────────────────────────
     setFriends(state, action: PayloadAction<FriendItem[]>) {
       state.friends = action.payload;
@@ -525,6 +564,7 @@ export const {
   clearChatError,
   clearChat,
   setPinnedMessages,
+  addReaderToMessage,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

@@ -11,7 +11,7 @@ import {
 import { colors, spacing, typography, shadows } from '@theme';
 import { Icons } from '@components/common';
 
-type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+type AvatarSize = 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 type AvatarVariant = 'user' | 'group' | 'system_folder' | 'system_document';
 
 interface AvatarProps {
@@ -43,6 +43,7 @@ const Avatar: React.FC<AvatarProps> = ({
 }) => {
   const getSizeValue = (): number => {
     switch (size) {
+      case 'xxs': return 16;
       case 'xs': return 24;
       case 'sm': return spacing.iconSize.avatarSm;
       case 'lg': return spacing.iconSize.avatarLg;
@@ -53,6 +54,7 @@ const Avatar: React.FC<AvatarProps> = ({
 
   const getFontSize = (): number => {
     switch (size) {
+      case 'xxs': return 8;
       case 'xs': return 10;
       case 'sm': return 12;
       case 'lg': return 24;

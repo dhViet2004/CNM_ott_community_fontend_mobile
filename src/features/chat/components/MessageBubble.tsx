@@ -140,6 +140,13 @@ interface MessageBubbleProps {
   callDuration?: string;
   isTimeDivider?: boolean;
   timeDividerLabel?: string;
+  // Read receipts: danh sách người đã đọc tin nhắn này (chỉ hiển thị cho tin nhắn của mình)
+  readBy?: Array<{
+    userId: string;
+    readerName?: string;
+    readerAvatar?: string | null;
+    readAt?: string;
+  }>;
 }
 
 const CheckIcon: React.FC<{ filled?: boolean }> = ({ filled }) =>
@@ -178,6 +185,64 @@ const StatusIcons: React.FC<{ status: string }> = ({ status }) => {
   }
 };
 
+// ─── Read By Avatars ─────────────────────────────────────────────────────────
+interface ReadByAvatarsProps {
+  readers: Array<{
+    userId: string;
+    readerName?: string;
+    readerAvatar?: string | null;
+    readAt?: string;
+  }>;
+  isMe?: boolean;
+}
+
+const ReadByAvatars: React.FC<ReadByAvatarsProps> = ({ readers, isMe }) => {
+  if (!readers || readers.length === 0) return null;
+
+  // Show max 3 avatars
+  const visibleReaders = readers.slice(0, 3);
+  const overflowCount = readers.length - 3;
+
+  const containerStyle = isMe ? styles.readByContainerMe : styles.readByContainer;
+
+  return (
+    <View style={containerStyle}>
+      <View style={styles.readByAvatarsRow}>
+        {visibleReaders.map((reader, index) => (
+          <View
+            key={reader.userId}
+            style={[
+              styles.readByAvatarWrapper,
+              { marginLeft: index > 0 ? -8 : 0, zIndex: 3 - index },
+            ]}
+          >
+            <Avatar
+              uri={reader.readerAvatar ?? undefined}
+              name={reader.readerName || 'U'}
+              size="xxs"
+            />
+          </View>
+        ))}
+        {overflowCount > 0 && (
+          <View style={[styles.readByOverflow, { marginLeft: overflowCount > 0 && visibleReaders.length > 0 ? -8 : 0 }]}>
+            <Text style={styles.readByOverflowText}>+{overflowCount}</Text>
+          </View>
+        )}
+      </View>
+      {readers.length === 1 && readers[0].readerName && (
+        <Text style={[styles.readBySingleName, isMe && styles.readBySingleNameMe]} numberOfLines={1}>
+          {readers[0].readerName}
+        </Text>
+      )}
+      {readers.length > 1 && (
+        <Text style={[styles.readByMultiName, isMe && styles.readByMultiNameMe]} numberOfLines={1}>
+          {readers.length} người đã xem
+        </Text>
+      )}
+    </View>
+  );
+};
+
 const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   id,
   senderName,
@@ -197,6 +262,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   callDuration,
   isTimeDivider,
   timeDividerLabel,
+  readBy,
 }) => {
   // Time divider inline component
   if (isTimeDivider) {
@@ -362,6 +428,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     </View>
   );
 
+  // ── ReadBy Avatars row (chỉ hiển thị cho tin nhắn của mình và có người đã đọc) ──
+  const renderReadByAvatars = () => {
+    if (!isMe || !readBy || readBy.length === 0) return null;
+    return <ReadByAvatars readers={readBy} isMe={isMe} />;
+  };
+
   return (
     <TouchableOpacity
       onLongPress={handleLongPress}
@@ -395,6 +467,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
           {renderBubbleContent()}
           {renderFooter()}
         </View>
+        {/* ReadBy avatars row bên dưới bong bóng (chỉ tin nhắn của mình) */}
+        {renderReadByAvatars()}
       </View>
     </TouchableOpacity>
   );
@@ -408,7 +482,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     prev.isDeleted === next.isDeleted &&
     prev.isRevoked === next.isRevoked &&
     prev.isFocused === next.isFocused &&
-    prev.file_url === next.file_url
+    prev.file_url === next.file_url &&
+    prev.readBy?.length === next.readBy?.length
   );
 });
 
@@ -727,6 +802,65 @@ const styles = StyleSheet.create({
   statusDoubleCheck: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+
+  // ── ReadBy Avatars ─────────────────────────────────────────────────────
+  readByContainer: {
+    marginTop: 3,
+    alignItems: 'flex-start',
+  },
+  readByContainerMe: {
+    marginRight: 4,
+    alignItems: 'flex-end',
+  },
+  readByAvatarsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  readByAvatarWrapper: {
+    borderWidth: 1.5,
+    borderColor: '#FFF',
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  readByOverflow: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#E0E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFF',
+  },
+  readByOverflowText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#666',
+  },
+  readBySingleName: {
+    ...typography.caption,
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 2,
+    marginLeft: 4,
+  },
+  readBySingleNameMe: {
+    marginLeft: 0,
+    marginRight: 4,
+    textAlign: 'right',
+  },
+  readByMultiName: {
+    ...typography.caption,
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 2,
+    marginLeft: 4,
+  },
+  readByMultiNameMe: {
+    marginLeft: 0,
+    marginRight: 4,
+    textAlign: 'right',
   },
 
   // ── Revoked / Deleted ──────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import {
   setMessageRevoked,
   updateMessageStatus,
   addFriend as addFriendToChat,
+  addReaderToMessage,
 } from '@store/slices/chatSlice';
 import {
   addPendingRequest,
@@ -323,15 +324,32 @@ export const connectSocket = (token: string) => {
     readAt?: string;
   }) => {
     const currentUserId = store.getState().auth?.user?.userId;
+
     // Only update if this is a message sent by current user
     const messages = store.getState().chat?.messages?.[conversationId] || [];
     const message = messages.find((m: any) => m.id === messageId);
+
     if (message && String(message.senderId) === String(currentUserId)) {
+      // Update status to 'read'
       store.dispatch(updateMessageStatus({
         conversationId,
         messageId: String(messageId),
         status: 'read',
       }));
+
+      // Append reader to readBy array for avatar display
+      store.dispatch(addReaderToMessage({
+        conversationId,
+        messageId: String(messageId),
+        reader: {
+          userId: String(readerId),
+          readerName: readerName,
+          readerAvatar: readerAvatar ?? null,
+          readAt: readAt,
+        },
+      }));
+
+      console.log(`[Socket] message_read: reader=${readerId} read msg=${messageId} in conv=${conversationId}`);
     }
   });
 
@@ -498,8 +516,9 @@ export const socketActions = {
   },
 
   // Read receipts - backend uses mark_read
-  markRead: (conversationId: string, messageId: string) => {
-    socket?.emit('mark_read', { conversationId, messageId });
+  // Emits mark_read for the LATEST message in the conversation (marks all prior as read)
+  markRead: (conversationId: string, latestMessageId?: string) => {
+    socket?.emit('mark_read', { conversationId, messageId: latestMessageId });
   },
 
   // Live location - backend uses start_live_location, update_live_location, stop_live_location
