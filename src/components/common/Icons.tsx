@@ -3,6 +3,7 @@
  * Provides consistent icon usage across the app
  */
 import { Ionicons, MaterialCommunityIcons, Feather, MaterialIcons } from '@expo/vector-icons';
+import { ReactElement } from 'react';
 
 // Type for icon names
 export type AppIconName = keyof typeof Ionicons.glyphMap;
@@ -17,23 +18,27 @@ export const IconSize = {
   xxl: 32,
 } as const;
 
+// Type for each icon function signature
+type IconFn = (size?: number, color?: string) => ReactElement<any>;
+type IconFnNoColor = (size?: number) => ReactElement<any>;
+
 // Common icons used throughout the app
-export const Icons = {
+export const Icons: Record<string, IconFn | IconFnNoColor> = {
   // Navigation & Actions
- back: (size?: number, color?: string) => <Ionicons name="chevron-back" size={size ?? IconSize.md} color={color} />,
+  back: (size?: number, color?: string) => <Ionicons name="chevron-back" size={size ?? IconSize.md} color={color} />,
   close: (size?: number) => <Ionicons name="close" size={size ?? IconSize.md} />,
   menu: (size?: number, color?: string) => <Ionicons name="menu" size={size ?? IconSize.md} color={color} />,
   moreVertical: (size?: number) => <Ionicons name="ellipsis-vertical" size={size ?? IconSize.md} />,
-  
+
   // Chat & Messages
   send: (size?: number, color?: string) => <Ionicons name="send" size={size ?? IconSize.md} color={color} />,
   attach: (size?: number) => <Ionicons name="attach" size={size ?? IconSize.md} />,
   chatbubbles: (size?: number) => <Ionicons name="chatbubbles" size={size ?? IconSize.md} />,
   chatbubblesOutline: (size?: number) => <Ionicons name="chatbubbles-outline" size={size ?? IconSize.md} />,
   chatbubbleOutline: (size?: number) => <Ionicons name="chatbubbles-outline" size={size ?? IconSize.md} />,
-  mic: (size?: number) => <Ionicons name="mic" size={size ?? IconSize.md} />,
+  mic: (size?: number, color?: string) => <Ionicons name="mic" size={size ?? IconSize.md} color={color} />,
   camera: (size?: number) => <Ionicons name="camera" size={size ?? IconSize.md} />,
-  image: (size?: number) => <Ionicons name="image" size={size ?? IconSize.md} />,
+  image: (size?: number, color?: string) => <Ionicons name="image" size={size ?? IconSize.md} color={color} />,
   document: (size?: number) => <Ionicons name="document" size={size ?? IconSize.md} />,
   paperPlane: (size?: number) => <Ionicons name="paper-plane" size={size ?? IconSize.md} />,
   checkmark: (size?: number, color?: string) => <Ionicons name="checkmark" size={size ?? IconSize.md} color={color} />,
@@ -64,14 +69,15 @@ export const Icons = {
   // Social & Status
   heart: (size?: number) => <Ionicons name="heart" size={size ?? IconSize.md} />,
   heartOutline: (size?: number) => <Ionicons name="heart-outline" size={size ?? IconSize.md} />,
+  heartFill: (size?: number, color?: string) => <Ionicons name="heart" size={size ?? IconSize.md} color={color} />,
+  share: (size?: number) => <Ionicons name="share" size={size ?? IconSize.md} />,
+  shareOutline: (size?: number) => <Ionicons name="share-outline" size={size ?? IconSize.md} />,
   star: (size?: number) => <Ionicons name="star" size={size ?? IconSize.md} />,
   starOutline: (size?: number) => <Ionicons name="star-outline" size={size ?? IconSize.md} />,
   thumbsUp: (size?: number) => <Ionicons name="thumbs-up" size={size ?? IconSize.md} />,
-  share: (size?: number) => <Ionicons name="share" size={size ?? IconSize.md} />,
-  shareOutline: (size?: number) => <Ionicons name="share-outline" size={size ?? IconSize.md} />,
-  
+
   // Communication
-  call: (size?: number) => <Ionicons name="call" size={size ?? IconSize.md} />,
+  call: (size?: number, color?: string) => <Ionicons name="call" size={size ?? IconSize.md} color={color} />,
   callOutline: (size?: number) => <Ionicons name="call-outline" size={size ?? IconSize.md} />,
   videocam: (size?: number, color?: string) => <Ionicons name="videocam" size={size ?? IconSize.md} color={color} />,
   mail: (size?: number) => <Ionicons name="mail" size={size ?? IconSize.md} />,
@@ -122,6 +128,8 @@ export const Icons = {
   alertCircle: (size?: number) => <Ionicons name="alert-circle" size={size ?? IconSize.md} />,
   informationCircle: (size?: number) => <Ionicons name="information-circle" size={size ?? IconSize.md} />,
   helpCircle: (size?: number) => <Ionicons name="help-circle" size={size ?? IconSize.md} />,
+  moreHorizontal: (size?: number, color?: string) => <Ionicons name="ellipsis-horizontal" size={size ?? IconSize.md} color={color} />,
+  smiley: (size?: number, color?: string) => <Ionicons name="happy" size={size ?? IconSize.md} color={color} />,
   
   // Navigation
   home: (size?: number) => <Ionicons name="home" size={size ?? IconSize.md} />,
@@ -156,7 +164,7 @@ export const Icons = {
   arrowUp: (size?: number) => <Ionicons name="arrow-up" size={size ?? IconSize.md} />,
   arrowDown: (size?: number) => <Ionicons name="arrow-down" size={size ?? IconSize.md} />,
   chevronRight: (size?: number) => <Ionicons name="chevron-forward" size={size ?? IconSize.md} />,
-  chevronLeft: (size?: number) => <Ionicons name="chevron-back" size={size ?? IconSize.md} />,
+  chevronLeft: (size?: number, color?: string) => <Ionicons name="chevron-back" size={size ?? IconSize.md} color={color} />,
   chevronDown: (size?: number, color?: string) => <Ionicons name="chevron-down" size={size ?? IconSize.md} color={color} />,
   chevronUp: (size?: number, color?: string) => <Ionicons name="chevron-up" size={size ?? IconSize.md} color={color} />,
   arrowUndo: (size?: number) => <Feather name="corner-down-left" size={size ?? IconSize.md} />,
@@ -236,6 +244,12 @@ export const Icons = {
   mute: (size?: number) => <Ionicons name="notifications-off" size={size ?? IconSize.md} />,
   volumeHigh: (size?: number) => <Ionicons name="volume-high" size={size ?? IconSize.md} />,
   volumeOff: (size?: number) => <Ionicons name="volume-off" size={size ?? IconSize.md} />,
-} as const;
+
+  // QR Code
+  qrCode: (size?: number, color?: string) => <Ionicons name="qr-code-outline" size={size ?? IconSize.md} color={color} />,
+
+  // Timeline / Card
+  timelineCard: (size?: number, color?: string) => <Ionicons name="albums" size={size ?? IconSize.md} color={color} />,
+};
 
 export default Icons;

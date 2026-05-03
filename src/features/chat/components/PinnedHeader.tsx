@@ -8,16 +8,28 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  Image,
 } from 'react-native';
 import { colors, spacing, typography } from '@theme';
-import { Icons, IconSize } from '@components/common';
+import { Icons } from '@components/common';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+interface PinnedMessage {
+  id: string;
+  content: string;
+  contentType?: string;
+  senderId?: string;
+  senderName?: string;
+  senderAvatar?: string | null;
+  file_url?: string | null;
+  createdAt?: string;
+}
+
 interface PinnedHeaderProps {
-  pinnedMessages: any[];
+  pinnedMessages: PinnedMessage[];
   onUnpin: (messageId: string) => void;
   onNavigateToMessage: (messageId: string) => void;
 }
@@ -31,187 +43,237 @@ const PinnedHeader: React.FC<PinnedHeaderProps> = ({
 
   if (pinnedMessages.length === 0) return null;
 
+  const latest = pinnedMessages[0];
+
   const toggleExpand = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setIsExpanded(!isExpanded);
+    setIsExpanded((prev) => !prev);
   };
+
+  const handleNavigate = (msgId: string) => {
+    onNavigateToMessage(msgId);
+    setIsExpanded(false);
+  };
+
+  const isImageContent = latest.contentType === 'image' || latest.file_url;
+  const displayTitle = isImageContent ? '[Hình ảnh]' : latest.content;
+  const displaySubtitle = latest.senderName
+    ? `Tin nhắn của ${latest.senderName}`
+    : 'Tin nhắn đã ghim';
 
   return (
     <View style={styles.container}>
-      {isExpanded && (
-        <TouchableOpacity 
-          style={styles.backdrop} 
-          activeOpacity={1} 
-          onPress={() => setIsExpanded(false)} 
-        />
-      )}
-      <View style={styles.headerRow}>
-        <TouchableOpacity 
-          style={styles.mainContent}
-          onPress={() => setIsExpanded(!isExpanded)}
+      {/* Full-width white floating card */}
+      <View style={styles.card}>
+        <TouchableOpacity
+          style={styles.cardMainRow}
+          activeOpacity={0.75}
+          onPress={toggleExpand}
         >
-          <View style={styles.pinIconWrapper}>
-            {Icons.pushPin(IconSize.sm, colors.primary)}
+          {/* Left: Blue circle + chat bubble icon */}
+          <View style={styles.iconCircle}>
+            {Icons.chatbubbles(16, '#FFFFFF')}
           </View>
-          <View style={styles.textWrapper}>
+
+          {/* Center: Two lines of text */}
+          <View style={styles.textContent}>
             <Text style={styles.title} numberOfLines={1}>
-              Tin nhắn đã ghim ({pinnedMessages.length})
+              {displayTitle}
             </Text>
-            {!isExpanded && (
-              <Text style={styles.preview} numberOfLines={1}>
-                {pinnedMessages[0].senderName}: {pinnedMessages[0].content}
-              </Text>
-            )}
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {displaySubtitle}
+            </Text>
           </View>
-          <View style={styles.expandIcon}>
-            {isExpanded ? Icons.chevronUp(IconSize.sm, colors.text.secondary) : Icons.chevronDown(IconSize.sm, colors.text.secondary)}
+
+          {/* Right: Thumbnail + Down chevron */}
+          <View style={styles.rightSection}>
+            {latest.file_url && (
+              <Image
+                source={{ uri: latest.file_url }}
+                style={styles.thumbnail}
+                resizeMode="cover"
+              />
+            )}
+            <View style={styles.expandIcon}>
+              {isExpanded
+                ? Icons.chevronUp(18, colors.text.tertiary)
+                : Icons.chevronDown(18, colors.text.tertiary)}
+            </View>
           </View>
         </TouchableOpacity>
-      </View>
 
-      {isExpanded && (
-        <ScrollView style={styles.expandedList} maxHeight={200}>
-          {pinnedMessages.map((msg, index) => (
-            <View key={msg.id} style={styles.pinnedItem}>
-              <TouchableOpacity
-                style={styles.pinnedItemContent}
-                onPress={() => {
-                  onNavigateToMessage(msg.id);
-                  setIsExpanded(false);
-                }}
-              >
-                <Text style={styles.pinnedSender}>{msg.senderName}: </Text>
-                <Text style={styles.pinnedText} numberOfLines={1}>
-                  {msg.content}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => onUnpin(msg.id)} style={styles.unpinButton}>
-                {Icons.close(IconSize.xs)}
-              </TouchableOpacity>
-            </View>
-          ))}
-        </ScrollView>
-      )}
+        {/* Expanded: Scrollable list of pinned messages */}
+        {isExpanded && (
+          <View style={styles.expandedContainer}>
+            <View style={styles.expandedDivider} />
+            <ScrollView
+              style={styles.expandedList}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+            >
+              {pinnedMessages.map((msg) => {
+                const msgIsImage = msg.contentType === 'image' || msg.file_url;
+                const msgTitle = msgIsImage ? '[Hình ảnh]' : msg.content;
+                const msgSubtitle = msg.senderName
+                  ? `Tin nhắn của ${msg.senderName}`
+                  : 'Tin nhắn đã ghim';
+
+                return (
+                  <View key={msg.id} style={styles.pinnedItem}>
+                    <TouchableOpacity
+                      style={styles.pinnedItemContent}
+                      activeOpacity={0.7}
+                      onPress={() => handleNavigate(msg.id)}
+                    >
+                      {/* Small chat bubble icon */}
+                      <View style={styles.pinnedItemIcon}>
+                        {Icons.chatbubbles(12, colors.primary)}
+                      </View>
+                      <View style={styles.pinnedItemText}>
+                        <Text style={styles.pinnedItemTitle} numberOfLines={1}>
+                          {msgTitle}
+                        </Text>
+                        <Text style={styles.pinnedItemSubtitle} numberOfLines={1}>
+                          {msgSubtitle}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.unpinBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      onPress={() => onUnpin(msg.id)}
+                    >
+                      {Icons.close(14, colors.text.tertiary)}
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#F0F7FF', // Light blue background for better contrast
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.default,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-    zIndex: 10,
+    zIndex: 20,
   },
-  backdrop: {
-    position: 'absolute',
-    top: 50, // Height of header row
-    left: 0,
-    right: 0,
-    height: 1000, // Large enough to cover screen
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    zIndex: -1,
+  card: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: spacing.md,
+    marginVertical: spacing.sm,
+    borderRadius: spacing.borderRadius.lg,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.12,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
   },
-  headerRow: {
+  cardMainRow: {
     flexDirection: 'row',
-    height: 50,
     alignItems: 'center',
+    paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
-    backgroundColor: '#F0F7FF',
   },
-  mainContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  pinIconWrapper: {
-    marginRight: spacing.sm,
-  },
-  textWrapper: {
-    flex: 1,
-  },
-  title: {
-    ...typography.caption,
-    color: colors.primary,
-    fontWeight: 'bold',
-  },
-  preview: {
-    ...typography.caption,
-    color: colors.text.secondary,
-    fontSize: 11,
-  },
-  expandIcon: {
-    padding: spacing.xs,
-  },
-  iconContainer: {
-    marginRight: spacing.sm,
-    transform: [{ rotate: '45deg' }],
-  },
-  contentContainer: {
-    flex: 1,
-  },
-  label: {
-    ...typography.caption,
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  latestMessage: {
-    ...typography.caption,
-    color: colors.text.secondary,
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionButton: {
-    padding: spacing.xs,
-  },
-  badge: {
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#0088FF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: spacing.xs,
+    marginRight: spacing.md,
+    flexShrink: 0,
   },
-  badgeText: {
-    color: colors.text.inverse,
-    fontSize: 10,
+  textContent: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  title: {
+    ...typography.subtitle,
+    fontSize: 14,
     fontWeight: '700',
+    color: colors.text.primary,
+    marginBottom: 2,
+  },
+  subtitle: {
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.text.secondary,
+  },
+  rightSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  thumbnail: {
+    width: 36,
+    height: 36,
+    borderRadius: spacing.borderRadius.md,
+    backgroundColor: colors.background.tertiary,
+    marginRight: spacing.sm,
+  },
+  expandIcon: {
+    padding: 2,
+  },
+  expandedContainer: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border.light,
+  },
+  expandedDivider: {
+    height: 0,
   },
   expandedList: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border.light,
-    paddingHorizontal: spacing.md,
+    maxHeight: 200,
   },
   pinnedItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border.light,
   },
   pinnedItemContent: {
     flex: 1,
     flexDirection: 'row',
+    alignItems: 'center',
   },
-  pinnedSender: {
-    ...typography.caption,
-    fontWeight: '700',
-    color: colors.text.primary,
+  pinnedItemIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,136,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+    flexShrink: 0,
   },
-  pinnedText: {
-    ...typography.caption,
-    color: colors.text.secondary,
+  pinnedItemText: {
     flex: 1,
   },
-  unpinButton: {
+  pinnedItemTitle: {
+    ...typography.caption,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: 1,
+  },
+  pinnedItemSubtitle: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.text.tertiary,
+  },
+  unpinBtn: {
     padding: spacing.xs,
     marginLeft: spacing.sm,
   },

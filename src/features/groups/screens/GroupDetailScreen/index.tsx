@@ -61,6 +61,8 @@ const normalizeGroupDetail = (group: any) => ({
 
 type Props = RootStackScreenProps<'GroupDetail'>;
 
+const ZALO_BLUE = '#008AF3';
+
 const GroupDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const isFocused = useIsFocused();
   const rawGroupId = route.params.groupId;
@@ -283,13 +285,35 @@ const GroupDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   }
 
   return (
-    <ScrollView
+    <View style={styles.wrapper}>
+      {/* Zalo-style header */}
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.goBack()}
+          >
+            {Icons.back(IconSize.lg, colors.text.inverse)}
+          </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {selectedGroup?.name || 'Chi tiết nhóm'}
+          </Text>
+          <TouchableOpacity
+            style={styles.moreBtn}
+            onPress={() => handlePlaceholder('Thêm')}
+          >
+            {Icons.more(IconSize.lg, colors.text.inverse)}
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView
       style={styles.container}
       contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
     >
       {/* Profile Section */}
       <ProfileSection
-        groupName={selectedGroup?.name}
+        groupName={selectedGroup?.name || ''}
         avatarUrl={selectedGroup?.avatar_url}
         description={selectedGroup?.description}
         onEditAvatar={() => handlePlaceholder('Đổi ảnh nhóm')}
@@ -482,6 +506,7 @@ const GroupDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         <Text style={styles.startChatBtnText}>Nhắn tin nhóm</Text>
       </TouchableOpacity>
     </ScrollView>
+    </View>
   );
 };
 

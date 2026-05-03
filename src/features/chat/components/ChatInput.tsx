@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 
@@ -16,52 +17,65 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onSend,
   placeholder = 'Nhập tin nhắn...',
 }) => {
-  const hasText = value.trim().length > 0;
-
-  const handleSend = () => {
-    if (hasText) {
-      onSend(value.trim());
-    }
-  };
+  const insets = useSafeAreaInsets();
+  const canSend = value.trim().length > 0;
 
   return (
-    <View style={styles.container}>
-      <TouchableOpacity style={styles.attachBtn}>
-        <View style={styles.attachIconContainer}>
-          {Icons.attach(IconSize.lg)}
-        </View>
-      </TouchableOpacity>
-      <TextInput
-        style={styles.input}
-        placeholder={placeholder}
-        placeholderTextColor={colors.text.placeholder}
-        value={value}
-        onChangeText={onChangeText}
-        multiline
-      />
-      <TouchableOpacity
-        style={[styles.sendBtn, !hasText && styles.sendBtnDisabled]}
-        onPress={handleSend}
-        disabled={!hasText}
-      >
-        <View style={styles.sendIconContainer}>
-          {Icons.send(
-            IconSize.lg,
-            hasText ? colors.text.inverse : colors.text.tertiary
-          )}
-        </View>
-      </TouchableOpacity>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      <View style={styles.inputBar}>
+        {/* Left: Attach icon */}
+        <TouchableOpacity
+          style={styles.attachBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <View style={styles.attachIconContainer}>
+            {Icons.attach(IconSize.lg)}
+          </View>
+        </TouchableOpacity>
+
+        {/* Center: Text input with background */}
+        <TextInput
+          style={styles.input}
+          placeholder={placeholder}
+          placeholderTextColor={colors.text.placeholder}
+          value={value}
+          onChangeText={onChangeText}
+          multiline
+          maxLength={2000}
+          textAlignVertical="center"
+        />
+
+        {/* Right: Send button */}
+        <TouchableOpacity
+          style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
+          onPress={() => {
+            if (canSend) onSend(value.trim());
+          }}
+          disabled={!canSend}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <View style={styles.sendIconContainer}>
+            {Icons.send(
+              IconSize.lg,
+              canSend ? colors.text.inverse : colors.text.tertiary
+            )}
+          </View>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    backgroundColor: colors.background.primary,
+    paddingTop: spacing.sm,
+  },
+  inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.background.primary,
   },
   attachBtn: {
     width: 36,
@@ -81,6 +95,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     maxHeight: 100,
     ...typography.body,
+    fontSize: 15,
     color: colors.text.primary,
   },
   sendBtn: {

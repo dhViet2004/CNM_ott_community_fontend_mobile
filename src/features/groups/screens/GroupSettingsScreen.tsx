@@ -31,6 +31,8 @@ import {
 
 type Props = RootStackScreenProps<'GroupSettings'>;
 
+const ZALO_BLUE = '#008AF3';
+
 const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
   const groupId = route.params.groupId;
   const insets = useSafeAreaInsets();
@@ -306,27 +308,29 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-        >
-          {Icons.arrowBack(IconSize.lg)}
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Cài đặt nhóm</Text>
-        <TouchableOpacity
-          style={styles.saveBtn}
-          onPress={handleSave}
-          disabled={saving}
-        >
-          {saving ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <Text style={styles.saveBtnText}>Lưu</Text>
-          )}
-        </TouchableOpacity>
+    <View style={styles.container}>
+      {/* Zalo-style header */}
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.goBack()}
+          >
+            {Icons.back(IconSize.lg, colors.text.inverse)}
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Cài đặt nhóm</Text>
+          <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={handleSave}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={colors.text.inverse} />
+            ) : (
+              <Text style={styles.saveBtnText}>Lưu</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -549,25 +553,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   header: {
-    height: 56,
+    backgroundColor: ZALO_BLUE,
+    paddingHorizontal: spacing.screenPadding,
+    paddingBottom: spacing.md,
+  },
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.background.primary,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
+    height: 48,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: spacing.xs,
   },
   headerTitle: {
-    ...typography.h3,
-    color: colors.text.primary,
     flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
     textAlign: 'center',
   },
   saveBtn: {
@@ -577,7 +580,7 @@ const styles = StyleSheet.create({
   },
   saveBtnText: {
     ...typography.button,
-    color: colors.primary,
+    color: '#FFFFFF',
     fontWeight: '600',
   },
   scrollView: {

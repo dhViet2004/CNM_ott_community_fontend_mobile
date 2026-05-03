@@ -36,6 +36,8 @@ type Props = RootStackScreenProps<'GroupChat'>;
 const EMPTY_MESSAGES: Message[] = [];
 const EMPTY_ARRAY: any[] = [];
 
+const ZALO_BLUE = '#008AF3';
+
 const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const { groupId, title } = route.params;
   const insets = useSafeAreaInsets();
@@ -473,13 +475,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.chatBg,
   },
   customHeader: {
-    backgroundColor: colors.primary,
+    backgroundColor: ZALO_BLUE,
   },
   headerContent: {
     height: 56,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.screenPadding,
+    paddingBottom: spacing.md,
   },
   backButton: {
     paddingVertical: spacing.sm,

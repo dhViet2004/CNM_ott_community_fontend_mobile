@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
-import { Icons, IconSize } from '@components/common';
+import { Icons } from '@components/common';
 import type { MainTabParamList } from './types';
 
 import ChatScreen from '@features/chat/screens/ChatScreen';
@@ -12,29 +13,89 @@ import ProfileScreen from '@features/profile/screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-const TabIcon = ({
-  label,
-  focused,
-  icon,
-}: {
-  label: string;
+const TABS = [
+  {
+    key: 'ChatTab',
+    label: 'Tin nhắn',
+    activeIcon: <>{Icons.chatbubbles(22, colors.primary)}</>,
+    inactiveIcon: <>{Icons.chatbubblesOutline(22, colors.text.tertiary)}</>,
+  },
+  {
+    key: 'ContactsTab',
+    label: 'Danh bạ',
+    activeIcon: <>{Icons.people(22, colors.primary)}</>,
+    inactiveIcon: <>{Icons.peopleOutline(22, colors.text.tertiary)}</>,
+  },
+  {
+    key: 'ExploreTab',
+    label: 'Khám phá',
+    activeIcon: <>{Icons.grid(22, colors.primary)}</>,
+    inactiveIcon: <>{Icons.grid(22, colors.text.tertiary)}</>,
+  },
+  {
+    key: 'TimelineTab',
+    label: 'Tường nhà',
+    activeIcon: <>{Icons.timelineCard(22, colors.primary)}</>,
+    inactiveIcon: <>{Icons.timelineCard(22, colors.text.tertiary)}</>,
+  },
+  {
+    key: 'ProfileTab',
+    label: 'Cá nhân',
+    activeIcon: <>{Icons.person(22, colors.primary)}</>,
+    inactiveIcon: <>{Icons.person(22, colors.text.tertiary)}</>,
+  },
+] as const;
+
+const TAB_BAR_BLUE = '#008AF3';
+const BADGE_RED = '#FF3B30';
+
+interface TabBarIconProps {
+  activeIcon: React.ReactNode;
+  inactiveIcon: React.ReactNode;
   focused: boolean;
-  icon: React.ReactNode;
-}) => (
-  <View style={styles.tabIconContainer}>
-    <View style={styles.tabIconWrapper}>
-      {icon}
+  badgeCount?: number;
+}
+
+const TabBarIcon: React.FC<TabBarIconProps> = ({
+  activeIcon,
+  inactiveIcon,
+  focused,
+  badgeCount = 0,
+}) => {
+  const hasBadge = badgeCount > 0;
+
+  return (
+    <View style={styles.iconWrapper}>
+      <View style={styles.iconContainer}>
+        {focused ? activeIcon : inactiveIcon}
+      </View>
+      {hasBadge && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>
+            {badgeCount > 99 ? '99+' : badgeCount}
+          </Text>
+        </View>
+      )}
     </View>
-    <Text
-      style={[
-        styles.tabLabel,
-        { color: focused ? colors.primary : colors.text.tertiary },
-      ]}
-    >
-      {label}
-    </Text>
-  </View>
-);
+  );
+};
+
+const TimelinePlaceholder: React.FC = () => {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={[timelineStyles.container, { paddingTop: insets.top }]}>
+      <View style={timelineStyles.header}>
+        <Text style={timelineStyles.headerTitle}>Tường nhà</Text>
+      </View>
+      <View style={timelineStyles.content}>
+        <Text style={timelineStyles.icon}>📋</Text>
+        <Text style={timelineStyles.title}>Tường nhà</Text>
+        <Text style={timelineStyles.subtitle}>Tính năng đang phát triển</Text>
+      </View>
+    </View>
+  );
+};
 
 const MainTabNavigator: React.FC = () => {
   return (
@@ -50,14 +111,11 @@ const MainTabNavigator: React.FC = () => {
         component={ChatScreen as any}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon
-              label="Tin nhắn"
+            <TabBarIcon
               focused={focused}
-              icon={
-                focused
-                  ? Icons.chatbubbles(IconSize.lg)
-                  : Icons.chatbubblesOutline(IconSize.lg)
-              }
+              activeIcon={TABS[0].activeIcon}
+              inactiveIcon={TABS[0].inactiveIcon}
+              badgeCount={5}
             />
           ),
         }}
@@ -67,14 +125,10 @@ const MainTabNavigator: React.FC = () => {
         component={ContactsScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon
-              label="Danh bạ"
+            <TabBarIcon
               focused={focused}
-              icon={
-                focused
-                  ? Icons.people(IconSize.lg)
-                  : Icons.peopleOutline(IconSize.lg)
-              }
+              activeIcon={TABS[1].activeIcon}
+              inactiveIcon={TABS[1].inactiveIcon}
             />
           ),
         }}
@@ -84,14 +138,23 @@ const MainTabNavigator: React.FC = () => {
         component={ExploreScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon
-              label="Khám phá"
+            <TabBarIcon
               focused={focused}
-              icon={
-                focused
-                  ? Icons.compass(IconSize.lg)
-                  : Icons.compassOutline(IconSize.lg)
-              }
+              activeIcon={TABS[2].activeIcon}
+              inactiveIcon={TABS[2].inactiveIcon}
+            />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="TimelineTab"
+        component={TimelinePlaceholder as any}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabBarIcon
+              focused={focused}
+              activeIcon={TABS[3].activeIcon}
+              inactiveIcon={TABS[3].inactiveIcon}
             />
           ),
         }}
@@ -101,16 +164,10 @@ const MainTabNavigator: React.FC = () => {
         component={ProfileScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon
-              label="Cá nhân"
+            <TabBarIcon
               focused={focused}
-              icon={
-                focused
-                  ? Icons.person(IconSize.lg)
-                  : <View style={styles.personOutlineWrapper}>
-                      {Icons.person(IconSize.lg)}
-                    </View>
-              }
+              activeIcon={TABS[4].activeIcon}
+              inactiveIcon={TABS[4].inactiveIcon}
             />
           ),
         }}
@@ -122,31 +179,88 @@ const MainTabNavigator: React.FC = () => {
 const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: colors.background.tabBar,
-    borderTopWidth: 0.5,
-    borderTopColor: colors.border.light,
-    height: 60,
+    height: 62,
     paddingBottom: spacing.xs,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    elevation: 0,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    // Subtle top border shadow
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#DCDCDC',
   },
-  tabIconContainer: {
+  iconWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: spacing.xs,
+    position: 'relative',
+    width: 40,
+    height: 36,
   },
-  tabIconWrapper: {
+  iconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  personOutlineWrapper: {
-    opacity: 0.7,
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: 2,
+    backgroundColor: BADGE_RED,
+    borderRadius: 9,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.background.tabBar,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    lineHeight: 11,
   },
   tabLabel: {
     ...typography.tabLabel,
     marginTop: 2,
+  },
+});
+
+// Timeline placeholder screen styles
+const timelineStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background.primary,
+  },
+  header: {
+    backgroundColor: TAB_BAR_BLUE,
+    paddingHorizontal: spacing.screenPadding,
+    paddingBottom: spacing.md,
+    height: 56,
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    ...typography.h2,
+    color: colors.text.inverse,
+  },
+  content: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  icon: {
+    fontSize: 64,
+    marginBottom: spacing.lg,
+  },
+  title: {
+    ...typography.h2,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.text.tertiary,
   },
 });
 
