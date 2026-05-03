@@ -42,7 +42,7 @@ interface RecipientItem {
 // ─── Helper: build conversation IDs ──────────────────────────────────────────
 
 function buildDmConversationId(userId1: string, userId2: string): string {
-  const sorted = [userId1, userId2].sort();
+  const sorted = [userId1, userId2].sort((a, b) => Number(a) - Number(b));
   return `dm:${sorted.join(':')}`;
 }
 

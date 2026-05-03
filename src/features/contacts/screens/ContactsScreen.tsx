@@ -83,7 +83,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
       // Backend uses dm:{smallerId}:{largerId} for DM conversation IDs
       const myId = currentUserId || '';
       const otherId = friend.userId;
-      const sortedIds = [myId, otherId].sort();
+      const sortedIds = [myId, otherId].sort((a, b) => Number(a) - Number(b));
       const conversationId = `dm:${sortedIds.join(':')}`;
       navigation.navigate('Chat', {
         conversationId,
