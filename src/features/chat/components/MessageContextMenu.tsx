@@ -249,8 +249,7 @@ const styles = StyleSheet.create({
   sheet: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    overflow: 'hidden',
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.sm,
     paddingBottom: spacing.sm,

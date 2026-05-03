@@ -183,7 +183,8 @@ const chatSlice = createSlice({
         (m) => m.id === action.payload.id
       );
       if (!exists) {
-        state.messages[convId].push(action.payload);
+        // Replace the array with a new reference so shallowEqual selectors re-fire
+        state.messages[convId] = [...state.messages[convId], action.payload];
       }
 
       // Update conversation last message

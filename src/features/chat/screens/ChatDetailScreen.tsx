@@ -120,46 +120,32 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     });
   }, [conversationId]);
 
-  const handleNavigateToMessage = useCallback((messageId: string) => {
-    const index = messagesRef.current.findIndex((m) => String(m.id) === String(messageId));
-    if (index !== -1) {
-      setFocusedMessageId(String(messageId));
-      flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
-      setTimeout(() => setFocusedMessageId(null), 3000);
-    } else {
-      Alert.alert('Thông báo', 'Tin nhắn này hiện chưa được tải về, vui lòng cuộn lên để tìm lại');
-    }
-  }, []);
-
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [inputText, setInputText] = useState('');
-  const [isNearBottom, setIsNearBottom] = useState(true);
   const isNearBottomRef = useRef(true);
-  const messagesRef = useRef<MessageItem[]>([]);
   const isInitializedRef = useRef(false);
-
-  const handleNewMessage = useCallback(() => {
-    if (isNearBottomRef.current) {
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-    }
-  }, []);
+  const prevMessagesLengthRef = useRef(0);
 
   const { messages, isLoading, loadMessages, addOptimisticMessage } = useMessages({
     conversationId,
     autoLoad: false,
-    onNewMessage: handleNewMessage,
   });
 
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
-
   const { typingLabel, handleTextChange } = useTypingIndicator({ conversationId });
+
+  // Auto-scroll when new message arrives while user is at bottom
+  useEffect(() => {
+    if (!isInitializedRef.current || messages.length === 0) return;
+    if (messages.length > prevMessagesLengthRef.current && isNearBottomRef.current) {
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages.length]);
 
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => {
       if (isNearBottomRef.current) {
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+        setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
       }
     });
     return () => showSub.remove();
@@ -189,6 +175,18 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       }
     }
   }, [focusedMessageIdFromParams, messages]);
+
+  // Scroll to a pinned message — uses messages from useMessages (defined above)
+  const handleNavigateToMessage = useCallback((messageId: string) => {
+    const index = messages.findIndex((m) => String(m.id) === String(messageId));
+    if (index !== -1) {
+      setFocusedMessageId(String(messageId));
+      flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+      setTimeout(() => setFocusedMessageId(null), 3000);
+    } else {
+      Alert.alert('Thông báo', 'Tin nhắn này hiện chưa được tải về, vui lòng cuộn lên để tìm lại');
+    }
+  }, [messages]);
 
   const handleSend = useCallback(
     async (text: string) => {
@@ -225,7 +223,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         }));
 
         if (isNearBottomRef.current) {
-          setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+          setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
         }
       } catch {
         dispatch(failPendingMessage(tempId));
@@ -271,19 +269,31 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const keyExtractor = useCallback((item: MessageItem) => String(item.id), []);
 
+  // Inverted FlatList: scroll direction is reversed. "Near top" = auto-scroll to new messages.
   const handleScroll = useCallback((event: any) => {
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const paddingToBottom = 100;
-    const isNear = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+    const { layoutMeasurement, contentOffset } = event.nativeEvent;
+    const paddingFromTop = 100;
+    // With inverted=true, scrollOffset 0 = bottom of real content (newest messages visible).
+    // User is "at bottom" when contentOffset.y <= paddingFromTop.
+    const isNear = contentOffset.y <= paddingFromTop;
     isNearBottomRef.current = isNear;
-    setIsNearBottom(isNear);
   }, []);
 
+  // Auto-scroll on new messages only when at bottom
+  useEffect(() => {
+    if (!isInitializedRef.current || messages.length === 0) return;
+    if (messages.length > prevMessagesLengthRef.current && isNearBottomRef.current) {
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages.length]);
+
+  // Initial scroll to bottom (inverted: offset 0 = bottom of content)
   const handleContentSizeChange = useCallback(() => {
     if (!isInitializedRef.current && messages.length > 0) {
       isInitializedRef.current = true;
       setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: false });
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
       }, 100);
     }
   }, [messages.length]);
@@ -365,6 +375,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             data={messages}
             keyExtractor={keyExtractor}
             renderItem={renderMessage}
+            inverted
             contentContainerStyle={[
               styles.messagesList,
               { paddingBottom: bottomPadding + spacing.md },
@@ -372,8 +383,9 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             onContentSizeChange={handleContentSizeChange}
             onScroll={handleScroll}
             scrollEventThrottle={16}
-            onTouchStart={() => Keyboard.dismiss()}
-            ListHeaderComponent={
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+            ListFooterComponent={
               typingLabel ? (
                 <View style={styles.typingWrapper}>
                   <TypingIndicator label={typingLabel} />

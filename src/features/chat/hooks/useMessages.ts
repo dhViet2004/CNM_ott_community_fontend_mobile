@@ -3,8 +3,7 @@ import { shallowEqual } from 'react-redux';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { setMessages, setLoadingMessages, addMessage } from '@store/slices/chatSlice';
 import { messageApi } from '@api/endpoints';
-import { socketActions, getSocket } from '@api/socket';
-import { store } from '@store/store';
+import { socketActions } from '@api/socket';
 
 interface MessageItem {
   id: string | number;
@@ -25,7 +24,6 @@ interface MessageItem {
 interface UseMessagesOptions {
   conversationId: string;
   autoLoad?: boolean;
-  onNewMessage?: (message: MessageItem) => void;
 }
 
 interface UseMessagesReturn {
@@ -40,15 +38,9 @@ const EMPTY_ARRAY: any[] = [];
 export const useMessages = ({
   conversationId,
   autoLoad = true,
-  onNewMessage,
 }: UseMessagesOptions): UseMessagesReturn => {
   const dispatch = useAppDispatch();
   const tempIdCounter = useRef(0);
-  const conversationIdRef = useRef(conversationId);
-  const onNewMessageRef = useRef(onNewMessage);
-
-  conversationIdRef.current = conversationId;
-  onNewMessageRef.current = onNewMessage;
 
   // Memoized selectors
   const currentUserId = useAppSelector((state) => state.auth?.user?.userId);
@@ -61,8 +53,9 @@ export const useMessages = ({
   );
 
   // Map messages - chỉ chạy khi rawMessages thay đổi
+  // .reverse() đưa tin nhắn mới nhất về index 0 — phù hợp với inverted={true} của FlatList
   const messages: MessageItem[] = useMemo(() => {
-    return rawMessages.map((m: any) => {
+    return [...rawMessages].reverse().map((m: any) => {
       const isMe = String(m.senderId) === String(currentUserId);
       return {
         id: String(m.id ?? m.messageId ?? ''),
@@ -88,50 +81,8 @@ export const useMessages = ({
     });
   }, [rawMessages, currentUserId, conversationId]);
 
-  // Setup socket listeners - chỉ setup 1 lần
-  // NOTE: Socket global listener cho receive_message đã được xử lý trong socket.ts (addMessage vào store)
-  // Hook này chỉ cần gọi onNewMessage callback để trigger scroll/UI cần thiết
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) return;
-
-    const handleReceiveMessage = (message: any) => {
-      const currentConvId = conversationIdRef.current;
-      const msgConvId = message.conversationId || message.roomId;
-
-      if (msgConvId !== currentConvId) return;
-
-      const currentUser = store.getState().auth?.user?.userId;
-      const isOwnMessage = String(message.senderId) === String(currentUser);
-      if (isOwnMessage) return;
-
-      console.log('[useMessages] ✓ New message callback triggered');
-      if (onNewMessageRef.current) {
-        onNewMessageRef.current({
-          id: message.id,
-          conversationId: msgConvId,
-          senderId: message.senderId,
-          senderName: message.senderDisplayName || message.sender_name,
-          senderAvatar: message.senderAvatarUrl ?? message.sender_avatar ?? null,
-          content: message.content ?? '',
-          time: new Date(message.createdAt ?? Date.now()).toLocaleTimeString('vi-VN', {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          isMe: false,
-          type: (message.contentType ?? 'text') as MessageItem['type'],
-          file_url: message.file_url ?? null,
-          status: 'delivered',
-        });
-      }
-    };
-
-    socket.on('receive_message', handleReceiveMessage);
-
-    return () => {
-      socket.off('receive_message', handleReceiveMessage);
-    };
-  }, []);
+  // Socket listener for receive_message is handled globally in socket.ts
+  // (socket.ts dispatches addMessage directly). This hook only needs to load messages.
 
   // Join conversation room
   useEffect(() => {
