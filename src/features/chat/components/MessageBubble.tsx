@@ -11,6 +11,7 @@ import {
 import { colors, spacing, typography } from '@theme';
 import Avatar from '@components/common/Avatar';
 import { Icons } from '@components/common';
+import VoiceMessageBubble from './VoiceMessageBubble';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const MAX_BUBBLE_WIDTH = SCREEN_WIDTH * 0.72;
@@ -120,7 +121,7 @@ interface MessageBubbleProps {
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'file' | 'sticker' | 'emoji' | 'call';
+  type: 'text' | 'image' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice';
   file_url?: string | null;
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
@@ -140,6 +141,7 @@ interface MessageBubbleProps {
   callDuration?: string;
   isTimeDivider?: boolean;
   timeDividerLabel?: string;
+  voiceDuration?: number;
 }
 
 const CheckIcon: React.FC<{ filled?: boolean }> = ({ filled }) =>
@@ -197,6 +199,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   callDuration,
   isTimeDivider,
   timeDividerLabel,
+  voiceDuration,
 }) => {
   // Time divider inline component
   if (isTimeDivider) {
@@ -338,6 +341,20 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       );
     }
 
+    // Voice message
+    if (type === 'voice' && file_url) {
+      return (
+        <VoiceMessageBubble
+          uri={file_url}
+          duration={voiceDuration}
+          isMe={isMe}
+          time=""
+          status={undefined}
+          onLongPress={undefined}
+        />
+      );
+    }
+
     // Text
     return (
       <Text
@@ -408,7 +425,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     prev.isDeleted === next.isDeleted &&
     prev.isRevoked === next.isRevoked &&
     prev.isFocused === next.isFocused &&
-    prev.file_url === next.file_url
+    prev.file_url === next.file_url &&
+    prev.voiceDuration === next.voiceDuration
   );
 });
 
