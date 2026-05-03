@@ -5,13 +5,14 @@ import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context'
 import { useMessages, MessageItem } from '@features/chat/hooks/useMessages';
 import { useTypingIndicator } from '@features/chat/hooks/useTypingIndicator';
 import { MessageBubble, TypingIndicator, ChatInput, PinnedHeader } from '@features/chat/components';
+import { Icons, IconSize } from '@components/common';
 import { socketActions } from '@api/socket';
 import { messageApi, friendsApi } from '@api/endpoints';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { confirmPendingMessage, failPendingMessage, setMessageFailed } from '@store/slices/chatSlice';
 import { colors, spacing, typography } from '@theme';
 import { Alert } from 'react-native';
-import type { RootStackScreenProps } from '@navigation/types';
+import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 
 type Props = RootStackScreenProps<'Chat'>;
 const EMPTY_ARRAY: any[] = [];
@@ -29,7 +30,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const [chatBgUrl, setChatBgUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    const friend = friends.find(f => (f.friend_id || f.userId || f.friendId) === route.params.userId);
+    const friend = friends.find(f => (f.friend_id || f.userId) === route.params.userId);
     const fId = friend?.friendshipId;
     
     if (fId) {
@@ -83,20 +84,20 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [conversationId]);
 
   const handleNavigateToMessage = useCallback((messageId: string) => {
-    const index = messages.findIndex(m => String(m.id) === String(messageId));
+    const index = messagesRef.current.findIndex(m => String(m.id) === String(messageId));
     if (index !== -1) {
       setFocusedMessageId(String(messageId));
       flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
-      
+
       setTimeout(() => {
         setFocusedMessageId(null);
       }, 3000);
     } else {
       // Nếu không tìm thấy, thử cuộn tới vị trí gần đúng hoặc thông báo
-      console.warn(`Message ${messageId} not found in current list of ${messages.length} messages`);
+      console.warn(`Message ${messageId} not found in current list of ${messagesRef.current.length} messages`);
       Alert.alert('Thông báo', 'Tin nhắn này hiện chưa được tải về, vui lòng cuộn lên để tìm lại');
     }
-  }, [messages]);
+  }, []);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [inputText, setInputText] = useState('');
@@ -104,6 +105,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   // Track if user is near bottom (within 100px)
   const [isNearBottom, setIsNearBottom] = useState(true);
   const isNearBottomRef = useRef(true);
+  const messagesRef = useRef<MessageItem[]>([]);
 
   // Track initial load state
   const isInitializedRef = useRef(false);
@@ -132,6 +134,10 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     autoLoad: false,
     onNewMessage: handleNewMessage,
   });
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const { typingLabel, handleTextChange } = useTypingIndicator({
     conversationId,
@@ -306,24 +312,72 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} translucent />
-      
-      <ImageBackground 
-        source={chatBgUrl ? { uri: chatBgUrl } : undefined} 
+      <SafeAreaView edges={['top']} style={styles.customHeader}>
+        <View style={styles.headerContent}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            {Icons.back(IconSize.lg, colors.text.inverse)}
+          </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={() => Alert.alert('Thông báo', 'Tính năng gọi video đang phát triển')}
+              style={styles.headerIcon}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              {Icons.videocam(IconSize.lg, colors.text.inverse)}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                const params: RootStackParamList['MessageSearch'] = {
+                  conversationId,
+                  title,
+                };
+                navigation.navigate('MessageSearch', params);
+              }}
+              style={styles.headerIcon}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              {Icons.search(IconSize.lg, colors.text.inverse)}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                const params: RootStackParamList['ChatSettings'] = {
+                  conversationId,
+                  title,
+                  originalName: (route.params as any).originalName,
+                  friendId: (route.params as any).userId,
+                };
+                navigation.navigate('ChatSettings', params);
+              }}
+              style={styles.headerIcon}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              {Icons.menu(IconSize.lg, colors.text.inverse)}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+
+      <ImageBackground
+        source={chatBgUrl ? { uri: chatBgUrl } : undefined}
         style={styles.backgroundImage}
         imageStyle={{ opacity: 0.8 }}
       >
         <KeyboardAvoidingView
           style={styles.keyboardView}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+          keyboardVerticalOffset={0}
         >
           <PinnedHeader
             pinnedMessages={pinnedMessages}
             onUnpin={handleUnpinMessage}
             onNavigateToMessage={handleNavigateToMessage}
           />
-          
+
           <FlatList
             ref={flatListRef}
             data={messages}
@@ -388,6 +442,33 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.chatBg,
+  },
+  customHeader: {
+    backgroundColor: colors.primary,
+  },
+  headerContent: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.screenPadding,
+  },
+  backButton: {
+    paddingVertical: spacing.sm,
+    paddingRight: spacing.md,
+    marginLeft: -spacing.sm,
+  },
+  headerTitle: {
+    flex: 1,
+    ...typography.h3,
+    color: colors.text.inverse,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIcon: {
+    padding: spacing.sm,
+    marginLeft: spacing.xs,
   },
   backgroundImage: {
     flex: 1,
