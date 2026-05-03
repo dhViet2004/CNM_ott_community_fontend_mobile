@@ -23,6 +23,8 @@ import {
   failPendingMessage,
   setMessageRevoked,
   updateMessage,
+  deleteMessage,
+  addDeletedForMeId,
   Message,
 } from '@store/slices/chatSlice';
 import { setGroupMembers } from '@store/slices/groupsSlice';
@@ -121,6 +123,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [defaultChannelId, setDefaultChannelId] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<SelectedMessage>(null);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const selectedMessageRef = useRef<SelectedMessage>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -470,13 +473,38 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         {
           text: 'Xóa',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert('Thành công', 'Tin nhắn đã được xóa');
+          onPress: async () => {
+            const msgId = String(msg.id);
+            const originalContent = msg.content;
+            setDeletingMessageId(msgId);
+            setSelectedMessage(null);
+
+            // Optimistic: xóa ngay khỏi UI trước khi API trả về
+            dispatch(deleteMessage({ conversationId, messageId: msgId }));
+            // Track để socket không re-add tin nhắn đã xóa
+            dispatch(addDeletedForMeId(msgId));
+
+            try {
+              await messageApi.deleteForMe(conversationId, msgId);
+            } catch (err: any) {
+              // Rollback: khôi phục lại tin nhắn nếu API lỗi
+              dispatch(updateMessage({
+                messageId: msgId,
+                conversationId,
+                updates: { isDeleted: false, content: originalContent },
+              }));
+              const errMsg = err?.response?.data?.error
+                || err?.response?.data?.message
+                || 'Không thể xóa tin nhắn';
+              Alert.alert('Lỗi', errMsg);
+            } finally {
+              setDeletingMessageId(null);
+            }
           },
         },
       ]
     );
-  }, []);
+  }, [dispatch, conversationId]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
   const renderMessage = useCallback(
@@ -692,6 +720,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         visible={selectedMessage !== null}
         onClose={() => setSelectedMessage(null)}
         isOwn={selectedMessage?.isMe ?? false}
+        isDeleting={deletingMessageId === String(selectedMessage?.id)}
         onReply={() => Alert.alert('Trả lời', 'Tính năng đang phát triển')}
         onForward={() => Alert.alert('Chuyển tiếp', 'Tính năng đang phát triển')}
         onSave={() => Alert.alert('Lưu', 'Tính năng đang phát triển')}
