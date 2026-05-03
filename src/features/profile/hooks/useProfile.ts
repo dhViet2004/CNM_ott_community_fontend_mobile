@@ -1,8 +1,9 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useAppSelector, useAppDispatch } from '@store';
 import { updateUser } from '@store/slices/authSlice';
-import { userApi, friendsApi } from '@api';
+import { userApi, friendsApi, uploadApi } from '@api';
 import type { User } from '@/types';
+import { resolveUrl } from '@/utils/url';
 
 interface ProfileUser {
   id: string;
@@ -77,10 +78,20 @@ export const useProfile = (options: UseProfileOptions = {}): UseProfileReturn =>
       if (isMyProfile) {
         // Fetch current user's profile from API
         const u = await userApi.getMe();
-        setProfile(mapUserToProfile(u));
+        const mapped = mapUserToProfile(u);
+        
+        mapped.avatarUrl = await resolveUrl(mapped.avatarUrl);
+        mapped.coverUrl = await resolveUrl(mapped.coverUrl);
+
+        setProfile(mapped);
       } else if (userId) {
         const u = await userApi.getUserById(userId);
-        setProfile(mapUserToProfile(u));
+        const mapped = mapUserToProfile(u);
+
+        mapped.avatarUrl = await resolveUrl(mapped.avatarUrl);
+        mapped.coverUrl = await resolveUrl(mapped.coverUrl);
+
+        setProfile(mapped);
         // Check friend status from API
         const pending = await friendsApi.getPendingRequests().catch(() => []);
         const pendingItem = pending.find((p) => p.userId === userId);
@@ -117,14 +128,18 @@ export const useProfile = (options: UseProfileOptions = {}): UseProfileReturn =>
       if (!isMyProfile) return;
       setIsLoading(true);
       try {
-        const updateData: Parameters<typeof userApi.updateProfile>[0] = {};
+        const updateData: any = {};
         if (data.fullName !== undefined) updateData.display_name = data.fullName;
         if (data.avatarUrl !== undefined) updateData.avatar_url = data.avatarUrl;
-        if (data.bio !== undefined) updateData.display_name = data.fullName ?? currentUser?.display_name;
+        if (data.coverUrl !== undefined) updateData.cover_url = data.coverUrl;
 
         const updated = await userApi.updateProfile(updateData);
+        const mappedUpdated = mapUserToProfile(updated);
+        mappedUpdated.avatarUrl = await resolveUrl(mappedUpdated.avatarUrl);
+        mappedUpdated.coverUrl = await resolveUrl(mappedUpdated.coverUrl);
+
         dispatch(updateUser(updated));
-        setProfile((prev) => (prev ? { ...prev, ...mapUserToProfile(updated) } : prev));
+        setProfile((prev) => (prev ? { ...prev, ...mappedUpdated } : mappedUpdated));
       } catch (err: any) {
         console.error('Update profile failed:', err);
       } finally {

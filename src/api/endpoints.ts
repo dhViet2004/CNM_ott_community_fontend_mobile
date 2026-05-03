@@ -486,7 +486,7 @@ export const uploadApi = {
     } as unknown as Blob);
     formData.append('folder', folder);
     return apiClient
-      .post<{ file_url: string; file_name: string; file_size: number }>(
+      .post<{ url: string; key: string; bucket: string }>(
         '/uploads/direct',
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' } }
