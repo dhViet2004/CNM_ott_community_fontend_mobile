@@ -3,12 +3,30 @@ import { View, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
+import { FilePickerButton } from './FilePickerButton';
 
 interface ChatInputProps {
   value: string;
   onChangeText: (text: string) => void;
   onSend: (text: string) => void;
   placeholder?: string;
+  /**
+   * Callback khi upload file thành công
+   * Nhận (url, name, size) sau khi file được upload
+   */
+  onUploadSuccess?: (url: string, name: string, size: number) => void;
+  /**
+   * Conversation ID để gửi file message
+   */
+  conversationId?: string;
+  /**
+   * Sender ID (user hiện tại)
+   */
+  senderId?: string;
+  /**
+   * Receiver ID (người nhận) - cho DM
+   */
+  receiverId?: string;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -16,6 +34,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onChangeText,
   onSend,
   placeholder = 'Nhập tin nhắn...',
+  onUploadSuccess,
+  conversationId,
+  senderId,
+  receiverId,
 }) => {
   const insets = useSafeAreaInsets();
   const canSend = value.trim().length > 0;
@@ -23,15 +45,27 @@ const ChatInput: React.FC<ChatInputProps> = ({
   return (
     <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
       <View style={styles.inputBar}>
-        {/* Left: Attach icon */}
-        <TouchableOpacity
-          style={styles.attachBtn}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <View style={styles.attachIconContainer}>
-            {Icons.attach(IconSize.lg)}
-          </View>
-        </TouchableOpacity>
+        {/* Left: File picker button */}
+        <View style={styles.attachBtnContainer}>
+          {onUploadSuccess ? (
+            <FilePickerButton
+              onUploadSuccess={onUploadSuccess}
+              conversationId={conversationId}
+              senderId={senderId}
+              receiverId={receiverId}
+              iconSize={22}
+            />
+          ) : (
+            <TouchableOpacity
+              style={styles.attachBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <View style={styles.attachIconContainer}>
+                {Icons.attach(IconSize.lg)}
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Center: Text input with background */}
         <TextInput
@@ -80,6 +114,12 @@ const styles = StyleSheet.create({
   attachBtn: {
     width: 36,
     height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachBtnContainer: {
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },

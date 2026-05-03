@@ -11,6 +11,7 @@ import {
 import * as DocumentPicker from 'expo-document-picker';
 import { FileText, Upload, X } from 'lucide-react-native';
 import { colors, spacing, typography } from '@theme';
+import apiClient from '../../../api/client';
 
 /**
  * Props cho FilePickerButton
@@ -31,16 +32,19 @@ export interface FilePickerButtonProps {
   onUploadError?: (error: string) => void;
 
   /**
-   * API endpoint để upload file
-   * @default '/api/uploads/presigned-url'
+   * Conversation ID để gửi message
    */
-  uploadEndpoint?: string;
+  conversationId?: string;
 
   /**
-   * Loại file được phép chọn
-   * @default '*/*' (tất cả các loại)
+   * Sender ID (user hiện tại) - backend cần để tạo message
    */
-  fileType?: DocumentPicker.UnsupportedMimeType | '*/*';
+  senderId?: string;
+
+  /**
+   * Receiver ID (người nhận) - cho DM
+   */
+  receiverId?: string;
 
   /**
    * Custom style cho nút
@@ -52,15 +56,6 @@ export interface FilePickerButtonProps {
    * @default 24
    */
   iconSize?: number;
-}
-
-/**
- * Response từ API upload
- */
-interface UploadResponse {
-  url: string;
-  key: string;
-  bucket: string;
 }
 
 /**
@@ -88,8 +83,9 @@ interface UploadResponse {
 export const FilePickerButton: React.FC<FilePickerButtonProps> = ({
   onUploadSuccess,
   onUploadError,
-  uploadEndpoint = '/api/uploads/presigned-url',
-  fileType = '*/*',
+  conversationId,
+  senderId,
+  receiverId,
   style,
   iconSize = 24,
 }) => {
@@ -109,66 +105,13 @@ export const FilePickerButton: React.FC<FilePickerButtonProps> = ({
   };
 
   /**
-   * Upload file lên backend API
-   * @param formData - FormData chứa file
-   * @returns Promise với URL của file đã upload
-   */
-  const uploadFileToExistingApi = async (
-    formData: FormData
-  ): Promise<UploadResponse> => {
-    // Lấy base URL từ env hoặc hardcode tạm
-    const BASE_URL = 'http://localhost:4000';
-
-    // Bước 1: Lấy presigned URL từ backend
-    const presignedResponse = await fetch(`${BASE_URL}${uploadEndpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        keyPrefix: 'messages',
-        contentType: formData.getAll('file')[0]?.type || 'application/octet-stream',
-      }),
-    });
-
-    if (!presignedResponse.ok) {
-      throw new Error('Không thể lấy presigned URL');
-    }
-
-    const presignedData: UploadResponse = await presignedResponse.json();
-
-    // Bước 2: Upload file trực tiếp lên S3 qua presigned URL
-    const file = formData.getAll('file')[0] as File;
-    const uploadResponse = await fetch(presignedData.url, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': file.type || 'application/octet-stream',
-      },
-      body: file,
-    });
-
-    if (!uploadResponse.ok) {
-      throw new Error('Upload thất bại');
-    }
-
-    // Bước 3: Trả về URL công khai của file
-    const fileUrl = `https://${presignedData.bucket}.s3.ap-southeast-1.amazonaws.com/${presignedData.key}`;
-
-    return {
-      url: fileUrl,
-      key: presignedData.key,
-      bucket: presignedData.bucket,
-    };
-  };
-
-  /**
    * Xử lý chọn file
    */
   const handlePickFile = async () => {
     try {
       // Mở document picker
       const result = await DocumentPicker.getDocumentAsync({
-        type: fileType,
+        type: '*/*',
         copyToCacheDirectory: true,
       });
 
@@ -188,7 +131,7 @@ export const FilePickerButton: React.FC<FilePickerButtonProps> = ({
       setCurrentFile(fileInfo);
       setIsUploading(true);
 
-      // Tạo FormData
+      // Tạo FormData để upload - giống web dùng sender_id, receiver_id
       const formData = new FormData();
       formData.append('file', {
         uri: fileInfo.uri,
@@ -196,16 +139,43 @@ export const FilePickerButton: React.FC<FilePickerButtonProps> = ({
         type: fileInfo.mimeType,
       } as any);
 
-      // Upload
-      const uploadResult = await uploadFileToExistingApi(formData);
+      // Backend cần sender_id và receiver_id (giống web)
+      if (senderId) {
+        formData.append('sender_id', senderId);
+      }
+      if (receiverId) {
+        formData.append('receiver_id', receiverId);
+      }
 
-      // Thành công
+      // Upload lên backend
+      const response = await apiClient.post('/messages/file', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const responseData = response.data;
+      const messageData = responseData.data || responseData;
+
+      // Lấy URL file từ attachments hoặc content
+      let fileUrl = '';
+      if (messageData.attachments && messageData.attachments.length > 0) {
+        fileUrl = messageData.attachments[0].url;
+      } else if (messageData.url) {
+        fileUrl = messageData.url;
+      } else if (messageData.file_url) {
+        fileUrl = messageData.file_url;
+      } else {
+        fileUrl = messageData.content || '';
+      }
+
+      // Thành công - callback với URL, tên file, kích thước
       setCurrentFile(null);
-      onUploadSuccess(uploadResult.url, fileInfo.name, fileInfo.size);
+      onUploadSuccess(fileUrl, fileInfo.name, fileInfo.size);
     } catch (error) {
+      console.error('File upload error:', error);
       const errorMessage =
         error instanceof Error ? error.message : 'Upload thất bại';
-      console.error('File upload error:', error);
       setCurrentFile(null);
       onUploadError?.(errorMessage);
       Alert.alert('Lỗi', errorMessage);
