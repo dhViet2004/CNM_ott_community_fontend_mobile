@@ -96,6 +96,9 @@ interface ChatState {
   // Revoked messages
   revokedMessageIds: string[];
 
+  // Deleted-for-me message IDs (local to current user)
+  deletedForMeIds: string[];
+
   // Pinned messages
   pinnedMessages: Record<string, any[]>;
 }
@@ -116,6 +119,7 @@ const initialState: ChatState = {
   error: null,
   searchQuery: '',
   revokedMessageIds: [],
+  deletedForMeIds: [],
   pinnedMessages: {},
 };
 
@@ -343,15 +347,10 @@ const chatSlice = createSlice({
     ) {
       const messages = state.messages[action.payload.conversationId];
       if (messages) {
-        const msgIndex = messages.findIndex(
-          (m) => m.id === action.payload.messageId
+        state.messages[action.payload.conversationId] = messages.filter(
+          (m) => m.id !== action.payload.messageId
         );
-        if (msgIndex !== -1) {
-          const updated = [...messages];
-          updated[msgIndex] = { ...updated[msgIndex], isDeleted: true, content: '' };
-          state.messages[action.payload.conversationId] = updated;
-          state.messages = { ...state.messages };
-        }
+        state.messages = { ...state.messages };
       }
     },
 
@@ -412,6 +411,15 @@ const chatSlice = createSlice({
           state.messages[conversationId] = [...messages];
           state.messages = { ...state.messages };
         }
+      }
+    },
+
+    // Tracks message IDs that the current user has deleted for themselves.
+    // Used to prevent socket from re-adding a deleted message.
+    addDeletedForMeId(state, action: PayloadAction<string>) {
+      const msgId = String(action.payload);
+      if (!state.deletedForMeIds.includes(msgId)) {
+        state.deletedForMeIds.push(msgId);
       }
     },
 
@@ -565,6 +573,7 @@ export const {
   clearChat,
   setPinnedMessages,
   addReaderToMessage,
+  addDeletedForMeId,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

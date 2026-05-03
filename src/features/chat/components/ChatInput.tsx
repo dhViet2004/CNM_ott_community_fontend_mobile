@@ -14,8 +14,9 @@ interface ChatInputProps {
   /**
    * Callback khi upload file thành công
    * Nhận (url, name, size) sau khi file được upload
+   * @param messageData - Full message object returned from backend
    */
-  onUploadSuccess?: (url: string, name: string, size: number) => void;
+  onUploadSuccess?: (url: string, name: string, size: number, messageData?: any) => void;
   /**
    * Callback khi ghi âm hoàn tất
    * Nhận audioUri sau khi ghi âm xong
@@ -60,7 +61,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         <View style={styles.attachBtnContainer}>
           {onUploadSuccess ? (
             <FilePickerButton
-              onUploadSuccess={onUploadSuccess}
+              onUploadSuccess={(url, name, size, msgData) => onUploadSuccess(url, name, size, msgData)}
               conversationId={conversationId}
               senderId={senderId}
               receiverId={receiverId}

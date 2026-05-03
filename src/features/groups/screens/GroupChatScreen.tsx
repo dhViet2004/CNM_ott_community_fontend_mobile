@@ -12,6 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { store } from '@store/store';
 import {
@@ -22,6 +23,8 @@ import {
   failPendingMessage,
   setMessageRevoked,
   updateMessage,
+  deleteMessage,
+  addDeletedForMeId,
   Message,
 } from '@store/slices/chatSlice';
 import { setGroupMembers } from '@store/slices/groupsSlice';
@@ -31,9 +34,8 @@ import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import MessageBubble from '@features/chat/components/MessageBubble';
 import PinnedHeader from '@features/chat/components/PinnedHeader';
-import FilePickerButton from '@features/chat/components/FilePickerButton';
 import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
-import { MessageContextMenu } from '@features/chat/components';
+import { MessageContextMenu, ChatInput } from '@features/chat/components';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 import { getGroupMembers } from '../api';
 
@@ -121,6 +123,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [defaultChannelId, setDefaultChannelId] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<SelectedMessage>(null);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const selectedMessageRef = useRef<SelectedMessage>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,6 +137,53 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   // Track if user is near bottom
   const isNearBottomRef = useRef(true);
   const isInitializedRef = useRef(false);
+  const prevMessagesLengthRef = useRef(0);
+  const messagesRef = useRef<Message[]>(messages);
+  messagesRef.current = messages;
+
+  const lastMarkedReadRef = useRef<{ messageId: string; timestamp: number } | null>(null);
+
+  // ─── Mark as Read ────────────────────────────────────────────────────────────
+  const markAsRead = useCallback(() => {
+    const msgs = messagesRef.current;
+    if (!conversationId || msgs.length === 0) return;
+
+    // Find all unread messages from OTHER users (group chat: recipient may not have sent any messages)
+    const now = Date.now();
+    const THREE_SECONDS = 3000;
+    const lastMarked = lastMarkedReadRef.current;
+    const isRecent = lastMarked && now - lastMarked.timestamp < THREE_SECONDS;
+
+    const unreadMessages = msgs.filter((m) => {
+      const isFromOther = String(m.senderId) !== String(currentUserId);
+      const alreadyReadByMe = m.readBy?.some(
+        (r) => String(r.userId) === String(currentUserId)
+      );
+      return isFromOther && !alreadyReadByMe && m.status !== 'read';
+    });
+
+    if (unreadMessages.length === 0) return;
+
+    // Use the LATEST unread message as the throttle anchor
+    const latestUnread = unreadMessages[unreadMessages.length - 1];
+    const latestUnreadId = String(latestUnread.id);
+
+    if (isRecent && lastMarked.messageId === latestUnreadId) {
+      return; // Already emitted for this latest unread within 3 seconds
+    }
+
+    lastMarkedReadRef.current = { messageId: latestUnreadId, timestamp: now };
+
+    // Emit mark_read for EACH unread message so the sender sees ALL of them as read
+    unreadMessages.forEach((msg) => {
+      const msgId = String(msg.id);
+      console.log('[GroupChatScreen] markAsRead → emitting mark_read:', { conversationId, messageId: msgId });
+      socketActions.markRead(conversationId, msgId);
+    });
+  }, [conversationId, currentUserId]);
+
+  const markAsReadRef = useRef(markAsRead);
+  markAsReadRef.current = markAsRead;
 
   // ─── Load Messages ────────────────────────────────────────────────────────
   // ✅ FIX: Tách loadMessages khỏi dependency defaultChannelId để tránh loop
@@ -293,52 +343,6 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  // Xử lý upload file cho group - nhận URL và gọi API tạo message
-  const handleFileUploadSuccess = useCallback(async (fileUrl: string, fileName: string, fileSize: number) => {
-    console.log('[GroupChat] File uploaded, creating message...');
-    
-    const tempId = `temp_${Date.now()}`;
-    const optimisticMsg: Message = {
-      id: tempId,
-      conversationId,
-      senderId: currentUserId || '',
-      senderName: currentUser?.display_name || 'Tôi',
-      senderAvatar: currentUser?.avatar_url ?? null,
-      sender_name: currentUser?.display_name || 'Tôi',
-      sender_avatar: currentUser?.avatar_url ?? null,
-      content: fileUrl, // URL file làm content
-      timestamp: new Date().toISOString(),
-      type: 'file',
-      status: 'sending',
-    };
-    dispatch(addMessage(optimisticMsg));
-
-    if (isNearBottomRef.current) {
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
-    }
-
-    try {
-      // Gọi API tạo message với file_url
-      const result = await messageApi.sendMessage(conversationId, fileUrl, currentUserId || '', 'file');
-      const realId = String(result.id ?? result.messageId ?? tempId);
-
-      dispatch(
-        confirmPendingMessage({
-          tempId,
-          realId,
-          conversationId,
-          senderId: String(result.senderId),
-          senderName: (result as any).senderDisplayName || (result as any).sender_name || currentUser?.display_name || 'Tôi',
-          senderAvatar: (result as any).senderAvatarUrl ?? (result as any).sender_avatar ?? null,
-          content: result.content ?? fileUrl,
-          type: 'file' as Message['type'],
-          file_url: fileUrl,
-        })
-      );
-    } catch {
-      dispatch(failPendingMessage(tempId));
-    }
-  }, [conversationId, currentUserId, currentUser, dispatch]);
 
   // ─── Context Menu callbacks (hoisted to top level — Rules of Hooks) ──────────
   const handleRecall = useCallback(() => {
@@ -424,13 +428,38 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         {
           text: 'Xóa',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert('Thành công', 'Tin nhắn đã được xóa');
+          onPress: async () => {
+            const msgId = String(msg.id);
+            const originalContent = msg.content;
+            setDeletingMessageId(msgId);
+            setSelectedMessage(null);
+
+            // Optimistic: xóa ngay khỏi UI trước khi API trả về
+            dispatch(deleteMessage({ conversationId, messageId: msgId }));
+            // Track để socket không re-add tin nhắn đã xóa
+            dispatch(addDeletedForMeId(msgId));
+
+            try {
+              await messageApi.deleteForMe(conversationId, msgId);
+            } catch (err: any) {
+              // Rollback: khôi phục lại tin nhắn nếu API lỗi
+              dispatch(updateMessage({
+                messageId: msgId,
+                conversationId,
+                updates: { isDeleted: false, content: originalContent },
+              }));
+              const errMsg = err?.response?.data?.error
+                || err?.response?.data?.message
+                || 'Không thể xóa tin nhắn';
+              Alert.alert('Lỗi', errMsg);
+            } finally {
+              setDeletingMessageId(null);
+            }
           },
         },
       ]
     );
-  }, []);
+  }, [dispatch, conversationId]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
   const renderMessage = useCallback(
@@ -462,6 +491,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           defaultName={title}
           isFocused={isFocused}
           onLongPress={setSelectedMessage}
+          readBy={item.readBy}
         />
       );
     },
@@ -470,13 +500,17 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const keyExtractor = useCallback((item: Message) => String(item.id), []);
 
-  // Handle scroll to detect if user is near bottom
+  // Handle scroll to detect if user is near bottom and emit mark_read
   const handleScroll = useCallback((event: any) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
     const paddingToBottom = 100;
     const isNear = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
 
     isNearBottomRef.current = isNear;
+
+    if (isNear) {
+      markAsReadRef.current();
+    }
   }, []);
 
   // Initial scroll to bottom after messages load
@@ -488,6 +522,32 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       }, 100);
     }
   }, [messages.length]);
+
+  // Auto-scroll + markAsRead when new messages arrive while at bottom
+  useEffect(() => {
+    if (!isInitializedRef.current || messages.length === 0) return;
+
+    if (messages.length > prevMessagesLengthRef.current) {
+      if (isNearBottomRef.current) {
+        flatListRef.current?.scrollToEnd({ animated: true });
+
+        setTimeout(() => {
+          markAsReadRef.current();
+        }, 500);
+      }
+    }
+
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages.length]);
+
+  // Emit mark_read when screen becomes focused
+  useFocusEffect(
+    useCallback(() => {
+      if (isNearBottomRef.current && isInitializedRef.current) {
+        markAsRead();
+      }
+    }, [markAsRead]) // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   return (
     <View style={styles.container}>
@@ -575,31 +635,82 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           }
         />
         <View style={[styles.inputWrapper, { paddingBottom: bottomPadding }]}>
-          <View style={styles.inputBar}>
-            <FilePickerButton
-              onUploadSuccess={handleFileUploadSuccess}
-              senderId={currentUserId ? String(currentUserId) : undefined}
-              channelId={String(groupId)}
-              iconSize={22}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Nhập tin nhắn..."
-              placeholderTextColor={colors.text.placeholder}
-              value={inputText}
-              onChangeText={handleTextChange}
-              multiline
-            />
-            <TouchableOpacity
-              style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
-              onPress={handleSend}
-              disabled={!inputText.trim()}
-            >
-              <View style={styles.sendIconContainer}>
-                {Icons.send(IconSize.lg, inputText.trim() ? colors.text.inverse : colors.text.tertiary)}
-              </View>
-            </TouchableOpacity>
-          </View>
+          <ChatInput
+            value={inputText}
+            onChangeText={handleTextChange}
+            onSend={handleSend}
+            conversationId={conversationId}
+            senderId={currentUserId ? String(currentUserId) : undefined}
+            onUploadSuccess={async (url, name, size, msgData) => {
+              if (msgData) {
+                dispatch(addMessage({
+                  id: String(msgData.id || msgData.messageId || Date.now()),
+                  conversationId: msgData.conversationId || conversationId,
+                  senderId: String(msgData.senderId || currentUserId),
+                  senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+                  sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+                  sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+                  type: (msgData.contentType || 'file') as any,
+                  content: msgData.content || name || url,
+                  file_url: msgData.file_url || msgData.attachments?.[0]?.url || url,
+                  file_name: msgData.file_name || name || null,
+                  file_size: msgData.file_size || size || null,
+                  timestamp: msgData.createdAt || msgData.created_at || new Date().toISOString(),
+                  status: 'sent',
+                }));
+              }
+
+              if (isNearBottomRef.current) {
+                setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+              }
+            }}
+            onVoiceRecord={async (audioUri) => {
+              try {
+                const formData = new FormData();
+                const fileUri = audioUri;
+                const fileName = `voice_${Date.now()}.m4a`;
+
+                formData.append('file', {
+                  uri: fileUri,
+                  name: fileName,
+                  type: 'audio/m4a',
+                } as unknown as Blob);
+
+                if (currentUserId) {
+                  formData.append('sender_id', String(currentUserId));
+                }
+                
+                formData.append('group_id', String(groupId));
+                formData.append('conversationId', conversationId);
+
+                const sentMsg = await messageApi.sendFileMessage(conversationId, formData);
+                console.log('[GroupChat] Voice message sent successfully');
+
+                dispatch(addMessage({
+                  id: String(sentMsg.id || Date.now()),
+                  conversationId: sentMsg.conversationId || conversationId,
+                  senderId: String(sentMsg.senderId || currentUserId),
+                  senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+                  sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+                  sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+                  type: (sentMsg.contentType || 'voice') as any,
+                  content: sentMsg.content || '',
+                  file_url: sentMsg.file_url || sentMsg.attachments?.[0]?.url || null,
+                  file_name: sentMsg.file_name || null,
+                  file_size: sentMsg.file_size || null,
+                  timestamp: sentMsg.createdAt || sentMsg.created_at || new Date().toISOString(),
+                  status: 'sent',
+                }));
+
+                if (isNearBottomRef.current) {
+                  setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+                }
+              } catch (err) {
+                console.error('[GroupChat] Error sending voice message:', err);
+                Alert.alert('Lỗi', 'Không thể gửi tin nhắn thoại. Vui lòng thử lại.');
+              }
+            }}
+          />
         </View>
       </KeyboardAvoidingView>
 
@@ -609,6 +720,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         visible={selectedMessage !== null}
         onClose={() => setSelectedMessage(null)}
         isOwn={selectedMessage?.isMe ?? false}
+        isDeleting={deletingMessageId === String(selectedMessage?.id)}
         onReply={() => Alert.alert('Trả lời', 'Tính năng đang phát triển')}
         onForward={() => Alert.alert('Chuyển tiếp', 'Tính năng đang phát triển')}
         onSave={() => Alert.alert('Lưu', 'Tính năng đang phát triển')}

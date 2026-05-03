@@ -39,6 +39,7 @@ interface MessageContextMenuProps {
   onReadText?: () => void;
   onDetails?: () => void;
   onDelete?: () => void;
+  isDeleting?: boolean;
 }
 
 // ─── Action Definitions ───────────────────────────────────────────────────────
@@ -56,7 +57,7 @@ interface ActionItem {
 const REACTION_EMOJIS = ['❤️', '👍', '🤣', '😲', '😭', '😡'];
 
 const buildActionItems = (props: MessageContextMenuProps): ActionItem[] => {
-  const { onReply, onForward, onSave, onRecall, onCopy, onPin, onReminder, onSelectMultiple, onQuickMessage, onTranslate, onReadText, onDetails, onDelete, isOwn } = props;
+  const { onReply, onForward, onSave, onRecall, onCopy, onPin, onReminder, onSelectMultiple, onQuickMessage, onTranslate, onReadText, onDetails, onDelete, isOwn, isDeleting } = props;
 
   return [
     // Row 1
@@ -76,7 +77,7 @@ const buildActionItems = (props: MessageContextMenuProps): ActionItem[] => {
     { key: 'readText', label: 'Đọc văn bản', icon: 'megaphone-outline', iconColor: '#6B7280', badge: 'MỚI', onPress: () => { onReadText?.(); props.onClose(); } },
     { key: 'details', label: 'Chi tiết', icon: 'information-circle-outline', iconColor: '#6B7280', onPress: () => { onDetails?.(); props.onClose(); } },
     // Row 4
-    { key: 'delete', label: 'Xóa', icon: 'trash-outline', iconColor: colors.status.error, isDestructive: true, onPress: () => { onDelete?.(); props.onClose(); } },
+    { key: 'delete', label: isDeleting ? 'Đang xóa...' : 'Xóa với tôi', icon: isDeleting ? 'hourglass-outline' : 'trash-outline', iconColor: colors.status.error, isDestructive: true, onPress: () => { onDelete?.(); props.onClose(); } },
   ];
 };
 
@@ -106,18 +107,20 @@ const ReactionBar: React.FC<ReactionBarProps> = ({ onSelect, onClose }) => (
 
 interface ActionGridItemProps {
   item: ActionItem;
+  disabled?: boolean;
 }
 
-const ActionGridItem: React.FC<ActionGridItemProps> = ({ item }) => (
+const ActionGridItem: React.FC<ActionGridItemProps> = ({ item, disabled }) => (
   <Pressable
     style={({ pressed }) => [
       styles.actionItem,
-      pressed && styles.actionItemPressed,
+      pressed && !disabled && styles.actionItemPressed,
+      disabled && styles.actionItemDisabled,
     ]}
-    onPress={item.onPress}
+    onPress={disabled ? undefined : item.onPress}
   >
     <View style={styles.iconWrapper}>
-      <Ionicons name={item.icon as any} size={22} color={item.iconColor} />
+      <Ionicons name={item.icon as any} size={22} color={disabled ? '#C0C0C0' : item.iconColor} />
       {item.badge && (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{item.badge}</Text>
@@ -128,6 +131,7 @@ const ActionGridItem: React.FC<ActionGridItemProps> = ({ item }) => (
       style={[
         styles.actionLabel,
         item.isDestructive && styles.actionLabelDestructive,
+        disabled && styles.actionLabelDisabled,
       ]}
       numberOfLines={2}
     >
@@ -143,10 +147,11 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
   visible,
   onClose,
   isOwn,
+  isDeleting,
   ...actionHandlers
 }) => {
   const insets = useSafeAreaInsets();
-  const actionItems = buildActionItems({ message, visible, onClose, isOwn, ...actionHandlers });
+  const actionItems = buildActionItems({ message, visible, onClose, isOwn, isDeleting, ...actionHandlers });
 
   const handleReactionSelect = useCallback((emoji: string) => {
     Alert.alert('Phản ứng', `Bạn đã chọn ${emoji}`);
@@ -181,7 +186,7 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
                 {rows.map((row, rowIndex) => (
                   <View key={rowIndex} style={styles.actionRow}>
                     {row.map((item) => (
-                      <ActionGridItem key={item.key} item={item} />
+                      <ActionGridItem key={item.key} item={item} disabled={item.key === 'delete' && isDeleting} />
                     ))}
                     {/* Fill empty cells to maintain 4-column grid */}
                     {row.length < 4 &&
@@ -272,6 +277,9 @@ const styles = StyleSheet.create({
   actionItemPressed: {
     opacity: 0.65,
   },
+  actionItemDisabled: {
+    opacity: 0.5,
+  },
   iconWrapper: {
     position: 'relative',
     alignItems: 'center',
@@ -288,6 +296,9 @@ const styles = StyleSheet.create({
   },
   actionLabelDestructive: {
     color: colors.status.error,
+  },
+  actionLabelDisabled: {
+    color: '#C0C0C0',
   },
 
   // ── Badge ─────────────────────────────────────────────────────────────────
