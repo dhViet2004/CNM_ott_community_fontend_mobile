@@ -31,6 +31,7 @@ export type MainTabParamList = {
   ChatTab: undefined;
   ContactsTab: undefined;
   ExploreTab: undefined;
+  TimelineTab: undefined;
   ProfileTab: undefined;
 };
 

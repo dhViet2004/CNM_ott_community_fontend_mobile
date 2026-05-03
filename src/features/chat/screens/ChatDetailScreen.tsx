@@ -1,5 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Text, RefreshControl, Keyboard, StatusBar, ImageBackground, TouchableOpacity } from 'react-native';
+import {
+  View,
+  FlatList,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  Text,
+  RefreshControl,
+  Keyboard,
+  StatusBar,
+  TouchableOpacity,
+  Alert,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { shallowEqual } from 'react-redux';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useMessages, MessageItem } from '@features/chat/hooks/useMessages';
@@ -10,44 +23,58 @@ import { socketActions } from '@api/socket';
 import { messageApi, friendsApi } from '@api/endpoints';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { confirmPendingMessage, failPendingMessage, setMessageFailed } from '@store/slices/chatSlice';
-import { colors, spacing, typography } from '@theme';
-import { Alert } from 'react-native';
+import { colors, spacing } from '@theme';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 
 type Props = RootStackScreenProps<'Chat'>;
 const EMPTY_ARRAY: any[] = [];
 
+const HEADER_BLUE = '#008AF3';
+const CHAT_BG = '#F4F6F8';
+
 const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const { conversationId, title } = route.params;
   const focusedMessageIdFromParams = (route.params as any).focusedMessageId;
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
-  
+
   const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
-  
-  const pinnedMessages = useAppSelector((state) => state.chat.pinnedMessages[conversationId] || EMPTY_ARRAY, shallowEqual);
+
+  const pinnedMessages = useAppSelector(
+    (state) => state.chat.pinnedMessages[conversationId] || EMPTY_ARRAY,
+    shallowEqual
+  );
   const friends = useAppSelector((state) => state.chat.friends, shallowEqual);
   const [chatBgUrl, setChatBgUrl] = useState<string | null>(null);
 
-  useEffect(() => {
-    const friend = friends.find(f => (f.friend_id || f.userId) === route.params.userId);
-    const fId = friend?.friendshipId;
-    
-    if (fId) {
-      friendsApi.getChatBackground(fId).then(res => {
-        setChatBgUrl(res.chatBgUrl);
-      }).catch(console.error);
+  const dispatch = useAppDispatch();
+  const currentUserId = useAppSelector((state) => state.auth?.user?.userId);
+  const currentUser = useAppSelector((state) => state.auth?.user);
 
-      // Listen for real-time background updates
+  // Bottom padding — account for home indicator on iOS
+  const bottomPadding = Platform.OS === 'ios'
+    ? insets.bottom
+    : Math.max(insets.bottom, spacing.md);
+
+  // Load chat background
+  useEffect(() => {
+    const friend = friends.find((f) => (f.friend_id || f.userId) === route.params.userId);
+    const fId = friend?.friendshipId;
+
+    if (fId) {
+      friendsApi.getChatBackground(fId).then((res) => {
+        setChatBgUrl(res.chatBgUrl);
+      }).catch(() => {});
+
       const listener = (data: { friendshipId: string; bgUrl: string | null }) => {
         if (data.friendshipId === fId) {
           setChatBgUrl(data.bgUrl);
         }
       };
-      
+
       const socket = require('@api/socket').socket;
       socket?.on('chat_background_updated', listener);
-      
+
       return () => {
         socket?.off('chat_background_updated', listener);
       };
@@ -63,7 +90,6 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       senderName: msg.senderName || 'Người dùng',
       createdAt: new Date().toISOString(),
     };
-
     socketActions.pinMessage(conversationId, pinData, (res: any) => {
       if (res.ok) {
         Alert.alert('Thành công', 'Đã ghim tin nhắn');
@@ -84,46 +110,24 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [conversationId]);
 
   const handleNavigateToMessage = useCallback((messageId: string) => {
-    const index = messagesRef.current.findIndex(m => String(m.id) === String(messageId));
+    const index = messagesRef.current.findIndex((m) => String(m.id) === String(messageId));
     if (index !== -1) {
       setFocusedMessageId(String(messageId));
       flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
-
-      setTimeout(() => {
-        setFocusedMessageId(null);
-      }, 3000);
+      setTimeout(() => setFocusedMessageId(null), 3000);
     } else {
-      // Nếu không tìm thấy, thử cuộn tới vị trí gần đúng hoặc thông báo
-      console.warn(`Message ${messageId} not found in current list of ${messagesRef.current.length} messages`);
       Alert.alert('Thông báo', 'Tin nhắn này hiện chưa được tải về, vui lòng cuộn lên để tìm lại');
     }
   }, []);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [inputText, setInputText] = useState('');
-
-  // Track if user is near bottom (within 100px)
   const [isNearBottom, setIsNearBottom] = useState(true);
   const isNearBottomRef = useRef(true);
   const messagesRef = useRef<MessageItem[]>([]);
-
-  // Track initial load state
   const isInitializedRef = useRef(false);
 
-  const dispatch = useAppDispatch();
-  const currentUserId = useAppSelector((state) => state.auth?.user?.userId);
-  const currentUser = useAppSelector((state) => state.auth?.user);
-
-  // Bottom padding cho input - đảm bảo không bị che bởi navigation bar
-  const bottomPadding = Platform.OS === 'ios'
-    ? insets.bottom
-    : Math.max(insets.bottom, spacing.md);
-
-  // Top padding - đảm bảo không bị che bởi status bar hoặc notch
-  const topPadding = Platform.OS === 'android' ? 0 : Math.max(insets.top, spacing.sm);
-
   const handleNewMessage = useCallback(() => {
-    // Chỉ auto-scroll nếu user đang ở gần cuối
     if (isNearBottomRef.current) {
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     }
@@ -139,11 +143,8 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     messagesRef.current = messages;
   }, [messages]);
 
-  const { typingLabel, handleTextChange } = useTypingIndicator({
-    conversationId,
-  });
+  const { typingLabel, handleTextChange } = useTypingIndicator({ conversationId });
 
-  // Keyboard show - scroll to bottom if near bottom
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => {
       if (isNearBottomRef.current) {
@@ -160,29 +161,20 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [loadMessages]);
 
   useEffect(() => {
-    // Load messages khi conversationId thay đổi
-    // useMessages (autoLoad: false) đã join room qua socketActions.joinConversation bên trong
     loadMessages();
     isInitializedRef.current = false;
-
-    // Không gọi lại socketActions.joinConversation đ ở đây vì useMessages hook đã gọi rồi
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   useEffect(() => {
     if (focusedMessageIdFromParams && messages.length > 0) {
-      const index = messages.findIndex(m => String(m.id) === String(focusedMessageIdFromParams));
+      const index = messages.findIndex((m) => String(m.id) === String(focusedMessageIdFromParams));
       if (index !== -1) {
         setFocusedMessageId(String(focusedMessageIdFromParams));
         setTimeout(() => {
           flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
         }, 500);
-
-        // Clear highlight after 3 seconds
-        const timer = setTimeout(() => {
-          setFocusedMessageId(null);
-        }, 3000);
-        return () => clearTimeout(timer);
+        setTimeout(() => setFocusedMessageId(null), 3000);
       }
     }
   }, [focusedMessageIdFromParams, messages]);
@@ -221,11 +213,10 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           file_url: result.file_url ?? result.attachments?.[0]?.url ?? null,
         }));
 
-        // Auto-scroll khi gửi tin nhắn thành công
         if (isNearBottomRef.current) {
           setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
         }
-      } catch (err) {
+      } catch {
         dispatch(failPendingMessage(tempId));
         dispatch(setMessageFailed({ conversationId, messageId: tempId }));
         Alert.alert('Lỗi', 'Không thể gửi tin nhắn. Vui lòng thử lại.');
@@ -266,15 +257,16 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             [
               { text: 'Trả lời', onPress: () => {} },
               { text: 'Chuyển tiếp', onPress: () => {} },
-              { 
-                text: pinnedMessages.some((p: any) => String(p.id) === String(item.id)) ? 'Bỏ ghim' : 'Ghim tin nhắn', 
+              {
+                text: pinnedMessages.some((p: any) => String(p.id) === String(item.id))
+                  ? 'Bỏ ghim' : 'Ghim tin nhắn',
                 onPress: () => {
                   if (pinnedMessages.some((p: any) => String(p.id) === String(item.id))) {
                     handleUnpinMessage(String(item.id));
                   } else {
                     handlePinMessage(item);
                   }
-                } 
+                },
               },
               { text: 'Thu hồi', onPress: () => {}, style: 'destructive' },
               { text: 'Xóa', onPress: () => {}, style: 'destructive' },
@@ -289,151 +281,149 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const keyExtractor = useCallback((item: MessageItem) => String(item.id), []);
 
-  // Handle scroll to detect if user is near bottom
   const handleScroll = useCallback((event: any) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
     const paddingToBottom = 100;
     const isNear = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
-
     isNearBottomRef.current = isNear;
     setIsNearBottom(isNear);
   }, []);
 
-  // Initial scroll to bottom after messages load
   const handleContentSizeChange = useCallback(() => {
     if (!isInitializedRef.current && messages.length > 0) {
       isInitializedRef.current = true;
-      // Small delay to ensure content is rendered
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: false });
       }, 100);
     }
   }, [messages.length]);
 
+  // ── Zalo-style Header ─────────────────────────────────────────────────────
+  const renderHeader = () => (
+    <SafeAreaView edges={['top']} style={styles.headerSafeArea}>
+      <StatusBar barStyle="light-content" backgroundColor={HEADER_BLUE} />
+
+      <View style={styles.headerBar}>
+        {/* Left: Back chevron */}
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.headerBackBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="chevron-back" size={26} color="#FFFFFF" />
+        </TouchableOpacity>
+
+        {/* Center: Contact name */}
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+        </View>
+
+        {/* Right: Phone, Video, Menu icons */}
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            onPress={() => Alert.alert('Thông báo', 'Tính năng gọi thoại đang phát triển')}
+            style={styles.headerIconBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+          >
+            <Ionicons name="call" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => Alert.alert('Thông báo', 'Tính năng gọi video đang phát triển')}
+            style={styles.headerIconBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+          >
+            {Icons.videocam(22, '#FFFFFF')}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              const params: RootStackParamList['ChatSettings'] = {
+                conversationId,
+                title,
+                originalName: (route.params as any).originalName,
+                friendId: (route.params as any).userId,
+              };
+              navigation.navigate('ChatSettings', params);
+            }}
+            style={styles.headerIconBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+          >
+            {Icons.menu(22, '#FFFFFF')}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+
   return (
     <View style={styles.container}>
-      <SafeAreaView edges={['top']} style={styles.customHeader}>
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            {Icons.back(IconSize.lg, colors.text.inverse)}
-          </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              onPress={() => Alert.alert('Thông báo', 'Tính năng gọi video đang phát triển')}
-              style={styles.headerIcon}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              {Icons.videocam(IconSize.lg, colors.text.inverse)}
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                const params: RootStackParamList['MessageSearch'] = {
-                  conversationId,
-                  title,
-                };
-                navigation.navigate('MessageSearch', params);
-              }}
-              style={styles.headerIcon}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              {Icons.search(IconSize.lg, colors.text.inverse)}
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                const params: RootStackParamList['ChatSettings'] = {
-                  conversationId,
-                  title,
-                  originalName: (route.params as any).originalName,
-                  friendId: (route.params as any).userId,
-                };
-                navigation.navigate('ChatSettings', params);
-              }}
-              style={styles.headerIcon}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              {Icons.menu(IconSize.lg, colors.text.inverse)}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </SafeAreaView>
+      {renderHeader()}
 
-      <ImageBackground
-        source={chatBgUrl ? { uri: chatBgUrl } : undefined}
-        style={styles.backgroundImage}
-        imageStyle={{ opacity: 0.8 }}
+      {/* Chat body with light grayish-blue background */}
+      <KeyboardAvoidingView
+        style={styles.chatBody}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
       >
-        <KeyboardAvoidingView
-          style={styles.keyboardView}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={0}
-        >
-          <PinnedHeader
-            pinnedMessages={pinnedMessages}
-            onUnpin={handleUnpinMessage}
-            onNavigateToMessage={handleNavigateToMessage}
-          />
-
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={keyExtractor}
-            renderItem={renderMessage}
-            contentContainerStyle={[
-              styles.messagesList,
-              { paddingBottom: bottomPadding + spacing.md }
-            ]}
-            onContentSizeChange={handleContentSizeChange}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-            onTouchStart={() => Keyboard.dismiss()}
-            ListHeaderComponent={
-              typingLabel ? (
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={keyExtractor}
+          renderItem={renderMessage}
+          contentContainerStyle={[
+            styles.messagesList,
+            { paddingBottom: bottomPadding + spacing.md },
+          ]}
+          onContentSizeChange={handleContentSizeChange}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          onTouchStart={() => Keyboard.dismiss()}
+          ListHeaderComponent={
+            <>
+              <PinnedHeader
+                pinnedMessages={pinnedMessages}
+                onUnpin={handleUnpinMessage}
+                onNavigateToMessage={handleNavigateToMessage}
+              />
+              {typingLabel ? (
                 <View style={styles.typingWrapper}>
                   <TypingIndicator label={typingLabel} />
                 </View>
-              ) : null
-            }
-            ListEmptyComponent={
-              <View key="list-empty">
-                {isLoading ? (
-                  <View style={styles.loadingContainer}>
-                    <Text style={styles.loadingText}>Đang tải tin nhắn...</Text>
-                  </View>
-                ) : (
-                  <View style={styles.emptyContainer}>
-                    <Text style={styles.emptyText}>Chưa có tin nhắn nào</Text>
-                    <Text style={styles.emptySubtext}>Gửi lời chào đầu tiên!</Text>
-                  </View>
-                )}
-              </View>
-            }
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={handleRefresh}
-                tintColor={colors.primary}
-                colors={[colors.primary]}
-              />
-            }
-          />
-
-          <View style={[
-            styles.inputWrapper,
-            { paddingBottom: bottomPadding }
-          ]}>
-            <ChatInput
-              value={inputText}
-              onChangeText={onTextChange}
-              onSend={handleSend}
+              ) : null}
+            </>
+          }
+          ListEmptyComponent={
+            <View key="list-empty">
+              {isLoading ? (
+                <View style={styles.stateContainer}>
+                  <Text style={styles.stateText}>Đang tải tin nhắn...</Text>
+                </View>
+              ) : (
+                <View style={styles.stateContainer}>
+                  <Text style={styles.stateText}>Chưa có tin nhắn nào</Text>
+                  <Text style={styles.stateSubtext}>Gửi lời chào đầu tiên!</Text>
+                </View>
+              )}
+            </View>
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
             />
-          </View>
-        </KeyboardAvoidingView>
-      </ImageBackground>
+          }
+        />
+
+        {/* Footer / Chat Input */}
+        <View style={[styles.inputWrapper, { paddingBottom: bottomPadding }]}>
+          <ChatInput
+            value={inputText}
+            onChangeText={onTextChange}
+            onSend={handleSend}
+          />
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 };
@@ -441,77 +431,77 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.chatBg,
+    backgroundColor: HEADER_BLUE,
   },
-  customHeader: {
-    backgroundColor: colors.primary,
+
+  // ── Header ──────────────────────────────────────────────────────────────
+  headerSafeArea: {
+    backgroundColor: HEADER_BLUE,
   },
-  headerContent: {
-    height: 56,
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.screenPadding,
+    height: 56,
+    paddingHorizontal: spacing.sm,
   },
-  backButton: {
-    paddingVertical: spacing.sm,
-    paddingRight: spacing.md,
-    marginLeft: -spacing.sm,
+  headerBackBtn: {
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  headerCenter: {
+    flex: 1,
+    paddingHorizontal: spacing.sm,
   },
   headerTitle: {
-    flex: 1,
-    ...typography.h3,
-    color: colors.text.inverse,
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  headerIcon: {
-    padding: spacing.sm,
-    marginLeft: spacing.xs,
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 2,
   },
-  backgroundImage: {
+
+  // ── Chat Body ──────────────────────────────────────────────────────────
+  chatBody: {
     flex: 1,
-    width: '100%',
-    height: '100%',
+    backgroundColor: CHAT_BG,
   },
-  keyboardView: {
-    flex: 1,
+  messagesList: {
+    paddingTop: spacing.sm,
+    flexGrow: 1,
   },
   typingWrapper: {
     paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
   },
-  messagesList: {
-    padding: spacing.md,
-    flexGrow: 1,
+  stateContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 120,
   },
+  stateText: {
+    fontSize: 15,
+    color: '#999',
+    marginBottom: 4,
+  },
+  stateSubtext: {
+    fontSize: 13,
+    color: '#BBB',
+  },
+
+  // ── Input Footer ──────────────────────────────────────────────────────
   inputWrapper: {
     backgroundColor: colors.background.primary,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 100,
-  },
-  loadingText: {
-    ...typography.body,
-    color: colors.text.tertiary,
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 100,
-  },
-  emptyText: {
-    ...typography.subtitle,
-    color: colors.text.secondary,
-  },
-  emptySubtext: {
-    ...typography.caption,
-    color: colors.text.tertiary,
-    marginTop: spacing.xs,
   },
 });
 

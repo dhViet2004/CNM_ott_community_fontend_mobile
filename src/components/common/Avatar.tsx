@@ -9,8 +9,10 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { colors, spacing, typography, shadows } from '@theme';
+import { Icons } from '@components/common';
 
 type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+type AvatarVariant = 'user' | 'group' | 'system_folder' | 'system_document';
 
 interface AvatarProps {
   uri?: string;
@@ -18,9 +20,16 @@ interface AvatarProps {
   size?: AvatarSize;
   online?: boolean;
   showOnlineIndicator?: boolean;
+  variant?: AvatarVariant;
   onPress?: () => void;
   style?: ViewStyle;
 }
+
+const AVATAR_COLORS = [
+  '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
+  '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F',
+  '#BB8FCE', '#85C1E9', '#F0A500', '#00B894',
+];
 
 const Avatar: React.FC<AvatarProps> = ({
   uri,
@@ -28,43 +37,34 @@ const Avatar: React.FC<AvatarProps> = ({
   size = 'md',
   online,
   showOnlineIndicator = false,
+  variant = 'user',
   onPress,
   style,
 }) => {
   const getSizeValue = (): number => {
     switch (size) {
-      case 'xs':
-        return 24;
-      case 'sm':
-        return spacing.iconSize.avatarSm;
-      case 'lg':
-        return spacing.iconSize.avatarLg;
-      case 'xl':
-        return 80;
-      default:
-        return spacing.iconSize.avatar;
+      case 'xs': return 24;
+      case 'sm': return spacing.iconSize.avatarSm;
+      case 'lg': return spacing.iconSize.avatarLg;
+      case 'xl': return 80;
+      default: return spacing.iconSize.avatar;
     }
   };
 
   const getFontSize = (): number => {
     switch (size) {
-      case 'xs':
-        return 10;
-      case 'sm':
-        return 12;
-      case 'lg':
-        return 24;
-      case 'xl':
-        return 32;
-      default:
-        return 16;
+      case 'xs': return 10;
+      case 'sm': return 12;
+      case 'lg': return 24;
+      case 'xl': return 32;
+      default: return 16;
     }
   };
 
   const getIndicatorSize = (): number => {
-    const avatarSize = getSizeValue();
-    if (avatarSize >= 64) return 14;
-    if (avatarSize >= 48) return 12;
+    const s = getSizeValue();
+    if (s >= 64) return 14;
+    if (s >= 48) return 12;
     return 8;
   };
 
@@ -77,60 +77,97 @@ const Avatar: React.FC<AvatarProps> = ({
     return nameStr.substring(0, 2).toUpperCase();
   };
 
+  const getAvatarColor = (nameStr: string): string => {
+    let hash = 0;
+    for (let i = 0; i < nameStr.length; i++) {
+      hash = nameStr.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+  };
+
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const sizeValue = getSizeValue();
   const initials = getInitials(name);
   const indicatorSize = getIndicatorSize();
+  const bgColor = getAvatarColor(name || 'User');
 
-  const avatarContent = (uri && !hasError) ? (
-    <View>
-      <Image
-        source={{ uri }}
-        style={[styles.image, { width: sizeValue, height: sizeValue, borderRadius: sizeValue / 2 }]}
-        onLoadStart={() => setIsLoading(true)}
-        onLoadEnd={() => setIsLoading(false)}
-        onError={() => setHasError(true)}
-      />
-      {isLoading && (
-        <View style={[StyleSheet.absoluteFill, styles.placeholder, { borderRadius: sizeValue / 2 }]}>
-          <ActivityIndicator size="small" color={colors.text.inverse} />
+  const renderContent = () => {
+    if (variant === 'system_folder') {
+      const iconSize = Math.max(sizeValue * 0.5, 20);
+      return (
+        <View style={[styles.systemIconBg, { backgroundColor: '#008AF3' }]}>
+          {Icons.folder(iconSize, '#FFFFFF')}
         </View>
-      )}
-    </View>
-  ) : (
-    <View
-      style={[
-        styles.placeholder,
-        {
-          width: sizeValue,
-          height: sizeValue,
-          borderRadius: sizeValue / 2,
-        },
-      ]}
-    >
-      <Text style={[styles.initials, { fontSize: getFontSize() }]}>{initials}</Text>
-    </View>
-  );
+      );
+    }
+
+    if (variant === 'system_document') {
+      const iconSize = Math.max(sizeValue * 0.5, 20);
+      return (
+        <View style={[styles.systemIconBg, { backgroundColor: '#6C757D' }]}>
+          {Icons.fileText(iconSize, '#FFFFFF')}
+        </View>
+      );
+    }
+
+    if (uri && !hasError) {
+      return (
+        <View>
+          <Image
+            source={{ uri }}
+            style={[
+              styles.image,
+              { width: sizeValue, height: sizeValue, borderRadius: sizeValue / 2 },
+            ]}
+            onLoadStart={() => setIsLoading(true)}
+            onLoadEnd={() => setIsLoading(false)}
+            onError={() => setHasError(true)}
+          />
+          {isLoading && (
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                styles.placeholder,
+                { borderRadius: sizeValue / 2 },
+              ]}
+            >
+              <ActivityIndicator size="small" color={colors.text.inverse} />
+            </View>
+          )}
+        </View>
+      );
+    }
+
+    return (
+      <View
+        style={[
+          styles.placeholder,
+          {
+            width: sizeValue,
+            height: sizeValue,
+            borderRadius: sizeValue / 2,
+            backgroundColor: bgColor,
+          },
+        ]}
+      >
+        <Text style={[styles.initials, { fontSize: getFontSize() }]}>{initials}</Text>
+      </View>
+    );
+  };
 
   const Wrapper = onPress ? TouchableOpacity : View;
 
   return (
-    <Wrapper
-      onPress={onPress}
-      activeOpacity={0.75}
-      style={[styles.wrapper, style]}
-    >
+    <Wrapper onPress={onPress} activeOpacity={0.75} style={[styles.wrapper, style]}>
       <View
         style={[
           shadows.sm,
-          {
-            borderRadius: sizeValue / 2,
-          },
+          { borderRadius: sizeValue / 2 },
         ]}
       >
-        {avatarContent}
+        {renderContent()}
       </View>
       {showOnlineIndicator && online === true && (
         <View
@@ -161,7 +198,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.tertiary,
   },
   placeholder: {
-    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -173,6 +209,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
+  },
+  systemIconBg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

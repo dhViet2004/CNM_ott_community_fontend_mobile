@@ -147,37 +147,9 @@ const RootStackNavigator: React.FC = () => {
       <Stack.Screen
         name="GroupDetail"
         component={GroupDetailScreen}
-        options={({ navigation }) => ({
-          headerShown: true,
-          header: () => (
-            <SafeAreaView edges={['top']} style={{ backgroundColor: colors.primary }}>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  height: 56,
-                  paddingHorizontal: 16,
-                  backgroundColor: colors.primary,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <TouchableOpacity
-                    onPress={() => navigation.goBack()}
-                    style={{ paddingVertical: 8, paddingRight: 16, marginLeft: -8 }}
-                  >
-                    {Icons.back(IconSize.lg, colors.text.inverse)}
-                  </TouchableOpacity>
-                  <Text style={{ ...typography.h3, color: colors.text.inverse }}>
-                    Chi tiết nhóm
-                  </Text>
-                </View>
-
-                <View style={{ width: 32 }} />
-              </View>
-            </SafeAreaView>
-          ),
-        })}
+        options={{
+          headerShown: false,
+        }}
       />
       <Stack.Screen
         name="AddMembers"
