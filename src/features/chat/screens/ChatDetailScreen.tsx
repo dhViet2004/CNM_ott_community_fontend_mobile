@@ -367,6 +367,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         <View style={styles.chatContent}>
           <PinnedHeader
             pinnedMessages={pinnedMessages}
+            currentUserId={currentUserId}
             onUnpin={handleUnpinMessage}
             onNavigateToMessage={handleNavigateToMessage}
           />
@@ -494,25 +495,30 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         }}
         onPin={() => {
           if (!selectedMessage) return;
-          Alert.alert(
-            pinnedMessages.some((p: any) => String(p.id) === String(selectedMessage.id))
-              ? 'Bỏ ghim tin nhắn'
-              : 'Ghim tin nhắn',
-            '',
-            [
-              { text: 'Hủy', style: 'cancel' },
-              {
-                text: 'OK',
-                onPress: () => {
-                  if (pinnedMessages.some((p: any) => String(p.id) === String(selectedMessage.id))) {
-                    handleUnpinMessage(String(selectedMessage.id));
-                  } else {
-                    handlePinMessage(selectedMessage as any);
-                  }
+          const isPinned = pinnedMessages.some((p: any) => String(p.id) === String(selectedMessage.id));
+          const pinnedItem = pinnedMessages.find((p: any) => String(p.id) === String(selectedMessage.id));
+
+          if (isPinned) {
+            // Check permission to unpin
+            if (pinnedItem && pinnedItem.pinnedBy && String(pinnedItem.pinnedBy) !== String(currentUserId)) {
+              Alert.alert('Thông báo', 'Bạn chỉ có quyền xem tin nhắn này. Chỉ người ghim mới có thể bỏ ghim.');
+              return;
+            }
+
+            Alert.alert(
+              'Bỏ ghim tin nhắn',
+              'Bạn có chắc muốn bỏ ghim tin nhắn này?',
+              [
+                { text: 'Hủy', style: 'cancel' },
+                {
+                  text: 'OK',
+                  onPress: () => handleUnpinMessage(String(selectedMessage.id)),
                 },
-              },
-            ]
-          );
+              ]
+            );
+          } else {
+            handlePinMessage(selectedMessage as any);
+          }
         }}
         onReminder={() => {
           Alert.alert('Nhắc hẹn', 'Tính năng đang phát triển');
