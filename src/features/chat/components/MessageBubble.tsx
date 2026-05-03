@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
+import ImageView from 'react-native-image-viewing';
+import { Video, ResizeMode } from 'expo-av';
 import { colors, spacing, typography } from '@theme';
 import Avatar from '@components/common/Avatar';
 import { Icons } from '@components/common';
@@ -266,6 +268,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   readBy,
   voiceDuration,
 }) => {
+  const [isImageViewVisible, setIsImageViewVisible] = useState(false);
+
   // Time divider inline component
   if (isTimeDivider) {
     return <TimeDivider label={timeDividerLabel || time} />;
@@ -361,11 +365,13 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     if (type === 'image' && file_url) {
       return (
         <View style={styles.imageWrapper}>
-          <Image
-            source={{ uri: file_url }}
-            style={styles.messageImage}
-            resizeMode="cover"
-          />
+          <TouchableOpacity activeOpacity={0.9} onPress={() => setIsImageViewVisible(true)}>
+            <Image
+              source={{ uri: file_url }}
+              style={styles.messageImage}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
           {/* Floating Share button — top-right corner of image */}
           <TouchableOpacity
             style={styles.imageActionBtn}
@@ -386,12 +392,34 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
               {Icons.heartOutline(14, colors.text.primary)}
             </View>
           </TouchableOpacity>
+          
+          <ImageView
+            images={[{ uri: file_url }]}
+            imageIndex={0}
+            visible={isImageViewVisible}
+            onRequestClose={() => setIsImageViewVisible(false)}
+          />
         </View>
       );
     }
 
     if (type === 'sticker' || type === 'emoji') {
       return <Text style={styles.stickerText}>{content}</Text>;
+    }
+
+    // Video
+    if (type === 'video' && file_url) {
+      return (
+        <View style={styles.imageWrapper}>
+          <Video
+            source={{ uri: file_url }}
+            style={styles.messageImage}
+            useNativeControls
+            resizeMode={ResizeMode.CONTAIN}
+            isLooping={false}
+          />
+        </View>
+      );
     }
 
     // File attachment

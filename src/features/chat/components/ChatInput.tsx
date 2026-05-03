@@ -5,6 +5,7 @@ import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import { FilePickerButton } from './FilePickerButton';
 import { VoiceRecorderButton } from './VoiceRecorderButton';
+import { ImagePickerButton } from './ImagePickerButton';
 
 interface ChatInputProps {
   value: string;
@@ -105,9 +106,19 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 }}
                 iconSize={24}
               />
-              <TouchableOpacity style={styles.actionIconBtn}>
-                <Ionicons name="image-outline" size={24} color={colors.text.secondary} />
-              </TouchableOpacity>
+              {onUploadSuccess ? (
+                <ImagePickerButton
+                  onUploadSuccess={(url, name, size, msgData) => onUploadSuccess(url, name, size, msgData)}
+                  conversationId={conversationId}
+                  senderId={senderId}
+                  receiverId={receiverId}
+                  iconSize={24}
+                />
+              ) : (
+                <TouchableOpacity style={styles.actionIconBtn}>
+                  <Ionicons name="image-outline" size={24} color={colors.text.secondary} />
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             <TouchableOpacity
