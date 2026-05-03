@@ -1,11 +1,117 @@
-import React, { memo, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions } from 'react-native';
+import React, { memo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  Dimensions,
+  Platform,
+} from 'react-native';
 import { colors, spacing, typography } from '@theme';
 import Avatar from '@components/common/Avatar';
+import { Icons } from '@components/common';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const MAX_BUBBLE_WIDTH = SCREEN_WIDTH * 0.72;
+const IMAGE_BUBBLE_WIDTH = SCREEN_WIDTH * 0.55;
 
+// ─── Time Divider ─────────────────────────────────────────────────────────────
+interface TimeDividerProps {
+  label: string; // e.g. '01:09 Hôm qua'
+}
+
+export const TimeDivider: React.FC<TimeDividerProps> = ({ label }) => (
+  <View style={styles.timeDividerContainer}>
+    <View style={styles.timeDividerPill}>
+      <Text style={styles.timeDividerText}>{label}</Text>
+    </View>
+  </View>
+);
+
+// ─── Delivered Status Pill ────────────────────────────────────────────────────
+interface DeliveredPillProps {
+  time: string; // e.g. '13:28'
+}
+
+export const DeliveredPill: React.FC<DeliveredPillProps> = ({ time }) => (
+  <View style={styles.deliveredContainer}>
+    <Text style={styles.deliveredTime}>{time}</Text>
+    <View style={styles.deliveredPill}>
+      {Icons.checkmarkDone(11, colors.text.inverse)}
+      <Text style={styles.deliveredText}>Đã nhận</Text>
+    </View>
+  </View>
+);
+
+// ─── Call History Bubble ──────────────────────────────────────────────────────
+export type CallType = 'incoming' | 'outgoing' | 'missed' | 'video_incoming' | 'video_outgoing' | 'video_missed';
+
+interface CallHistoryBubbleProps {
+  callType: CallType;
+  title: string;        // e.g. 'Bạn đã hủy', 'Cuộc gọi video đi'
+  duration?: string;   // e.g. '00:32'
+  time: string;
+  isMe: boolean;
+}
+
+export const CallHistoryBubble: React.FC<CallHistoryBubbleProps> = ({
+  callType,
+  title,
+  duration,
+  time,
+  isMe,
+}) => {
+  const isVideo = callType.startsWith('video');
+  const isMissed = callType.includes('missed');
+
+  const icon = isVideo ? Icons.videocam(14, '#666') : Icons.call(14, '#666');
+  const statusColor = isMissed ? colors.status.error : '#666';
+
+  return (
+    <View style={[styles.callRow, isMe ? styles.callRowMe : styles.callRowOther]}>
+      {/* Avatar for received calls */}
+      {!isMe && (
+        <View style={styles.callAvatarContainer}>
+          <Avatar name="User" size="xs" />
+        </View>
+      )}
+
+      {/* Bubble card */}
+      <View style={[styles.callBubble, isMe ? styles.callBubbleMe : styles.callBubbleOther]}>
+        {/* Row 1: Title */}
+        <Text
+          style={[
+            styles.callTitle,
+            isMe ? styles.callTitleMe : styles.callTitleOther,
+            isMissed && styles.callTitleMissed,
+          ]}
+          numberOfLines={1}
+        >
+          {title}
+        </Text>
+
+        {/* Row 2: Icon + duration/status */}
+        <View style={styles.callMetaRow}>
+          {icon}
+          <Text style={[styles.callDuration, isMissed && { color: colors.status.error }]}>
+            {isMissed ? 'Nhỡ' : (duration || '')}
+          </Text>
+        </View>
+
+        {/* Divider */}
+        <View style={styles.callDivider} />
+
+        {/* Action button */}
+        <TouchableOpacity style={styles.callActionBtn} activeOpacity={0.7}>
+          <Text style={styles.callActionText}>GỌI LẠI</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+// ─── Main Message Bubble ──────────────────────────────────────────────────────
 interface MessageBubbleProps {
   id: string | number;
   senderId: string;
@@ -14,7 +120,7 @@ interface MessageBubbleProps {
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'file' | 'sticker' | 'emoji';
+  type: 'text' | 'image' | 'file' | 'sticker' | 'emoji' | 'call';
   file_url?: string | null;
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
@@ -22,31 +128,55 @@ interface MessageBubbleProps {
   onLongPress?: () => void;
   defaultName?: string;
   isFocused?: boolean;
+  callType?: CallType;
+  callDuration?: string;
+  isTimeDivider?: boolean;
+  timeDividerLabel?: string;
 }
 
-const StatusIcon: React.FC<{ status: string }> = ({ status }) => {
+const CheckIcon: React.FC<{ filled?: boolean }> = ({ filled }) =>
+  filled
+    ? Icons.checkmarkDone(12, '#5DADE2')
+    : Icons.checkmark(12, '#CCC');
+
+const StatusIcons: React.FC<{ status: string }> = ({ status }) => {
   switch (status) {
     case 'sending':
-      return <Text style={styles.statusIcon}>◷</Text>;
+      return Icons.sync(11);
     case 'sent':
-      return <Text style={styles.statusIcon}>✓</Text>;
+      return Icons.checkmark(11, 'rgba(255,255,255,0.6)');
     case 'delivered':
-      return <Text style={styles.statusIcon}>✓✓</Text>;
+      return (
+        <View style={styles.statusDoubleCheck}>
+          {Icons.checkmark(10, 'rgba(255,255,255,0.6)')}
+          <View style={{ marginLeft: -4 }}>
+            {Icons.checkmark(10, 'rgba(255,255,255,0.6)')}
+          </View>
+        </View>
+      );
     case 'read':
-      return <Text style={[styles.statusIcon, styles.statusRead]}>✓✓</Text>;
+      return (
+        <View style={styles.statusDoubleCheck}>
+          {Icons.checkmark(10, '#5DADE2')}
+          <View style={{ marginLeft: -4 }}>
+            {Icons.checkmark(10, '#5DADE2')}
+          </View>
+        </View>
+      );
     case 'failed':
-      return <Text style={[styles.statusIcon, styles.statusFailed]}>⚠</Text>;
+      return Icons.alertCircle(12);
     default:
       return null;
   }
 };
 
 const MessageBubble: React.FC<MessageBubbleProps> = memo(({
-  isMe,
+  id,
   senderName,
   senderAvatar,
   content,
   time,
+  isMe,
   type,
   file_url,
   status,
@@ -55,71 +185,68 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   onLongPress,
   defaultName,
   isFocused,
+  callType = 'missed',
+  callDuration,
+  isTimeDivider,
+  timeDividerLabel,
 }) => {
+  // Time divider inline component
+  if (isTimeDivider) {
+    return <TimeDivider label={timeDividerLabel || time} />;
+  }
+
   const isRevokedOrDeleted = isDeleted || isRevoked;
 
-  // Render content based on type
-  const renderContent = () => {
-    if (type === 'image' && file_url) {
-      return (
-        <Image
-          source={{ uri: file_url }}
-          style={styles.messageImage}
-          resizeMode="cover"
-        />
-      );
-    }
-
-    if (type === 'sticker' || type === 'emoji') {
-      return (
-        <Text style={styles.stickerText}>
-          {content}
-        </Text>
-      );
-    }
-
-    // Default: text content
+  // ── Call history bubble ──────────────────────────────────────────────────
+  if (type === 'call') {
+    const callTitle = isMe
+      ? content || 'Cuộc gọi đi'
+      : (senderName ? `${senderName} đã gọi` : 'Cuộc gọi đến');
     return (
-      <Text
-        style={[
-          styles.messageText,
-          isMe ? styles.textMe : styles.textOther,
-        ]}
-        numberOfLines={0}
-      >
-        {content}
-      </Text>
+      <View style={styles.callWrapper}>
+        <CallHistoryBubble
+          callType={callType}
+          title={callTitle}
+          duration={callDuration}
+          time={time}
+          isMe={isMe}
+        />
+        <View style={[styles.callMetaFooter, isMe ? styles.callMetaFooterMe : {}]}>
+          <Text style={[styles.callFooterTime, isMe ? styles.callFooterTimeMe : {}]}>
+            {time}
+          </Text>
+          {isMe && status && (
+            <StatusIcons status={status} />
+          )}
+        </View>
+      </View>
     );
-  };
+  }
 
-  // Render footer with time and status
-  const renderFooter = () => (
-    <View style={[styles.messageFooter, isMe && styles.messageFooterMe]}>
-      <Text style={[styles.messageTime, isMe ? styles.timeMe : styles.timeOther]}>
-        {time}
-      </Text>
-      {isMe && status && (
-        <StatusIcon status={status} />
-      )}
-    </View>
-  );
-
-  // Revoked/Deleted message
+  // ── Revoked / Deleted ───────────────────────────────────────────────────
   if (isRevokedOrDeleted) {
     return (
-      <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}>
+      <View style={[styles.bubbleRow, isMe ? styles.bubbleRowMe : styles.bubbleRowOther]}>
         {!isMe && (
-          <Avatar
-            uri={senderAvatar ?? undefined}
-            name={senderName || defaultName || 'User'}
-            size="xs"
-          />
+          <View style={styles.avatarContainer}>
+            <Avatar
+              uri={senderAvatar ?? undefined}
+              name={senderName || defaultName || 'User'}
+              size="xs"
+            />
+          </View>
         )}
-        <View style={[styles.bubbleWrapper, isMe && styles.bubbleWrapperMe]}>
+        <View style={[styles.bubbleInner, isMe && styles.bubbleInnerMe]}>
           {!isMe && senderName && (
             <Text style={styles.senderName}>{senderName}</Text>
           )}
-          <View style={[styles.messageBubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+          <View
+            style={[
+              styles.bubble,
+              isMe ? styles.bubbleMe : styles.bubbleOther,
+              styles.revokedBubble,
+            ]}
+          >
             <Text style={[styles.revokedText, isMe && styles.revokedTextMe]}>
               Tin nhắn đã bị thu hồi
             </Text>
@@ -129,14 +256,76 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     );
   }
 
-  // Normal message
+  // ── Normal text / image / sticker messages ────────────────────────────────
+  const renderBubbleContent = () => {
+    if (type === 'image' && file_url) {
+      return (
+        <View style={styles.imageWrapper}>
+          <Image
+            source={{ uri: file_url }}
+            style={styles.messageImage}
+            resizeMode="cover"
+          />
+          {/* Floating Share button — top-right corner of image */}
+          <TouchableOpacity
+            style={styles.imageActionBtn}
+            activeOpacity={0.8}
+            onPress={() => {}}
+          >
+            <View style={styles.imageActionBtnInner}>
+              {Icons.shareOutline(14, colors.text.primary)}
+            </View>
+          </TouchableOpacity>
+          {/* Floating Heart button — bottom-right corner overlapping image */}
+          <TouchableOpacity
+            style={styles.imageHeartBtn}
+            activeOpacity={0.8}
+            onPress={() => {}}
+          >
+            <View style={styles.imageHeartBtnInner}>
+              {Icons.heartOutline(14, colors.text.primary)}
+            </View>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (type === 'sticker' || type === 'emoji') {
+      return <Text style={styles.stickerText}>{content}</Text>;
+    }
+
+    // Text
+    return (
+      <Text
+        style={[styles.messageText, isMe ? styles.textMe : styles.textOther]}
+        numberOfLines={0}
+      >
+        {content}
+      </Text>
+    );
+  };
+
+  const renderFooter = () => (
+    <View style={[styles.bubbleFooter, isMe ? styles.bubbleFooterMe : styles.bubbleFooterOther]}>
+      <Text style={[styles.bubbleTime, isMe ? styles.timeMe : styles.timeOther]}>
+        {time}
+      </Text>
+      {isMe && status && (
+        <View style={styles.statusWrapper}>
+          <StatusIcons status={status} />
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <TouchableOpacity
       onLongPress={onLongPress}
       delayLongPress={500}
       activeOpacity={0.85}
-      style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
+      style={[styles.bubbleRow, isMe ? styles.bubbleRowMe : styles.bubbleRowOther]}
     >
+      {/* Avatar for received messages */}
       {!isMe && (
         <View style={styles.avatarContainer}>
           <Avatar
@@ -146,88 +335,233 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
           />
         </View>
       )}
-      <View style={[styles.bubbleWrapper, isMe && styles.bubbleWrapperMe]}>
-        {senderName && (
-          <Text style={[styles.senderName, isMe && { marginRight: spacing.sm }]}>{senderName}</Text>
+
+      {/* Bubble content */}
+      <View style={[styles.bubbleInner, isMe && styles.bubbleInnerMe]}>
+        {senderName && !isMe && (
+          <Text style={styles.senderName}>{senderName}</Text>
         )}
-        <View style={[
-          styles.messageBubble,
-          isMe ? styles.bubbleMe : styles.bubbleOther,
-          isFocused && styles.focusedBubble
-        ]}>
-          {renderContent()}
+        <View
+          style={[
+            styles.bubble,
+            isMe ? styles.bubbleMe : styles.bubbleOther,
+            isFocused && styles.focusedBubble,
+          ]}
+        >
+          {renderBubbleContent()}
           {renderFooter()}
         </View>
       </View>
     </TouchableOpacity>
   );
-}, (prevProps, nextProps) => {
-  // Custom comparison for memo - only re-render when content changes
+}, (prev, next) => {
   return (
-    prevProps.id === nextProps.id &&
-    prevProps.content === nextProps.content &&
-    prevProps.time === nextProps.time &&
-    prevProps.status === nextProps.status &&
-    prevProps.isMe === nextProps.isMe &&
-    prevProps.isDeleted === nextProps.isDeleted &&
-    prevProps.isRevoked === nextProps.isRevoked &&
-    prevProps.isFocused === nextProps.isFocused
+    prev.id === next.id &&
+    prev.content === next.content &&
+    prev.time === next.time &&
+    prev.status === next.status &&
+    prev.isMe === next.isMe &&
+    prev.isDeleted === next.isDeleted &&
+    prev.isRevoked === next.isRevoked &&
+    prev.isFocused === next.isFocused &&
+    prev.file_url === next.file_url
   );
 });
 
 const styles = StyleSheet.create({
-  focusedBubble: {
-    backgroundColor: '#E3F2FD', // Light blue highlight
-    borderColor: '#2196F3',
-    borderWidth: 1,
+  // ── Time Divider ────────────────────────────────────────────────────────
+  timeDividerContainer: {
+    alignItems: 'center',
+    marginVertical: spacing.md,
   },
-  // Layout containers
-  messageRow: {
+  timeDividerPill: {
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  timeDividerText: {
+    ...typography.caption,
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+  },
+
+  // ── Delivered Pill ──────────────────────────────────────────────────────
+  deliveredContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xs,
+  },
+  deliveredTime: {
+    ...typography.caption,
+    fontSize: 11,
+    color: '#999',
+    marginRight: spacing.xs,
+  },
+  deliveredPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#999',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    gap: 3,
+  },
+  deliveredText: {
+    ...typography.caption,
+    fontSize: 10,
+    color: '#FFF',
+    fontWeight: '600',
+  },
+
+  // ── Call History ────────────────────────────────────────────────────────
+  callWrapper: {
+    marginBottom: spacing.sm,
+  },
+  callRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
   },
-  messageRowMe: {
+  callRowMe: {
     justifyContent: 'flex-end',
   },
-  messageRowOther: {
+  callRowOther: {
     justifyContent: 'flex-start',
   },
-
-  // Bubble wrapper - handles alignment
-  bubbleWrapper: {
-    flexDirection: 'column',
-    maxWidth: MAX_BUBBLE_WIDTH,
+  callAvatarContainer: {
+    marginRight: 8,
+    marginBottom: 2,
   },
-  bubbleWrapperMe: {
+  callBubble: {
+    borderRadius: spacing.borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    maxWidth: MAX_BUBBLE_WIDTH,
+    minWidth: 160,
+  },
+  callBubbleMe: {
+    backgroundColor: '#DDF1FF',
     alignItems: 'flex-end',
   },
-
-  // Sender name
-  senderName: {
-    ...typography.caption,
-    color: colors.text.secondary,
-    marginBottom: 2,
-    marginLeft: 4,
+  callBubbleOther: {
+    backgroundColor: colors.background.chatBubbleOther,
+    alignItems: 'flex-start',
+  },
+  callTitle: {
+    ...typography.subtitle,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  callTitleMe: {
+    color: '#000',
+    textAlign: 'right',
+  },
+  callTitleOther: {
+    color: colors.text.primary,
     textAlign: 'left',
+  },
+  callTitleMissed: {
+    color: colors.status.error,
+  },
+  callMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 6,
+  },
+  callDuration: {
+    ...typography.caption,
+    fontSize: 12,
+    color: '#666',
+  },
+  callDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    width: '100%',
+    marginBottom: 6,
+  },
+  callActionBtn: {
+    alignSelf: 'center',
+    paddingVertical: 4,
+  },
+  callActionText: {
+    ...typography.caption,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 0.5,
+  },
+  callMetaFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingRight: spacing.md,
+    marginTop: 2,
+    gap: 4,
+  },
+  callMetaFooterMe: {
+    justifyContent: 'flex-end',
+  },
+  callFooterTime: {
+    ...typography.caption,
+    fontSize: 10,
+    color: '#999',
+  },
+  callFooterTimeMe: {
+    color: '#999',
+  },
+
+  // ── Main Bubble Layout ─────────────────────────────────────────────────
+  bubbleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.md,
+  },
+  bubbleRowMe: {
+    justifyContent: 'flex-end',
+  },
+  bubbleRowOther: {
+    justifyContent: 'flex-start',
   },
   avatarContainer: {
     marginRight: 8,
-    marginBottom: 4,
+    marginBottom: 2,
   },
-
-  // Message bubble
-  messageBubble: {
+  bubbleInner: {
+    maxWidth: MAX_BUBBLE_WIDTH,
+  },
+  bubbleInnerMe: {
+    alignItems: 'flex-end',
+  },
+  senderName: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.text.secondary,
+    marginBottom: 2,
+    marginLeft: 4,
+  },
+  bubble: {
     borderRadius: spacing.borderRadius.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     minWidth: 60,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
   bubbleMe: {
     backgroundColor: colors.primary,
@@ -237,10 +571,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.chatBubbleOther,
     borderBottomLeftRadius: 4,
   },
+  focusedBubble: {
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+  },
 
-  // Message content
+  // ── Bubble Content ────────────────────────────────────────────────────
   messageText: {
     ...typography.body,
+    fontSize: 15,
   },
   textMe: {
     color: colors.text.inverse,
@@ -249,63 +588,119 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
 
-  // Image message
+  // ── Image Bubble ───────────────────────────────────────────────────────
+  imageWrapper: {
+    position: 'relative',
+    borderRadius: spacing.borderRadius.md,
+    overflow: 'hidden',
+  },
   messageImage: {
-    width: 200,
-    height: 150,
+    width: IMAGE_BUBBLE_WIDTH,
+    height: IMAGE_BUBBLE_WIDTH * 0.75,
     borderRadius: spacing.borderRadius.md,
     backgroundColor: colors.background.tertiary,
   },
+  imageActionBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+  },
+  imageActionBtnInner: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  imageHeartBtn: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+  },
+  imageHeartBtnInner: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
 
-  // Sticker/Emoji
+  // ── Sticker ────────────────────────────────────────────────────────────
   stickerText: {
     fontSize: 64,
     textAlign: 'center',
   },
 
-  // Footer with time and status
-  messageFooter: {
+  // ── Footer: time + status ─────────────────────────────────────────────
+  bubbleFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: spacing.xs,
+    marginTop: 3,
   },
-  messageFooterMe: {
+  bubbleFooterMe: {
     justifyContent: 'flex-end',
   },
-  messageTime: {
+  bubbleFooterOther: {
+    justifyContent: 'flex-start',
+  },
+  bubbleTime: {
     ...typography.caption,
-    fontSize: 11,
+    fontSize: 10,
   },
   timeMe: {
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(255,255,255,0.65)',
   },
   timeOther: {
     color: colors.text.tertiary,
   },
-
-  // Status icon
-  statusIcon: {
-    ...typography.caption,
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.7)',
+  statusWrapper: {
     marginLeft: 4,
   },
-  statusRead: {
-    color: '#4FC3F7', // Blue for read
-  },
-  statusFailed: {
-    color: '#FF6B6B', // Red for failed
+  statusDoubleCheck: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 
-  // Revoked message
+  // ── Revoked / Deleted ──────────────────────────────────────────────────
+  revokedBubble: {
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
+    borderWidth: 0,
+    paddingHorizontal: 0,
+  },
   revokedText: {
     ...typography.caption,
+    fontSize: 12,
     color: colors.text.tertiary,
     fontStyle: 'italic',
   },
   revokedTextMe: {
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255,255,255,0.45)',
   },
 });
 

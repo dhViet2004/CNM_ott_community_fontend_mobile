@@ -1,7 +1,40 @@
 import { StyleSheet } from 'react-native';
 import { colors, spacing, typography } from '@theme';
 
+const ZALO_BLUE = '#008AF3';
+
 export const styles = StyleSheet.create({
+  wrapper: {
+    flex: 1,
+    backgroundColor: ZALO_BLUE,
+  },
+
+  // Header
+  header: {
+    backgroundColor: ZALO_BLUE,
+    paddingHorizontal: spacing.screenPadding,
+    paddingBottom: spacing.md,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 48,
+  },
+  backBtn: {
+    padding: spacing.xs,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  moreBtn: {
+    padding: spacing.xs,
+  },
+
   container: { flex: 1, backgroundColor: colors.background.secondary },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingText: { ...typography.body, color: colors.text.secondary },
@@ -9,12 +42,12 @@ export const styles = StyleSheet.create({
   // Profile Section
   profileCard: {
     backgroundColor: colors.background.primary,
-    paddingTop: spacing.xl,
     marginBottom: spacing.sm,
   },
   avatarWrap: {
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: spacing.lg,
   },
   avatarCameraBtn: {
     position: 'absolute',

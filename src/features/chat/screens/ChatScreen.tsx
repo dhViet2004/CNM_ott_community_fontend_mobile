@@ -8,15 +8,11 @@ import {
   Text,
   Alert,
   RefreshControl,
-  KeyboardAvoidingView,
-  Platform,
-  Keyboard,
   StatusBar,
-  ImageBackground,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
-import { Icons, IconSize, SearchBar } from '@components/common';
+import { Icons, IconSize } from '@components/common';
 import { MessageListItem } from '@features/chat/components';
 import { shallowEqual } from 'react-redux';
 import { useAppDispatch, useAppSelector } from '@store/hooks';
@@ -45,6 +41,9 @@ interface ChatConversation {
 
 const EMPTY_ARRAY: any[] = [];
 
+const AVATAR_LEFT_MARGIN = spacing.screenPadding;
+const AVATAR_SIZE = spacing.iconSize.avatar;
+
 const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
@@ -55,11 +54,8 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const friends = useAppSelector((state) => state.chat.friends, shallowEqual);
   const onlineUsers = useAppSelector((state) => state.chat.onlineUsers, shallowEqual);
   const currentUserId = useAppSelector((state) => state.auth.user?.userId);
-  
-  // Get groups from groupsSlice
   const groups = useAppSelector((state) => state.groups.myGroups, shallowEqual);
 
-  // Build DM conversations from friends list
   const dmConversations: ChatConversation[] = useMemo(() => friends.map((friend) => {
     const friendId = friend.friend_id || friend.userId || '';
     const myId = currentUserId || '';
@@ -80,7 +76,6 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     };
   }), [friends, onlineUsers, currentUserId]);
 
-  // Build group conversations from groups list
   const groupConversations: ChatConversation[] = useMemo(() => groups.map((group) => ({
     id: `group:${group.groupId}`,
     type: 'group' as const,
@@ -94,16 +89,17 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     groupId: group.groupId,
   })), [groups]);
 
-  // Combine DM and group conversations
-  const allConversations = useMemo(() => [...dmConversations, ...groupConversations], [dmConversations, groupConversations]);
+  const allConversations = useMemo(
+    () => [...dmConversations, ...groupConversations],
+    [dmConversations, groupConversations]
+  );
 
   const loadFriends = useCallback(async () => {
     setIsLoading(true);
     try {
       const list = await friendsApi.getFriends().catch(() => []);
       dispatch(setFriends(list));
-      
-      // Update pinned messages for each conversation
+
       list.forEach((f: any) => {
         if (f.pinnedMessages && Array.isArray(f.pinnedMessages)) {
           const friendId = f.friend_id || f.userId;
@@ -112,7 +108,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
           const conversationId = `dm:${sortedIds.join(':')}`;
           dispatch({
             type: 'chat/setPinnedMessages',
-            payload: { conversationId, pinnedMessages: f.pinnedMessages }
+            payload: { conversationId, pinnedMessages: f.pinnedMessages },
           });
         }
       });
@@ -121,21 +117,19 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [dispatch]);
+  }, [dispatch, currentUserId]);
 
   const loadGroups = useCallback(async () => {
     if (!currentUserId) return;
     try {
       const groupsList = await groupsApi.getMyGroups(currentUserId);
       dispatch(setMyGroups(groupsList));
-      
-      // Update pinned messages for each group
+
       groupsList.forEach((g: any) => {
         if (g.pinnedMessages && Array.isArray(g.pinnedMessages)) {
-          const conversationId = `group:${g.groupId}`;
           dispatch({
             type: 'chat/setPinnedMessages',
-            payload: { conversationId, pinnedMessages: g.pinnedMessages }
+            payload: { conversationId: `group:${g.groupId}`, pinnedMessages: g.pinnedMessages },
           });
         }
       });
@@ -170,7 +164,6 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const handleConversationPress = useCallback(
     (conv: ChatConversation) => {
       if (conv.type === 'single') {
-        // DM conversation
         const friendId = conv.friendId;
         const myId = currentUserId || '';
         const sortedIds = [myId, friendId].sort();
@@ -182,7 +175,6 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
           userId: friendId,
         });
       } else {
-        // Group conversation
         const resolvedGroupId = String(conv.groupId ?? conv.id ?? '')
           .replace(/^group:/, '')
           .trim();
@@ -215,51 +207,41 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     );
   }, []);
 
-  const handleAddFriend = useCallback(() => {
-    navigation.navigate('ContactsList');
-  }, [navigation]);
-
   const handleGroups = useCallback(() => {
     navigation.navigate('Groups');
   }, [navigation]);
 
-  const renderHeader = () => (
-    <View style={[styles.header, { paddingTop: insets.top }]}>
-      <View style={styles.headerContent}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>Tin nhắn</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            onPress={handleGroups}
-            style={styles.headerIcon}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <View style={styles.headerIconContainer}>
-              {Icons.people(IconSize.lg)}
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleAddFriend}
-            style={styles.headerIcon}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <View style={styles.headerIconContainer}>
-              {Icons.add(IconSize.lg)}
-            </View>
-          </TouchableOpacity>
-        </View>
-      </View>
+  const handleQRScanner = useCallback(() => {
+    Alert.alert('Thông báo', 'Tính năng quét mã QR đang được phát triển');
+  }, []);
 
-      <View style={styles.searchBarContainer}>
-        <View style={styles.searchBar}>
-          <View style={styles.searchIconContainer}>
-            {Icons.search(IconSize.sm)}
+  const handleAddNew = useCallback(() => {
+    Alert.alert(
+      'Tạo mới',
+      'Chọn loại mục bạn muốn tạo',
+      [
+        { text: 'Nhóm mới', onPress: () => navigation.navigate('CreateGroup') },
+        { text: 'Thêm bạn', onPress: () => navigation.navigate('ContactsList') },
+        { text: 'Hủy', style: 'cancel' },
+      ]
+    );
+  }, [navigation]);
+
+  // Zalo-style header: title row + search bar on the blue background
+  const renderHeader = () => (
+    <View style={[styles.zaloHeader, { paddingTop: insets.top + spacing.sm }]}>
+      <StatusBar barStyle="light-content" backgroundColor="#008AF3" />
+
+      {/* Row 1: Search bar + Action Icons */}
+      <View style={styles.headerRow}>
+        <View style={styles.zaloSearchBar}>
+          <View style={styles.zaloSearchIcon}>
+            {Icons.search(18, 'rgba(255,255,255,0.7)')}
           </View>
           <TextInput
-            style={styles.searchInput}
+            style={styles.zaloSearchInput}
             placeholder="Tìm kiếm"
-            placeholderTextColor={colors.text.placeholder}
+            placeholderTextColor="rgba(255,255,255,0.6)"
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
@@ -267,21 +249,36 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
             <TouchableOpacity
               onPress={() => setSearchQuery('')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.zaloClearBtn}
             >
-              <View style={styles.clearIconContainer}>
-                {Icons.close(IconSize.sm)}
-              </View>
+              {Icons.close(16, 'rgba(255,255,255,0.7)')}
             </TouchableOpacity>
           )}
+        </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={handleQRScanner}
+            style={styles.headerActionBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            {Icons.qrCode(22, '#FFFFFF')}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleAddNew}
+            style={styles.headerActionBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            {Icons.add(26, '#FFFFFF')}
+          </TouchableOpacity>
         </View>
       </View>
     </View>
   );
 
-  const renderSectionHeader = (title: string) => (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionHeaderText}>{title}</Text>
-    </View>
+  // Zalo-style separator: light gray, left offset for avatar
+  const separatorLeftMargin = AVATAR_LEFT_MARGIN + AVATAR_SIZE + spacing.md;
+  const renderSeparator = () => (
+    <View style={[styles.zaloSeparator, { marginLeft: separatorLeftMargin }]} />
   );
 
   const renderConversation = ({ item }: { item: ChatConversation }) => (
@@ -292,27 +289,28 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
       time={item.time}
       unreadCount={item.unreadCount}
       isOnline={item.isOnline}
+      isPinned={item.isPinned}
+      isMuted={item.isMuted}
+      isGroup={item.type === 'group'}
       onPress={() => handleConversationPress(item)}
       onLongPress={() => handleConversationLongPress(item)}
-      isGroup={item.type === 'group'}
     />
   );
 
-  const renderSeparator = () => <View style={styles.separator} />;
-
   const renderEmpty = () => (
-    <View style={styles.emptyContainer}>
-      <View style={styles.emptyIconContainer}>
-        {Icons.chatbubbles(64)}
+    <View style={styles.zaloEmpty}>
+      <View style={styles.zaloEmptyIcon}>
+        {Icons.chatbubbles(60, colors.text.tertiary)}
       </View>
-      <Text style={styles.emptyText}>Chưa có cuộc trò chuyện nào</Text>
-      <Text style={styles.emptySubtext}>Bắt đầu trò chuyện với bạn bè</Text>
+      <Text style={styles.zaloEmptyText}>Chưa có cuộc trò chuyện nào</Text>
+      <Text style={styles.zaloEmptySubtext}>Bắt đầu trò chuyện với bạn bè</Text>
     </View>
   );
 
   return (
-    <View style={styles.container}>
+    <View style={styles.zaloContainer}>
       {renderHeader()}
+
       <FlatList
         data={[...pinnedConversations, ...normalConversations, ...mutedConversations]}
         keyExtractor={(item) => item.id}
@@ -320,8 +318,8 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
         ItemSeparatorComponent={renderSeparator}
         ListEmptyComponent={
           isLoading ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Đang tải...</Text>
+            <View style={styles.zaloLoading}>
+              <Text style={styles.zaloLoadingText}>Đang tải...</Text>
             </View>
           ) : (
             renderEmpty()
@@ -329,7 +327,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
         }
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
-          styles.listContent,
+          styles.zaloListContent,
           { paddingBottom: insets.bottom + 60 },
         ]}
         refreshControl={
@@ -345,124 +343,110 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   );
 };
 
+const HEADER_BLUE = '#008AF3';
+
 const styles = StyleSheet.create({
-  container: {
+  zaloContainer: {
     flex: 1,
     backgroundColor: colors.background.primary,
   },
-  header: {
-    backgroundColor: colors.primary,
+
+  /* ── Header ──────────────────────────────────────────────── */
+  zaloHeader: {
+    backgroundColor: HEADER_BLUE,
     paddingHorizontal: spacing.screenPadding,
     paddingBottom: spacing.md,
   },
-  headerContent: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     height: 48,
+    gap: spacing.sm,
   },
-  headerLeft: {
-    flex: 1,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerTitle: {
+  zaloTitle: {
     ...typography.h2,
     color: colors.text.inverse,
     fontWeight: '700',
-  },
-  headerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: spacing.sm,
-  },
-  headerIconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerIconText: {
     fontSize: 22,
-    color: colors.text.inverse,
-    fontWeight: '300',
-    lineHeight: 24,
+    lineHeight: 28,
   },
-  searchBarContainer: {
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  headerActionBtn: {
+    padding: spacing.xs,
+  },
+
+  /* ── Search Bar ─────────────────────────────────────────── */
+  zaloSearchContainer: {
     marginTop: spacing.sm,
   },
-  searchBar: {
+  zaloSearchBar: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: spacing.borderRadius.lg,
     paddingHorizontal: spacing.md,
-    height: 38,
+    height: 36,
   },
-  searchIconContainer: {
-    marginRight: spacing.sm,
-    opacity: 0.7,
-  },
-  searchIcon: {
-    fontSize: 16,
+  zaloSearchIcon: {
     marginRight: spacing.sm,
   },
-  searchInput: {
+  zaloSearchInput: {
     flex: 1,
-    ...typography.body,
+    ...typography.bodySmall,
     color: colors.text.inverse,
     paddingVertical: 0,
+    fontSize: 15,
   },
-  clearIconContainer: {
-    opacity: 0.7,
+  zaloClearBtn: {
+    marginLeft: spacing.xs,
   },
-  clearIcon: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
-  },
-  listContent: {
+
+  /* ── List Content ───────────────────────────────────────── */
+  zaloListContent: {
     flexGrow: 1,
   },
-  sectionHeader: {
-    backgroundColor: colors.background.secondary,
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.xs,
+
+  /* ── Separator ──────────────────────────────────────────── */
+  zaloSeparator: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginRight: spacing.screenPadding,
   },
-  sectionHeaderText: {
-    ...typography.caption,
-    color: colors.text.tertiary,
-    textTransform: 'uppercase',
-  },
-  separator: {
-    height: 0,
-    backgroundColor: colors.border.light,
-    marginLeft: spacing.screenPadding + spacing.iconSize.avatar + spacing.md,
-  },
-  emptyContainer: {
+
+  /* ── Empty / Loading ────────────────────────────────────── */
+  zaloEmpty: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 100,
   },
-  emptyIconContainer: {
+  zaloEmptyIcon: {
     marginBottom: spacing.lg,
-    opacity: 0.4,
+    opacity: 0.35,
   },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: spacing.lg,
-  },
-  emptyText: {
+  zaloEmptyText: {
     ...typography.subtitle,
     color: colors.text.secondary,
     marginBottom: spacing.xs,
   },
-  emptySubtext: {
+  zaloEmptySubtext: {
     ...typography.bodySmall,
+    color: colors.text.tertiary,
+  },
+  zaloLoading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 100,
+  },
+  zaloLoadingText: {
+    ...typography.body,
     color: colors.text.tertiary,
   },
 });

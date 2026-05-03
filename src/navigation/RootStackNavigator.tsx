@@ -73,104 +73,14 @@ const RootStackNavigator: React.FC = () => {
       <Stack.Screen
         name="Chat"
         component={ChatDetailScreen}
-        options={({ route, navigation }) => ({
-          headerShown: true,
-          title: route.params.title,
-          headerTitleAlign: 'left',
-          headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: colors.text.inverse,
-          headerTitleStyle: { ...typography.h3, color: colors.text.inverse },
-          headerBackTitleVisible: false,
-          headerRight: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('MessageSearch', {
-                  conversationId: route.params.conversationId,
-                  title: route.params.title,
-                })}
-                style={{ padding: 8, marginRight: 8 }}
-              >
-                {Icons.search(IconSize.lg, colors.text.inverse)}
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('ChatSettings', {
-                  conversationId: route.params.conversationId,
-                  title: route.params.title,
-                  originalName: route.params.originalName,
-                  friendId: route.params.userId,
-                })}
-                style={{ padding: 8, marginRight: -4 }}
-              >
-                {Icons.menu(IconSize.lg, colors.text.inverse)}
-              </TouchableOpacity>
-            </View>
-          ),
-        })}
+        options={{
+          headerShown: false,
+        }}
       />
       <Stack.Screen
         name="GroupChat"
         component={GroupChatScreen}
-        options={({ route, navigation }) => ({
-          headerShown: true,
-          header: () => (
-            <SafeAreaView edges={['top']} style={{ backgroundColor: colors.primary }}>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  height: 56,
-                  paddingHorizontal: 16,
-                  backgroundColor: colors.primary,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <TouchableOpacity
-                    onPress={() => navigation.goBack()}
-                    style={{ paddingVertical: 8, paddingRight: 16, marginLeft: -8 }}
-                  >
-                    {Icons.back(IconSize.lg, colors.text.inverse)}
-                  </TouchableOpacity>
-                  <Text style={{ ...typography.h3, color: colors.text.inverse, flex: 1, marginLeft: 0 }}>
-                    {route.params.title}
-                  </Text>
-                </View>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <TouchableOpacity
-                    onPress={() =>
-                      navigation.navigate('GroupDetail', { groupId: route.params.groupId })
-                    }
-                    style={{ padding: 8 }}
-                  >
-                    {Icons.videocam(IconSize.lg, colors.text.inverse)}
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() =>
-                      navigation.navigate('MessageSearch', {
-                        conversationId: route.params.groupId,
-                        title: route.params.title,
-                      })
-                    }
-                    style={{ padding: 8, marginLeft: 8 }}
-                  >
-                    {Icons.search(IconSize.lg, colors.text.inverse)}
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() =>
-                      navigation.navigate('GroupDetail', { groupId: route.params.groupId })
-                    }
-                    style={{ padding: 8, marginRight: -4 }}
-                  >
-                    {Icons.menu(IconSize.lg, colors.text.inverse)}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </SafeAreaView>
-          ),
-        })}
+        options={{ headerShown: false }}
       />
 
       {/* Profile */}
@@ -237,37 +147,9 @@ const RootStackNavigator: React.FC = () => {
       <Stack.Screen
         name="GroupDetail"
         component={GroupDetailScreen}
-        options={({ navigation }) => ({
-          headerShown: true,
-          header: () => (
-            <SafeAreaView edges={['top']} style={{ backgroundColor: colors.primary }}>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  height: 56,
-                  paddingHorizontal: 16,
-                  backgroundColor: colors.primary,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <TouchableOpacity
-                    onPress={() => navigation.goBack()}
-                    style={{ paddingVertical: 8, paddingRight: 16, marginLeft: -8 }}
-                  >
-                    {Icons.back(IconSize.lg, colors.text.inverse)}
-                  </TouchableOpacity>
-                  <Text style={{ ...typography.h3, color: colors.text.inverse }}>
-                    Chi tiết nhóm
-                  </Text>
-                </View>
-
-                <View style={{ width: 32 }} />
-              </View>
-            </SafeAreaView>
-          ),
-        })}
+        options={{
+          headerShown: false,
+        }}
       />
       <Stack.Screen
         name="AddMembers"

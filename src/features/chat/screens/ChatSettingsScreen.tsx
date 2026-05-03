@@ -33,6 +33,8 @@ const BG_PRESETS = [
   'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800',
 ];
 
+const ZALO_BLUE = '#008AF3';
+
 const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
   const { conversationId, friendshipId, friendId, title, avatarUrl, originalName } = route.params;
   const insets = useSafeAreaInsets();
@@ -182,12 +184,15 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
+      {/* Zalo-style header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          {Icons.back(IconSize.lg, colors.text.inverse)}
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Tùy chọn</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            {Icons.back(IconSize.lg, colors.text.inverse)}
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Tùy chọn</Text>
+          <View style={{ width: 40 }} />
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -370,20 +375,25 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.secondary,
   },
   header: {
-    backgroundColor: colors.primary,
+    backgroundColor: ZALO_BLUE,
+    paddingHorizontal: spacing.screenPadding,
+    paddingBottom: spacing.md,
+  },
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    height: 100,
+    height: 48,
   },
   backButton: {
-    padding: spacing.sm,
+    padding: spacing.xs,
   },
   headerTitle: {
-    ...typography.h3,
-    color: colors.text.inverse,
+    flex: 2,
+    fontSize: 16,
     fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
   content: {
     paddingBottom: spacing.xl,
