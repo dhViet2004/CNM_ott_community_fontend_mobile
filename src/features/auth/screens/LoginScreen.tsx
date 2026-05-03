@@ -54,8 +54,8 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
         <View style={styles.formSection}>
           <Input
-            label="Tên đăng nhập"
-            placeholder="Nhập tên đăng nhập"
+            label="Tên đăng nhập hoặc Số điện thoại"
+            placeholder="Nhập tên đăng nhập hoặc SĐT"
             value={username}
             onChangeText={setUsername}
             autoCapitalize="none"

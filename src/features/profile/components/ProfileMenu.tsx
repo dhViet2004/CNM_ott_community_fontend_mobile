@@ -31,6 +31,7 @@ interface ProfileMenuProps {
   onSettings?: () => void;
   onTimeline?: () => void;
   onPhotos?: () => void;
+  onLogout?: () => void;
 }
 
 const ProfileMenu: React.FC<ProfileMenuProps> = ({
@@ -44,6 +45,7 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
   onSettings,
   onTimeline,
   onPhotos,
+  onLogout,
 }) => {
   const handlePress = (item: MenuItem) => {
     if (item.destructive) {
@@ -130,6 +132,15 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
           description: 'Cài đặt ứng dụng và thông báo',
           onPress: onSettings || (() => {}),
           showArrow: true,
+        },
+        {
+          id: 'logout',
+          icon: <Ionicons name="log-out-outline" size={24} color={colors.status.error} />,
+          label: 'Đăng xuất',
+          description: 'Thoát khỏi tài khoản hiện tại',
+          onPress: onLogout || (() => {}),
+          destructive: true,
+          showArrow: false,
         },
       ];
     }

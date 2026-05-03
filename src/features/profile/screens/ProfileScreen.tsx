@@ -11,8 +11,9 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@theme';
-import { CoverHeader, UserInfo, ProfileMenu } from '../components';
+import { CoverHeader, UserInfo, ProfileMenu, ProfileMedia, FriendSection, PersonalInfo } from '../components';
 import { useProfile } from '../hooks';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 import { uploadApi } from '@api/endpoints';
 import type { MainTabScreenProps } from '@navigation/types';
 
@@ -37,10 +38,16 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     acceptFriendRequest,
     unfriend,
     updateStatus,
-  } = useProfile({ autoLoad: false });
+  } = useProfile();
+
+  const { logout } = useAuth();
 
   const handleEditProfile = () => {
     navigation.navigate('EditProfile');
+  };
+
+  const handleLogout = () => {
+    logout();
   };
 
   const handleSendMessage = () => {
@@ -222,6 +229,20 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           onUpdateStatus={updateStatus}
         />
 
+        {/* Personal Info Section */}
+        <PersonalInfo 
+          username={user.username || ''} 
+          gender={user.gender} 
+          birthday={user.birthday}
+          phone={user.phoneNumber}
+        />
+
+        {/* Media Section */}
+        <ProfileMedia totalPhotos={user.totalPhotos} />
+
+        {/* Friend Section */}
+        <FriendSection totalFriends={user.totalFriends} onSeeAll={() => navigation.navigate('Friends')} />
+
         {/* Profile Menu */}
         <ProfileMenu
           isMyProfile={isMyProfile}
@@ -234,6 +255,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           onSettings={handleSettings}
           onTimeline={() => {}}
           onPhotos={() => {}}
+          onLogout={handleLogout}
         />
       </Animated.ScrollView>
     </View>
