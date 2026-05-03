@@ -86,9 +86,9 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const groupConversations: ChatConversation[] = useMemo(() => groups.map((group: any) => ({
     id: `group:${group.groupId}`,
     type: 'group' as const,
-    name: group.groupName || 'Nhóm',
-    originalName: group.groupName || 'Nhóm',
-    avatar: group.groupAvatar || undefined,
+    name: group.name || 'Nhóm',
+    originalName: group.name || 'Nhóm',
+    avatar: group.avatar_url || undefined,
     lastMessage: group.lastMessage?.content || 'Nhóm mới tạo',
     time: group.lastMessage?.createdAt || group.createdAt || '',
     unreadCount: 0,
