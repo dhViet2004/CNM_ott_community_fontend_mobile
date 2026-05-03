@@ -47,6 +47,11 @@ export interface FilePickerButtonProps {
   receiverId?: string;
 
   /**
+   * Channel/Group ID - cho group chat
+   */
+  channelId?: string;
+
+  /**
    * Custom style cho nút
    */
   style?: object;
@@ -86,6 +91,7 @@ export const FilePickerButton: React.FC<FilePickerButtonProps> = ({
   conversationId,
   senderId,
   receiverId,
+  channelId,
   style,
   iconSize = 24,
 }) => {
@@ -108,6 +114,7 @@ export const FilePickerButton: React.FC<FilePickerButtonProps> = ({
    * Xử lý chọn file
    */
   const handlePickFile = async () => {
+    console.log('[FilePicker] handlePickFile called, channelId:', channelId, 'senderId:', senderId);
     try {
       // Mở document picker
       const result = await DocumentPicker.getDocumentAsync({
@@ -131,7 +138,7 @@ export const FilePickerButton: React.FC<FilePickerButtonProps> = ({
       setCurrentFile(fileInfo);
       setIsUploading(true);
 
-      // Tạo FormData để upload - giống web dùng sender_id, receiver_id
+      // Tạo FormData để upload - giống web
       const formData = new FormData();
       formData.append('file', {
         uri: fileInfo.uri,
@@ -139,13 +146,18 @@ export const FilePickerButton: React.FC<FilePickerButtonProps> = ({
         type: fileInfo.mimeType,
       } as any);
 
-      // Backend cần sender_id và receiver_id (giống web)
+      // Backend cần sender_id + receiver_id (DM) hoặc sender_id + channel_id (Group)
       if (senderId) {
         formData.append('sender_id', senderId);
       }
       if (receiverId) {
         formData.append('receiver_id', receiverId);
       }
+      if (channelId) {
+        formData.append('channel_id', channelId);
+      }
+
+      console.log('[FilePicker] Uploading with channelId:', channelId, 'senderId:', senderId);
 
       // Upload lên backend
       const response = await apiClient.post('/messages/file', formData, {
@@ -170,10 +182,11 @@ export const FilePickerButton: React.FC<FilePickerButtonProps> = ({
       }
 
       // Thành công - callback với URL, tên file, kích thước
+      console.log('[FilePicker] Upload SUCCESS, URL:', fileUrl);
       setCurrentFile(null);
       onUploadSuccess(fileUrl, fileInfo.name, fileInfo.size);
     } catch (error) {
-      console.error('File upload error:', error);
+      console.error('[FilePicker] Upload FAILED:', error);
       const errorMessage =
         error instanceof Error ? error.message : 'Upload thất bại';
       setCurrentFile(null);

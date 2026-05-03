@@ -29,6 +29,7 @@ import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import MessageBubble from '@features/chat/components/MessageBubble';
 import PinnedHeader from '@features/chat/components/PinnedHeader';
+import FilePickerButton from '@features/chat/components/FilePickerButton';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 import { getGroupMembers } from '../api';
 
@@ -267,6 +268,53 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
+  // Xử lý upload file cho group - nhận URL và gọi API tạo message
+  const handleFileUploadSuccess = useCallback(async (fileUrl: string, fileName: string, fileSize: number) => {
+    console.log('[GroupChat] File uploaded, creating message...');
+    
+    const tempId = `temp_${Date.now()}`;
+    const optimisticMsg: Message = {
+      id: tempId,
+      conversationId,
+      senderId: currentUserId || '',
+      senderName: currentUser?.display_name || 'Tôi',
+      senderAvatar: currentUser?.avatar_url ?? null,
+      sender_name: currentUser?.display_name || 'Tôi',
+      sender_avatar: currentUser?.avatar_url ?? null,
+      content: fileUrl, // URL file làm content
+      timestamp: new Date().toISOString(),
+      type: 'file',
+      status: 'sending',
+    };
+    dispatch(addMessage(optimisticMsg));
+
+    if (isNearBottomRef.current) {
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    }
+
+    try {
+      // Gọi API tạo message với file_url
+      const result = await messageApi.sendMessage(conversationId, fileUrl, currentUserId || '', 'file');
+      const realId = String(result.id ?? result.messageId ?? tempId);
+
+      dispatch(
+        confirmPendingMessage({
+          tempId,
+          realId,
+          conversationId,
+          senderId: String(result.senderId),
+          senderName: (result as any).senderDisplayName || (result as any).sender_name || currentUser?.display_name || 'Tôi',
+          senderAvatar: (result as any).senderAvatarUrl ?? (result as any).sender_avatar ?? null,
+          content: result.content ?? fileUrl,
+          type: 'file' as Message['type'],
+          file_url: fileUrl,
+        })
+      );
+    } catch {
+      dispatch(failPendingMessage(tempId));
+    }
+  }, [conversationId, currentUserId, currentUser, dispatch]);
+
   // ─── Render ───────────────────────────────────────────────────────────────
   const renderMessage = useCallback(
     ({ item }: { item: Message }) => {
@@ -440,11 +488,12 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         />
         <View style={[styles.inputWrapper, { paddingBottom: bottomPadding }]}>
           <View style={styles.inputBar}>
-            <TouchableOpacity style={styles.attachBtn}>
-              <View style={styles.attachIconContainer}>
-                {Icons.attach(IconSize.lg)}
-              </View>
-            </TouchableOpacity>
+            <FilePickerButton
+              onUploadSuccess={handleFileUploadSuccess}
+              senderId={currentUserId ? String(currentUserId) : undefined}
+              channelId={String(groupId)}
+              iconSize={22}
+            />
             <TextInput
               style={styles.input}
               placeholder="Nhập tin nhắn..."
