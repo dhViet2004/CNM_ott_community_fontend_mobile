@@ -1,10 +1,10 @@
 export const lightColors = {
-  primary: '#0068FF',
-  primaryDark: '#0052CC',
-  primaryLight: '#3385FF',
-  secondary: '#0084FF',
-  secondaryDark: '#0068CC',
-  secondaryLight: '#3399FF',
+  primary: '#008AF3',
+  primaryDark: '#0070BF',
+  primaryLight: '#3399CC',
+  secondary: '#008AF3',
+  secondaryDark: '#0070BF',
+  secondaryLight: '#3399CC',
   accent: '#00BFFF',
   background: {
     primary: '#FFFFFF',
@@ -20,12 +20,12 @@ export const lightColors = {
     tertiary: '#999999',
     placeholder: '#AAAAAA',
     inverse: '#FFFFFF',
-    link: '#0068FF',
+    link: '#008AF3',
   },
   border: {
     default: '#E0E0E0',
     light: '#F0F0F0',
-    focus: '#0068FF',
+    focus: '#008AF3',
   },
   status: {
     success: '#00C853',
@@ -48,10 +48,10 @@ export const lightColors = {
 export const darkColors = {
   ...lightColors,
   primary: '#3399FF',
-  primaryDark: '#0068FF',
+  primaryDark: '#0070BF',
   primaryLight: '#66B3FF',
   secondary: '#3399FF',
-  secondaryDark: '#0068FF',
+  secondaryDark: '#0070BF',
   secondaryLight: '#66B3FF',
   background: {
     primary: '#1C1C1E',

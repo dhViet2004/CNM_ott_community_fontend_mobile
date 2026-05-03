@@ -179,7 +179,6 @@ const MainTabNavigator: React.FC = () => {
 const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: colors.background.tabBar,
-    borderTopWidth: 0,
     height: 62,
     paddingBottom: spacing.xs,
     elevation: 0,
