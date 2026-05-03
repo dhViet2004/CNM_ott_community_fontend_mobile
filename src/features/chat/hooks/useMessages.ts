@@ -167,7 +167,7 @@ export const useMessages = ({
         timestamp: m.createdAt ?? m.created_at ?? new Date().toISOString(),
         createdAt: m.createdAt ?? m.created_at ?? new Date().toISOString(),
         status: 'sent' as const,
-        is_revoked: m.isRevoked ?? false,
+        is_revoked: m.contentType === 'revoked' || (m.isRevoked ?? false),
       }));
       dispatch(setMessages({ conversationId, messages: mapped }));
       console.log('[useMessages] Loaded', mapped.length, 'messages for', conversationId);

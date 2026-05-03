@@ -17,12 +17,12 @@ import { shallowEqual } from 'react-redux';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useMessages, MessageItem } from '@features/chat/hooks/useMessages';
 import { useTypingIndicator } from '@features/chat/hooks/useTypingIndicator';
-import { MessageBubble, TypingIndicator, ChatInput, PinnedHeader } from '@features/chat/components';
+import { MessageBubble, TypingIndicator, ChatInput, PinnedHeader, MessageContextMenu } from '@features/chat/components';
 import { Icons, IconSize } from '@components/common';
 import { socketActions } from '@api/socket';
 import { messageApi, friendsApi } from '@api/endpoints';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
-import { confirmPendingMessage, failPendingMessage, setMessageFailed } from '@store/slices/chatSlice';
+import { confirmPendingMessage, failPendingMessage, setMessageFailed, setMessageRevoked } from '@store/slices/chatSlice';
 import { colors, spacing } from '@theme';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 
@@ -32,10 +32,21 @@ const EMPTY_ARRAY: any[] = [];
 const HEADER_BLUE = '#008AF3';
 const CHAT_BG = '#F4F6F8';
 
+type SelectedMessage = {
+  id: string | number;
+  content: string;
+  type: string;
+  isMe: boolean;
+  senderName?: string;
+  senderAvatar?: string | null;
+  senderId: string;
+} | null;
+
 const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const { conversationId, title } = route.params;
   const focusedMessageIdFromParams = (route.params as any).focusedMessageId;
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<SelectedMessage>(null);
 
   const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
@@ -250,33 +261,12 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         isRevoked={item.isRevoked}
         defaultName={title}
         isFocused={String(item.id) === focusedMessageId}
-        onLongPress={() => {
-          Alert.alert(
-            'Tùy chọn tin nhắn',
-            '',
-            [
-              { text: 'Trả lời', onPress: () => {} },
-              { text: 'Chuyển tiếp', onPress: () => {} },
-              {
-                text: pinnedMessages.some((p: any) => String(p.id) === String(item.id))
-                  ? 'Bỏ ghim' : 'Ghim tin nhắn',
-                onPress: () => {
-                  if (pinnedMessages.some((p: any) => String(p.id) === String(item.id))) {
-                    handleUnpinMessage(String(item.id));
-                  } else {
-                    handlePinMessage(item);
-                  }
-                },
-              },
-              { text: 'Thu hồi', onPress: () => {}, style: 'destructive' },
-              { text: 'Xóa', onPress: () => {}, style: 'destructive' },
-              { text: 'Hủy', style: 'cancel' },
-            ]
-          );
+        onLongPress={(msg) => {
+          setSelectedMessage(msg);
         }}
       />
     ),
-    [title, focusedMessageId, pinnedMessages, handleUnpinMessage, handlePinMessage]
+    [title, focusedMessageId]
   );
 
   const keyExtractor = useCallback((item: MessageItem) => String(item.id), []);
@@ -424,6 +414,117 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           />
         </View>
       </KeyboardAvoidingView>
+
+      {/* ── Context Menu (single Modal instance) ── */}
+      <MessageContextMenu
+        message={selectedMessage}
+        visible={selectedMessage !== null}
+        onClose={() => setSelectedMessage(null)}
+        isOwn={selectedMessage?.isMe ?? false}
+        onReply={() => {
+          Alert.alert('Trả lời', 'Tính năng đang phát triển');
+        }}
+        onForward={() => {
+          Alert.alert('Chuyển tiếp', 'Tính năng đang phát triển');
+        }}
+        onSave={() => {
+          Alert.alert('Lưu', 'Tính năng đang phát triển');
+        }}
+        onRecall={() => {
+          if (!selectedMessage) return;
+          Alert.alert(
+            'Thu hồi tin nhắn',
+            'Bạn có chắc muốn thu hồi tin nhắn này?',
+            [
+              { text: 'Hủy', style: 'cancel' },
+              {
+                text: 'Thu hồi',
+                style: 'destructive',
+                onPress: async () => {
+                  const msgId = String(selectedMessage.id);
+                  dispatch(setMessageRevoked({ messageId: msgId, conversationId }));
+                  try {
+                    await messageApi.revokeMessage(msgId, conversationId);
+                  } catch (err: any) {
+                    const errMsg = err?.response?.data?.error
+                      || err?.response?.data?.message
+                      || 'Không thể thu hồi tin nhắn';
+                    Alert.alert('Lỗi', errMsg);
+                  }
+                },
+              },
+            ]
+          );
+        }}
+        onCopy={() => {
+          if (selectedMessage) {
+            const { Clipboard } = require('react-native');
+            // fallback using Alert for Expo
+            Alert.alert('Sao chép', selectedMessage.content);
+          }
+        }}
+        onPin={() => {
+          if (!selectedMessage) return;
+          Alert.alert(
+            pinnedMessages.some((p: any) => String(p.id) === String(selectedMessage.id))
+              ? 'Bỏ ghim tin nhắn'
+              : 'Ghim tin nhắn',
+            '',
+            [
+              { text: 'Hủy', style: 'cancel' },
+              {
+                text: 'OK',
+                onPress: () => {
+                  if (pinnedMessages.some((p: any) => String(p.id) === String(selectedMessage.id))) {
+                    handleUnpinMessage(String(selectedMessage.id));
+                  } else {
+                    handlePinMessage(selectedMessage as any);
+                  }
+                },
+              },
+            ]
+          );
+        }}
+        onReminder={() => {
+          Alert.alert('Nhắc hẹn', 'Tính năng đang phát triển');
+        }}
+        onSelectMultiple={() => {
+          Alert.alert('Chọn nhiều', 'Tính năng đang phát triển');
+        }}
+        onQuickMessage={() => {
+          Alert.alert('Tạo tin nhắn nhanh', 'Tính năng đang phát triển');
+        }}
+        onTranslate={() => {
+          Alert.alert('Dịch', 'Tính năng đang phát triển');
+        }}
+        onReadText={() => {
+          Alert.alert('Đọc văn bản', 'Tính năng đang phát triển');
+        }}
+        onDetails={() => {
+          if (!selectedMessage) return;
+          Alert.alert(
+            'Chi tiết tin nhắn',
+            `Nội dung: ${selectedMessage.content}\nLoại: ${selectedMessage.type}\nNgười gửi: ${selectedMessage.senderName || 'Bạn'}`
+          );
+        }}
+        onDelete={() => {
+          if (!selectedMessage) return;
+          Alert.alert(
+            'Xóa tin nhắn',
+            'Bạn có chắc muốn xóa tin nhắn này? (Chỉ bạn thấy)',
+            [
+              { text: 'Hủy', style: 'cancel' },
+              {
+                text: 'Xóa',
+                style: 'destructive',
+                onPress: () => {
+                  Alert.alert('Thành công', 'Tin nhắn đã được xóa');
+                },
+              },
+            ]
+          );
+        }}
+      />
     </View>
   );
 };

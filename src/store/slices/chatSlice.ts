@@ -333,11 +333,13 @@ const chatSlice = createSlice({
       state.revokedMessageIds.push(messageId);
       const messages = state.messages[conversationId];
       if (messages) {
-        const msg = messages.find((m) => m.id === messageId);
-        if (msg) {
-          msg.isRevoked = true;
-          msg.content = 'Tin nhắn đã bị thu hồi';
-        }
+        // Create a new array reference so shallowEqual selectors re-fire
+        state.messages[conversationId] = messages.map((m) => {
+          if (m.id === messageId) {
+            return { ...m, isRevoked: true, content: 'Tin nhắn đã được thu hồi' };
+          }
+          return m;
+        });
       }
     },
 
