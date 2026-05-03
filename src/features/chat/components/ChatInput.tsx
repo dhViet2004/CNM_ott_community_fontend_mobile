@@ -33,6 +33,10 @@ interface ChatInputProps {
    * Receiver ID (người nhận) - cho DM
    */
   receiverId?: string;
+  /**
+   * Callback khi người dùng focus vào ô nhập tin nhắn
+   */
+  onFocus?: () => void;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -45,6 +49,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   conversationId,
   senderId,
   receiverId,
+  onFocus,
 }) => {
   const canSend = value.trim().length > 0;
 
@@ -80,6 +85,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           placeholderTextColor={colors.text.placeholder}
           value={value}
           onChangeText={onChangeText}
+          onFocus={onFocus}
           multiline
           maxLength={2000}
           textAlignVertical="center"
