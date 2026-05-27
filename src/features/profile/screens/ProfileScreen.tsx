@@ -166,10 +166,9 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           <Animated.Text
             style={[
               styles.stickyHeaderTitle,
-              { transform: [{ scale: headerTitleScale }] },
             ]}
           >
-            {user.fullName}
+            Cá nhân
           </Animated.Text>
         </View>
       </Animated.View>
@@ -251,7 +250,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           onQRCode={() => {}}
           onCloud={() => {}}
           onPrivacySettings={() => {}}
-          onSecurity={() => {}}
+          onSecurity={handleSettings}
           onSettings={handleSettings}
           onTimeline={() => {}}
           onPhotos={() => {}}

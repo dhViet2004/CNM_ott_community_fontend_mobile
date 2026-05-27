@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Image,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography, shadows } from '@theme';
 import { Icons } from '@components/common';
+import { resolveUrl } from '@/utils/url';
 
 type AvatarSize = 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 type AvatarVariant = 'user' | 'group' | 'system_folder' | 'system_document';
@@ -89,6 +90,34 @@ const Avatar: React.FC<AvatarProps> = ({
 
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [resolvedUri, setResolvedUri] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    let active = true;
+    const resolve = async () => {
+      if (!uri) {
+        if (active) setResolvedUri(undefined);
+        return;
+      }
+
+      if (uri.startsWith('file://') || uri.startsWith('ph://') || uri.startsWith('data:')) {
+        if (active) setResolvedUri(uri);
+        return;
+      }
+
+      setHasError(false);
+      try {
+        const resolved = await resolveUrl(uri);
+        if (active) setResolvedUri(resolved);
+      } catch (err) {
+        if (active) setResolvedUri(uri);
+      }
+    };
+    resolve();
+    return () => {
+      active = false;
+    };
+  }, [uri]);
 
   const sizeValue = getSizeValue();
   const initials = getInitials(name);
@@ -114,11 +143,11 @@ const Avatar: React.FC<AvatarProps> = ({
       );
     }
 
-    if (uri && !hasError) {
+    if (resolvedUri && !hasError) {
       return (
         <View>
           <Image
-            source={{ uri }}
+            source={{ uri: resolvedUri }}
             style={[
               styles.image,
               { width: sizeValue, height: sizeValue, borderRadius: sizeValue / 2 },

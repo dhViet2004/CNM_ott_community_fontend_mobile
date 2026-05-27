@@ -11,6 +11,7 @@ import {
   StatusBar,
   TouchableOpacity,
   Alert,
+  ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { shallowEqual } from 'react-redux';
@@ -388,6 +389,26 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [messages.length]);
 
+  // Helper to resolve relative background URLs
+  const getFullBgUrl = (url: string | null) => {
+    if (!url) return null;
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    if (url.startsWith('/')) {
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.2.47:4000/api';
+      try {
+        const urlObj = new URL(apiUrl);
+        // Replace port 4000 with 3000 (Next.js frontend port)
+        const frontendHost = `${urlObj.protocol}//${urlObj.hostname}:3000`;
+        return `${frontendHost}${url}`;
+      } catch {
+        return `http://192.168.2.47:3000${url}`;
+      }
+    }
+    return url;
+  };
+
   // ── Zalo-style Header ─────────────────────────────────────────────────────
   const renderHeader = () => (
     <SafeAreaView edges={['top']} style={styles.headerSafeArea}>
@@ -461,63 +482,123 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}
       >
-        <View style={styles.chatContent}>
-          <PinnedHeader
-            pinnedMessages={pinnedMessages}
-            currentUserId={currentUserId}
-            isExpanded={isPinnedExpanded}
-            onToggle={setIsPinnedExpanded}
-            onUnpin={handleUnpinMessage}
-            onNavigateToMessage={handleNavigateToMessage}
-          />
-          <View style={{ flex: 1 }} onTouchStart={handleChatTouch}>
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              keyExtractor={keyExtractor}
-              renderItem={renderMessage}
-              inverted
-              contentContainerStyle={[
-                styles.messagesList,
-                { paddingBottom: bottomPadding + spacing.md },
-              ]}
-              onContentSizeChange={handleContentSizeChange}
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-              keyboardDismissMode="on-drag"
-              keyboardShouldPersistTaps="handled"
-              ListEmptyComponent={
-                <View key="list-empty">
-                  {isLoading ? (
-                    <View style={styles.stateContainer}>
-                      <Text style={styles.stateText}>Đang tải tin nhắn...</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.stateContainer}>
-                      <Text style={styles.stateText}>Chưa có tin nhắn nào</Text>
-                      <Text style={styles.stateSubtext}>Gửi lời chào đầu tiên!</Text>
-                    </View>
-                  )}
-                </View>
-              }
-              refreshControl={
-                <RefreshControl
-                  refreshing={isRefreshing}
-                  onRefresh={handleRefresh}
-                  tintColor={colors.primary}
-                  colors={[colors.primary]}
-                />
-              }
+        {chatBgUrl ? (
+          <ImageBackground source={{ uri: getFullBgUrl(chatBgUrl) || '' }} style={styles.chatContent} resizeMode="cover">
+            <PinnedHeader
+              pinnedMessages={pinnedMessages}
+              currentUserId={currentUserId}
+              isExpanded={isPinnedExpanded}
+              onToggle={setIsPinnedExpanded}
+              onUnpin={handleUnpinMessage}
+              onNavigateToMessage={handleNavigateToMessage}
             />
-          </View>
-
-          {/* Typing indicator — placed outside FlatList to appear above input (not at top of list) */}
-          {typingLabel ? (
-            <View style={styles.typingWrapper}>
-              <TypingIndicator label={typingLabel} />
+            <View style={{ flex: 1 }} onTouchStart={handleChatTouch}>
+              <FlatList
+                ref={flatListRef}
+                data={messages}
+                keyExtractor={keyExtractor}
+                renderItem={renderMessage}
+                inverted
+                contentContainerStyle={[
+                  styles.messagesList,
+                  { paddingBottom: bottomPadding + spacing.md },
+                ]}
+                onContentSizeChange={handleContentSizeChange}
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
+                keyboardDismissMode="on-drag"
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={
+                  <View key="list-empty">
+                    {isLoading ? (
+                      <View style={styles.stateContainer}>
+                        <Text style={styles.stateText}>Đang tải tin nhắn...</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.stateContainer}>
+                        <Text style={styles.stateText}>Chưa có tin nhắn nào</Text>
+                        <Text style={styles.stateSubtext}>Gửi lời chào đầu tiên!</Text>
+                      </View>
+                    )}
+                  </View>
+                }
+                refreshControl={
+                  <RefreshControl
+                    refreshing={isRefreshing}
+                    onRefresh={handleRefresh}
+                    tintColor={colors.primary}
+                    colors={[colors.primary]}
+                  />
+                }
+              />
             </View>
-          ) : null}
-        </View>
+
+            {/* Typing indicator — placed outside FlatList to appear above input (not at top of list) */}
+            {typingLabel ? (
+              <View style={styles.typingWrapper}>
+                <TypingIndicator label={typingLabel} />
+              </View>
+            ) : null}
+          </ImageBackground>
+        ) : (
+          <View style={styles.chatContent}>
+            <PinnedHeader
+              pinnedMessages={pinnedMessages}
+              currentUserId={currentUserId}
+              isExpanded={isPinnedExpanded}
+              onToggle={setIsPinnedExpanded}
+              onUnpin={handleUnpinMessage}
+              onNavigateToMessage={handleNavigateToMessage}
+            />
+            <View style={{ flex: 1 }} onTouchStart={handleChatTouch}>
+              <FlatList
+                ref={flatListRef}
+                data={messages}
+                keyExtractor={keyExtractor}
+                renderItem={renderMessage}
+                inverted
+                contentContainerStyle={[
+                  styles.messagesList,
+                  { paddingBottom: bottomPadding + spacing.md },
+                ]}
+                onContentSizeChange={handleContentSizeChange}
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
+                keyboardDismissMode="on-drag"
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={
+                  <View key="list-empty">
+                    {isLoading ? (
+                      <View style={styles.stateContainer}>
+                        <Text style={styles.stateText}>Đang tải tin nhắn...</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.stateContainer}>
+                        <Text style={styles.stateText}>Chưa có tin nhắn nào</Text>
+                        <Text style={styles.stateSubtext}>Gửi lời chào đầu tiên!</Text>
+                      </View>
+                    )}
+                  </View>
+                }
+                refreshControl={
+                  <RefreshControl
+                    refreshing={isRefreshing}
+                    onRefresh={handleRefresh}
+                    tintColor={colors.primary}
+                    colors={[colors.primary]}
+                  />
+                }
+              />
+            </View>
+
+            {/* Typing indicator — placed outside FlatList to appear above input (not at top of list) */}
+            {typingLabel ? (
+              <View style={styles.typingWrapper}>
+                <TypingIndicator label={typingLabel} />
+              </View>
+            ) : null}
+          </View>
+        )}
 
         {/* Footer / Chat Input */}
         <View style={[styles.inputWrapper, { paddingBottom: bottomPadding }]}>

@@ -570,16 +570,17 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   systemMessagePill: {
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
     borderRadius: 16,
     paddingHorizontal: 16,
-    paddingVertical: 4,
+    paddingVertical: 5,
     maxWidth: '85%',
   },
   systemMessageText: {
     ...typography.caption,
     fontSize: 12,
-    color: '#666',
+    color: '#FFFFFF',
+    fontWeight: '600',
     textAlign: 'center',
   },
 
@@ -768,8 +769,13 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
   },
   focusedBubble: {
-    borderWidth: 1.5,
-    borderColor: colors.primary,
+    borderWidth: 2.5,
+    borderColor: '#FFD700',
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.95,
+    shadowRadius: 12,
+    elevation: 10,
   },
 
   // ── Bubble Content ────────────────────────────────────────────────────

@@ -33,10 +33,10 @@ const ChangePasswordScreen: React.FC<Props> = ({ navigation }) => {
     setLoading(true);
     setError('');
     try {
-      await userApi.changePassword({
+      await userApi.changePassword(
         oldPassword,
         newPassword,
-      });
+      );
       Alert.alert('Thành công', 'Mật khẩu đã được thay đổi', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);

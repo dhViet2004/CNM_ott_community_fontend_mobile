@@ -501,8 +501,8 @@ export const uploadApi = {
 
   getViewUrl: (fileUrl: string) =>
     apiClient
-      .post<{ view_url: string; expires_in: number }>('/uploads/view-url', {
-        file_url: fileUrl,
+      .get<{ view_url: string; expires_in: number }>('/uploads/view-url', {
+        params: { url: fileUrl },
       })
       .then((r) => r.data),
 };

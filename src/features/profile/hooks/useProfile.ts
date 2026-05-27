@@ -8,6 +8,7 @@ import { resolveUrl } from '@/utils/url';
 interface ProfileUser {
   id: string;
   fullName: string;
+  username?: string;
   avatarUrl?: string;
   coverUrl?: string;
   phoneNumber?: string;
@@ -44,6 +45,7 @@ interface UseProfileReturn {
 const mapUserToProfile = (u: User): ProfileUser => ({
   id: u.userId,
   fullName: u.display_name,
+  username: u.username,
   avatarUrl: u.avatar_url || undefined,
   coverUrl: u.coverImage,
   phoneNumber: u.phone_number || undefined,
