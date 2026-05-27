@@ -59,7 +59,7 @@ const PinnedHeader: React.FC<PinnedHeaderProps> = ({
 
   const handleNavigate = (msgId: string) => {
     onNavigateToMessage(msgId);
-    setIsExpanded(false);
+    onToggle(false);
   };
 
   const isImageContent = latest.contentType === 'image' || latest.file_url;

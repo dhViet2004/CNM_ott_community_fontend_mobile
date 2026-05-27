@@ -13,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 export interface ProfileUser {
   id: string;
   fullName: string;
+  username?: string;
   avatarUrl?: string;
   coverUrl?: string;
   phoneNumber?: string;
@@ -143,6 +144,9 @@ const UserInfo: React.FC<UserInfoProps> = ({
     <View style={styles.container}>
       {/* Tên người dùng */}
       <Text style={styles.userName}>{user.fullName}</Text>
+      {user.username && (
+        <Text style={styles.userHandle}>@{user.username}</Text>
+      )}
 
       {/* Thống kê (bạn bè, ảnh, bài viết) */}
       <View style={styles.statsRow}>
@@ -212,6 +216,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     marginTop: spacing.sm,
+  },
+  userHandle: {
+    ...typography.bodySmall,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    marginTop: 2,
   },
   bioSection: {
     marginTop: spacing.sm,
