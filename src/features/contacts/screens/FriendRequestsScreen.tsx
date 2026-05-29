@@ -443,7 +443,7 @@ const FriendRequestsScreen: React.FC<Props> = ({ navigation }) => {
       {/* ── List ── */}
       <FlatList
         data={currentList}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => String(item.id || item.requestId || item.friendshipId || item.userId || `${activeTab}-${index}`)}
         renderItem={renderItem}
         ItemSeparatorComponent={renderSeparator}
         ListHeaderComponent={activeTab === 'received' && receivedList.length > 3 ? renderHeader : null}

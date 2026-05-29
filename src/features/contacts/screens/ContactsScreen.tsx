@@ -10,6 +10,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Dimensions,
+  Modal,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
@@ -30,10 +32,13 @@ type FilterType = 'all' | 'recent';
 
 type Friend = {
   userId: string;
+  friendshipId?: string;
   friend_id?: string;
   display_name: string;
   username?: string;
   avatar_url?: string | null;
+  friends_since?: string;
+  friend_original_name?: string;
 };
 
 type PendingRequest = {
@@ -65,6 +70,7 @@ interface FriendSection {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('');
+const FRIEND_MODAL_WIDTH = Math.min(Dimensions.get('window').width - 48, 360);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const getSectionLetter = (name: string): string => {
@@ -220,12 +226,15 @@ interface FriendItemProps {
   friend: Friend;
   isOnline: boolean;
   onPress: (f: Friend) => void;
+  onLongPress: (f: Friend) => void;
 }
 
-const FriendItem: React.FC<FriendItemProps> = ({ friend, isOnline, onPress }) => (
+const FriendItem: React.FC<FriendItemProps> = ({ friend, isOnline, onPress, onLongPress }) => (
   <TouchableOpacity
     style={styles.friendItem}
     onPress={() => onPress(friend)}
+    onLongPress={() => onLongPress(friend)}
+    delayLongPress={350}
     activeOpacity={0.7}
   >
     <Avatar
@@ -248,6 +257,105 @@ const FriendItem: React.FC<FriendItemProps> = ({ friend, isOnline, onPress }) =>
     </View>
   </TouchableOpacity>
 );
+
+interface FriendActionModalProps {
+  friend: Friend | null;
+  visible: boolean;
+  isUnfriending: boolean;
+  onClose: () => void;
+  onViewProfile: (friend: Friend) => void;
+  onMessage: (friend: Friend) => void;
+  onUnfriend: (friend: Friend) => void;
+}
+
+const FriendActionModal: React.FC<FriendActionModalProps> = ({
+  friend,
+  visible,
+  isUnfriending,
+  onClose,
+  onViewProfile,
+  onMessage,
+  onUnfriend,
+}) => {
+  if (!friend) return null;
+
+  const displayName = friend.friend_original_name || friend.display_name || friend.username || 'Người dùng';
+  const username = friend.username || friend.display_name || displayName;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <View style={styles.friendModalCard}>
+          <Avatar
+            name={displayName}
+            uri={friend.avatar_url || undefined}
+            size="xl"
+          />
+          <Text style={styles.friendModalName} numberOfLines={1}>
+            {displayName}
+          </Text>
+          <Text style={styles.friendModalSubtitle} numberOfLines={1}>
+            Tên Zalo: {username}
+          </Text>
+
+          <View style={styles.friendModalQuickActions}>
+            <TouchableOpacity
+              style={styles.friendModalQuickAction}
+              activeOpacity={0.75}
+              onPress={() => onViewProfile(friend)}
+            >
+              {Icons.person(IconSize.xl, colors.primary)}
+              <Text style={styles.friendModalQuickActionText}>Xem trang cá nhân</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.friendModalQuickAction} activeOpacity={0.75}>
+              {Icons.userX(IconSize.xl, colors.primary)}
+              <Text style={styles.friendModalQuickActionText}>Quản lý chặn</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.friendModalInfoRow}>
+            {Icons.person(IconSize.md, colors.text.tertiary)}
+            <Text style={styles.friendModalInfoText}>Đã kết bạn qua số điện thoại</Text>
+          </View>
+          <View style={styles.friendModalDivider} />
+          <View style={styles.friendModalInfoRow}>
+            {Icons.people(IconSize.md, colors.text.tertiary)}
+            <Text style={styles.friendModalInfoText}>Xem nhóm chung</Text>
+            {Icons.chevronRight(IconSize.md, colors.text.tertiary)}
+          </View>
+          <View style={styles.friendModalDivider} />
+          <View style={styles.friendModalInfoRow}>
+            {Icons.time(IconSize.md, colors.text.tertiary)}
+            <Text style={styles.friendModalInfoText}>Xem nhật ký chung</Text>
+            {Icons.chevronRight(IconSize.md, colors.text.tertiary)}
+          </View>
+          <View style={styles.friendModalDivider} />
+
+          <View style={styles.friendModalActions}>
+            <TouchableOpacity
+              style={[styles.friendModalBottomButton, styles.friendModalDeleteButton]}
+              activeOpacity={0.75}
+              onPress={() => onUnfriend(friend)}
+              disabled={isUnfriending}
+            >
+              <Text style={styles.friendModalDeleteText}>
+                {isUnfriending ? 'Đang xóa...' : 'Xóa bạn'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.friendModalBottomButton, styles.friendModalMessageButton]}
+              activeOpacity={0.75}
+              onPress={() => onMessage(friend)}
+            >
+              <Text style={styles.friendModalMessageText}>Nhắn tin</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SUB-COMPONENT: FriendsListHeader
@@ -310,9 +418,9 @@ const FriendsListHeader: React.FC<FriendsListHeaderProps> = ({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.pendingScrollContent}
         >
-          {pendingRequests.map((req) => (
+          {pendingRequests.map((req, index) => (
             <TouchableOpacity
-              key={req.userId}
+              key={String(req.userId || req.id || req.requestId || req.friendshipId || `pending-${index}`)}
               style={styles.pendingCard}
               onPress={() => onPendingPress(req)}
               activeOpacity={0.7}
@@ -496,6 +604,8 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState<TabType>('friends');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
+  const [isUnfriending, setIsUnfriending] = useState(false);
   const currentUserId = useAppSelector((state) => state.auth.user?.userId);
 
   // ─── Load Data ────────────────────────────────────────────────────────────
@@ -571,6 +681,79 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
     [navigation, currentUserId]
   );
 
+  const handleFriendLongPress = useCallback((friend: Friend) => {
+    setSelectedFriend(friend);
+  }, []);
+
+  const closeFriendModal = useCallback(() => {
+    if (!isUnfriending) {
+      setSelectedFriend(null);
+    }
+  }, [isUnfriending]);
+
+  const handleViewFriendProfile = useCallback(
+    (friend: Friend) => {
+      setSelectedFriend(null);
+      navigation.navigate('UserProfile', { userId: friend.userId || friend.friend_id || '' });
+    },
+    [navigation]
+  );
+
+  const handleMessageFriend = useCallback(
+    (friend: Friend) => {
+      setSelectedFriend(null);
+      handleFriendPress(friend);
+    },
+    [handleFriendPress]
+  );
+
+  const handleUnfriend = useCallback(
+    (friend: Friend) => {
+      const friendshipId = friend.friendshipId;
+      if (!friendshipId) {
+        Alert.alert('Không thể hủy kết bạn', 'Thiếu mã quan hệ bạn bè.');
+        return;
+      }
+
+      Alert.alert(
+        'Xóa bạn',
+        `Bạn có chắc muốn hủy kết bạn với ${friend.display_name || friend.username || 'người này'}?`,
+        [
+          { text: 'Hủy', style: 'cancel' },
+          {
+            text: 'Xóa bạn',
+            style: 'destructive',
+            onPress: async () => {
+              setIsUnfriending(true);
+              try {
+                await friendsApi.unfriend(friendshipId);
+                const targetUserId = friend.userId || friend.friend_id;
+                dispatch(
+                  setFriends(
+                    friends.filter(
+                      (item) =>
+                        item.friendshipId !== friendshipId &&
+                        String(item.userId || item.friend_id) !== String(targetUserId)
+                    )
+                  )
+                );
+                setSelectedFriend(null);
+              } catch (err: any) {
+                Alert.alert(
+                  'Lỗi',
+                  err?.response?.data?.message || 'Không thể hủy kết bạn. Vui lòng thử lại.'
+                );
+              } finally {
+                setIsUnfriending(false);
+              }
+            },
+          },
+        ]
+      );
+    },
+    [dispatch, friends]
+  );
+
   const handlePendingPress = useCallback(
     (req: PendingRequest) => {
       navigation.navigate('UserProfile', { userId: req.userId ?? '' });
@@ -615,6 +798,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
         friend={item}
         isOnline={isOnline}
         onPress={handleFriendPress}
+        onLongPress={handleFriendLongPress}
       />
     );
   };
@@ -648,7 +832,7 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
       <SectionList
         ref={SectionListRef}
         sections={sections}
-        keyExtractor={(item) => item.userId}
+        keyExtractor={(item, index) => String(item.userId || item.friend_id || item.friendshipId || `friend-${index}`)}
         renderItem={renderFriendItem}
         renderSectionHeader={renderSectionHeader}
         ListHeaderComponent={
@@ -733,6 +917,15 @@ const ContactsScreen: React.FC<Props> = ({ navigation }) => {
         {activeTab === 'groups' && renderGroupsTab()}
         {activeTab === 'oa' && renderOATab()}
       </View>
+      <FriendActionModal
+        friend={selectedFriend}
+        visible={!!selectedFriend}
+        isUnfriending={isUnfriending}
+        onClose={closeFriendModal}
+        onViewProfile={handleViewFriendProfile}
+        onMessage={handleMessageFriend}
+        onUnfriend={handleUnfriend}
+      />
     </View>
   );
 };
@@ -973,6 +1166,107 @@ const styles = StyleSheet.create({
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  // ── Friend long-press modal ──
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  friendModalCard: {
+    width: FRIEND_MODAL_WIDTH,
+    borderRadius: 24,
+    backgroundColor: colors.background.primary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+    alignItems: 'center',
+  },
+  friendModalName: {
+    ...typography.h2,
+    color: colors.text.primary,
+    fontWeight: '700',
+    marginTop: spacing.md,
+    maxWidth: '100%',
+  },
+  friendModalSubtitle: {
+    ...typography.body,
+    color: colors.text.tertiary,
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
+    maxWidth: '100%',
+  },
+  friendModalQuickActions: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  friendModalQuickAction: {
+    flex: 1,
+    minHeight: 86,
+    borderRadius: spacing.borderRadius.md,
+    backgroundColor: colors.background.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    gap: spacing.xs,
+  },
+  friendModalQuickActionText: {
+    ...typography.bodySmall,
+    color: colors.text.primary,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  friendModalInfoRow: {
+    width: '100%',
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  friendModalInfoText: {
+    flex: 1,
+    ...typography.body,
+    color: colors.text.primary,
+    fontWeight: '500',
+  },
+  friendModalDivider: {
+    width: '100%',
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border.light,
+  },
+  friendModalActions: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  friendModalBottomButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendModalDeleteButton: {
+    backgroundColor: colors.background.secondary,
+  },
+  friendModalMessageButton: {
+    backgroundColor: colors.primary,
+  },
+  friendModalDeleteText: {
+    ...typography.subtitle,
+    color: colors.text.primary,
+    fontWeight: '700',
+  },
+  friendModalMessageText: {
+    ...typography.subtitle,
+    color: colors.text.inverse,
+    fontWeight: '700',
   },
 
   // ── Group Item ──

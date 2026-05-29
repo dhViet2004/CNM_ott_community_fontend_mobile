@@ -30,7 +30,14 @@
       },
       "package": "com.zaloclone.app"
     },
-    "plugins": [],
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Cho phép $(PRODUCT_NAME) sử dụng camera để quét mã QR kết bạn."
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     }

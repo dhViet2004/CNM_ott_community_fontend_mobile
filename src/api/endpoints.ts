@@ -159,6 +159,28 @@ export interface PendingRequest {
   sender_avatar_url?: string | null;
 }
 
+export interface QRInfoResponse {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  qrData: string;
+}
+
+export interface SendFriendRequestByQRResponse {
+  message: string;
+  data?: {
+    receiver?: {
+      id?: string;
+      userId?: string;
+      displayName?: string;
+      display_name?: string;
+      username?: string;
+      avatarUrl?: string | null;
+      avatar_url?: string | null;
+    };
+  };
+}
+
 export const friendsApi = {
   getFriends: () =>
     apiClient
@@ -199,6 +221,13 @@ export const friendsApi = {
       .put<{ message: string }>('/friends/reject', { requestId })
       .then((r) => r.data),
 
+  unfriend: (friendshipId: string) =>
+    apiClient
+      .delete<{ message: string; data?: { friendshipId: string; status: string } }>(
+        `/friends/${encodeURIComponent(friendshipId)}`
+      )
+      .then((r) => r.data),
+
   getPendingRequests: () =>
     apiClient
       .get<{ message: string; data: any[]; count: number }>(
@@ -218,6 +247,16 @@ export const friendsApi = {
         userId: p.receiver_id || p.userId,
         requested_at: p.created_at,
       }))),
+
+  getQRInfo: (userId: string) =>
+    apiClient
+      .get<QRInfoResponse>(`/friends/qr-info/${encodeURIComponent(userId)}`)
+      .then((r) => r.data),
+
+  sendRequestByQR: (qrData: string) =>
+    apiClient
+      .post<SendFriendRequestByQRResponse>('/friends/request-by-qr', { qrData })
+      .then((r) => r.data),
 
   updateNickname: (payload: { friendshipId: string; nickname: string | null }) =>
     apiClient

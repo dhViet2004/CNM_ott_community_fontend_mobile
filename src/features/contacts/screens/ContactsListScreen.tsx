@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -7,10 +7,12 @@ import {
   Text,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSelector } from '@store/hooks';
-import { friendsApi, userApi } from '@api/endpoints';
+import { friendsApi, userApi, type QRInfoResponse } from '@api/endpoints';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import type { RootStackScreenProps } from '@navigation/types';
@@ -28,9 +30,31 @@ const ContactsListScreen: React.FC<Props> = ({ navigation }) => {
   const [phoneInput, setPhoneInput] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [qrInfo, setQrInfo] = useState<QRInfoResponse | null>(null);
+  const [isLoadingQR, setIsLoadingQR] = useState(false);
+  const [qrLoadFailed, setQrLoadFailed] = useState(false);
 
-  const userId = authUser?.id ?? '';
+  const userId = String(authUser?.userId ?? authUser?.id ?? '');
   const displayName = authUser?.display_name ?? authUser?.username ?? 'Người dùng';
+
+  const loadMyQR = useCallback(async () => {
+    if (!userId) return;
+    setIsLoadingQR(true);
+    setQrLoadFailed(false);
+    try {
+      const info = await friendsApi.getQRInfo(userId);
+      setQrInfo(info);
+    } catch {
+      setQrInfo(null);
+      setQrLoadFailed(true);
+    } finally {
+      setIsLoadingQR(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    loadMyQR();
+  }, [loadMyQR]);
 
   const handlePhoneSearch = useCallback(async () => {
     // Chuẩn hóa: bỏ tất cả ký tự không phải số (giống web: digitsOnly)
@@ -103,7 +127,13 @@ const ContactsListScreen: React.FC<Props> = ({ navigation }) => {
           {Icons.arrowBack(IconSize.lg, colors.text.primary)}
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Thêm bạn</Text>
-        <View style={{ width: 36 }} />
+        <TouchableOpacity
+          onPress={() => navigation.navigate('QRCodeFriend')}
+          style={styles.backBtn}
+          activeOpacity={0.7}
+        >
+          {Icons.qrCodeScanner(IconSize.lg, colors.primary)}
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -113,32 +143,41 @@ const ContactsListScreen: React.FC<Props> = ({ navigation }) => {
         keyboardShouldPersistTaps="handled"
       >
         {/* ── QR Card ───────────────────────────────────────────────── */}
-        <View style={styles.qrSection}>
+        <TouchableOpacity
+          style={styles.qrSection}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('QRCodeFriend')}
+        >
           <View style={[styles.qrCard, { backgroundColor: QR_GRADIENT_BG }]}>
             <Text style={styles.qrUserName}>{displayName}</Text>
             <View style={styles.qrPlaceholder}>
-              <View style={styles.qrBorder}>
-                {Icons.qrCode(140, '#FFFFFF')}
-                <View style={styles.qrDots}>
-                  {[...Array(3)].map((_, i) => (
-                    <View key={i} style={styles.qrDotRow}>
-                      {[...Array(3)].map((__, j) => (
-                        <View
-                          key={j}
-                          style={[
-                            styles.qrDot,
-                            { opacity: Math.random() > 0.5 ? 1 : 0.3 },
-                          ]}
-                        />
-                      ))}
-                    </View>
-                  ))}
+              {isLoadingQR ? (
+                <View style={styles.qrStateBox}>
+                  <ActivityIndicator size="large" color="#FFFFFF" />
                 </View>
-              </View>
+              ) : qrInfo?.qrData ? (
+                <View style={styles.qrCodeBox}>
+                  <QRCode value={qrInfo.qrData} size={132} quietZone={4} />
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.qrStateBox}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    loadMyQR();
+                  }}
+                  activeOpacity={0.75}
+                >
+                  {Icons.refresh(IconSize.xl, '#FFFFFF')}
+                  <Text style={styles.qrRetryText}>
+                    {qrLoadFailed ? 'Thử lại' : 'Tải mã QR'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
             <Text style={styles.qrHint}>Quét mã để thêm bạn Zalo với tôi</Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* ── Phone Input Section ───────────────────────────────────── */}
         <View style={styles.phoneSection}>
@@ -189,8 +228,8 @@ const ContactsListScreen: React.FC<Props> = ({ navigation }) => {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Kết quả tìm kiếm</Text>
             </View>
-            {searchResults.map((user) => (
-              <View key={user.userId} style={styles.resultItem}>
+            {searchResults.map((user, index) => (
+              <View key={String(user.userId || user.id || `search-${index}`)} style={styles.resultItem}>
                 <TouchableOpacity
                   style={styles.resultInfo}
                   onPress={() =>
@@ -235,7 +274,7 @@ const ContactsListScreen: React.FC<Props> = ({ navigation }) => {
           <TouchableOpacity
             style={styles.optionItem}
             activeOpacity={0.7}
-            onPress={() => Alert.alert('Thông báo', 'Tính năng quét mã QR đang được phát triển.')}
+            onPress={() => navigation.navigate('QRCodeFriend')}
           >
             <View style={styles.optionLeft}>
               <View style={[styles.optionIconBox, { backgroundColor: '#E8F4FD' }]}>
@@ -331,29 +370,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing.lg,
   },
-  qrBorder: {
-    width: 140,
-    height: 140,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.4)',
-    borderRadius: 8,
+  qrCodeBox: {
+    width: 148,
+    height: 148,
+    borderRadius: spacing.borderRadius.md,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    padding: 8,
   },
-  qrDots: {
-    position: 'absolute',
-    bottom: 8,
-    gap: 4,
+  qrStateBox: {
+    width: 148,
+    height: 148,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderRadius: spacing.borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
   },
-  qrDotRow: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  qrDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
+  qrRetryText: {
+    ...typography.caption,
+    color: colors.text.inverse,
+    fontWeight: '700',
   },
   qrHint: {
     ...typography.caption,

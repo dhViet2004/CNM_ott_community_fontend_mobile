@@ -30,6 +30,53 @@ const buildDmConversationId = (myId: string, otherId: string): string => {
   return `dm:${sortedIds.join(':')}`;
 };
 
+const formatConversationTime = (value?: string): string => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return date.toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const getMessagePreview = (message?: any): string => {
+  if (!message) return '';
+  if (message.is_revoked || message.isRevoked) return 'Tin nhắn đã được thu hồi';
+
+  const type = message.contentType || message.type || 'text';
+  if (type === 'image') return '[Hình ảnh]';
+  if (type === 'video') return '[Video]';
+  if (type === 'audio' || type === 'voice') return '[Tin nhắn thoại]';
+  if (type === 'file') return message.file_name || '[Tệp đính kèm]';
+  if (type === 'sticker') return '[Sticker]';
+  if (type === 'emoji') return message.content || '[Emoji]';
+
+  return message.content || '';
+};
+
+const getMessageTime = (message?: any, fallback?: string): string => {
+  return formatConversationTime(
+    message?.createdAt ||
+      message?.created_at ||
+      message?.timestamp ||
+      fallback
+  );
+};
+
+const getMessageSortTime = (message?: any, fallback?: string): number => {
+  const value =
+    message?.createdAt ||
+    message?.created_at ||
+    message?.timestamp ||
+    fallback;
+  if (!value) return 0;
+
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+};
+
 interface ChatConversation {
   id: string;
   type: 'single' | 'group';
@@ -39,6 +86,7 @@ interface ChatConversation {
   lastMessage: string;
   time: string;
   unreadCount: number;
+  sortTime: number;
   isPinned: boolean;
   isMuted: boolean;
   isOnline?: boolean;
@@ -47,6 +95,7 @@ interface ChatConversation {
 }
 
 const EMPTY_ARRAY: any[] = [];
+const EMPTY_OBJECT: Record<string, any> = {};
 
 const AVATAR_LEFT_MARGIN = spacing.screenPadding;
 const AVATAR_SIZE = spacing.iconSize.avatar;
@@ -59,6 +108,8 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const friends = useAppSelector((state) => state.chat.friends, shallowEqual);
+  const messagesByConversation = useAppSelector((state) => state.chat.messages || EMPTY_OBJECT, shallowEqual);
+  const unreadCounts = useAppSelector((state) => state.chat.unreadCounts || EMPTY_OBJECT, shallowEqual);
   const onlineUsers = useAppSelector((state) => state.chat.onlineUsers, shallowEqual);
   const currentUserId = useAppSelector((state) => state.auth.user?.userId);
   const groups = useAppSelector((state) => state.groups.myGroups, shallowEqual);
@@ -67,21 +118,25 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     const friendId = friend.friend_id || friend.userId || '';
     const myId = currentUserId || '';
     const sortedIds = [myId, friendId].sort();
+    const conversationId = `dm:${sortedIds.join(':')}`;
+    const conversationMessages = messagesByConversation[conversationId] || EMPTY_ARRAY;
+    const latestMessage = conversationMessages[conversationMessages.length - 1];
     return {
-      id: `dm:${sortedIds.join(':')}`,
+      id: conversationId,
       type: 'single' as const,
       name: friend.display_name || friend.friend_display_name || '',
       originalName: friend.friend_original_name || friend.display_name || '',
       avatar: friend.avatar_url || friend.friend_avatar_url || undefined,
-      lastMessage: friend.status || '',
-      time: friend.friends_since || '',
-      unreadCount: 0,
+      lastMessage: getMessagePreview(latestMessage) || friend.status || '',
+      time: getMessageTime(latestMessage, friend.friends_since),
+      unreadCount: unreadCounts[conversationId] || 0,
+      sortTime: getMessageSortTime(latestMessage, friend.friends_since),
       isPinned: false,
       isMuted: false,
       isOnline: !!onlineUsers[friendId],
       friendId,
     };
-  }), [friends, onlineUsers, currentUserId]);
+  }), [friends, messagesByConversation, onlineUsers, currentUserId, unreadCounts]);
 
   const groupConversations: ChatConversation[] = useMemo(() => groups.map((group: any) => ({
     id: `group:${group.groupId}`,
@@ -92,6 +147,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     lastMessage: group.lastMessage?.content || 'Nhóm mới tạo',
     time: group.lastMessage?.createdAt || group.createdAt || '',
     unreadCount: 0,
+    sortTime: getMessageSortTime(undefined, group.lastMessage?.createdAt || group.createdAt),
     isPinned: false,
     isMuted: false,
     isOnline: false,
@@ -106,6 +162,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     lastMessage: 'Trợ lý thông minh, trả lời nhanh cho bạn',
     time: '',
     unreadCount: 0,
+    sortTime: 0,
     isPinned: false,
     isMuted: false,
     isOnline: true,
@@ -178,11 +235,17 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
       conv.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const pinnedConversations = filteredConversations.filter((c) => c.isPinned);
-  const normalConversations = filteredConversations.filter(
-    (c) => !c.isPinned && !c.isMuted
-  );
-  const mutedConversations = filteredConversations.filter((c) => c.isMuted);
+  const byLatestMessage = (a: ChatConversation, b: ChatConversation) =>
+    b.sortTime - a.sortTime;
+  const pinnedConversations = filteredConversations
+    .filter((c) => c.isPinned)
+    .sort(byLatestMessage);
+  const normalConversations = filteredConversations
+    .filter((c) => !c.isPinned && !c.isMuted)
+    .sort(byLatestMessage);
+  const mutedConversations = filteredConversations
+    .filter((c) => c.isMuted)
+    .sort(byLatestMessage);
 
   const handleConversationPress = useCallback(
     (conv: ChatConversation) => {
@@ -241,8 +304,8 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   }, [navigation]);
 
   const handleQRScanner = useCallback(() => {
-    Alert.alert('Thông báo', 'Tính năng quét mã QR đang được phát triển');
-  }, []);
+    navigation.navigate('QRCodeFriend');
+  }, [navigation]);
 
   const [isAddMenuVisible, setIsAddMenuVisible] = useState(false);
 
@@ -336,7 +399,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
 
       <FlatList
         data={[...pinnedConversations, ...normalConversations, ...mutedConversations]}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => String(item.id || item.friendId || item.groupId || `conversation-${index}`)}
         renderItem={renderConversation}
         ItemSeparatorComponent={renderSeparator}
         ListEmptyComponent={

@@ -25,7 +25,7 @@ import { Icons, IconSize } from '@components/common';
 import { socketActions } from '@api/socket';
 import { messageApi, friendsApi } from '@api/endpoints';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
-import { confirmPendingMessage, failPendingMessage, setMessageFailed, setMessageRevoked, updateMessage, addMessage, deleteMessage, addDeletedForMeId } from '@store/slices/chatSlice';
+import { confirmPendingMessage, failPendingMessage, setActiveConversation, setMessageFailed, setMessageRevoked, updateMessage, addMessage, deleteMessage, addDeletedForMeId } from '@store/slices/chatSlice';
 import { colors, spacing } from '@theme';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 
@@ -79,6 +79,22 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       setIsPinnedExpanded(false);
     }
   };
+
+  const handleBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('MainTabs');
+  }, [navigation]);
+
+  useEffect(() => {
+    dispatch(setActiveConversation(conversationId));
+    return () => {
+      dispatch(setActiveConversation(null));
+    };
+  }, [conversationId, dispatch]);
 
   // Bottom padding — account for home indicator on iOS
   // When keyboard is visible, we don't need the bottom inset
@@ -350,28 +366,35 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   );
 
   const renderMessage = useCallback(
-    ({ item }: { item: MessageItem }) => (
-      <MessageBubble
-        id={item.id}
-        senderId={item.senderId}
-        senderName={item.senderName}
-        senderAvatar={item.senderAvatar}
-        content={item.content}
-        time={item.time}
-        isMe={item.isMe}
-        type={item.type}
-        file_url={item.file_url}
-        status={item.status}
-        isDeleted={item.isDeleted}
-        isRevoked={item.isRevoked}
-        defaultName={title}
-        isFocused={String(item.id) === focusedMessageId}
-        readBy={item.readBy}
-        onLongPress={(msg) => {
-          setSelectedMessage(msg);
-        }}
-      />
-    ),
+    ({ item }: { item: MessageItem }) => {
+      const senderName =
+        !item.isMe && (!item.senderName || item.senderName === 'Unknown')
+          ? title
+          : item.senderName;
+
+      return (
+        <MessageBubble
+          id={item.id}
+          senderId={item.senderId}
+          senderName={senderName}
+          senderAvatar={item.senderAvatar}
+          content={item.content}
+          time={item.time}
+          isMe={item.isMe}
+          type={item.type}
+          file_url={item.file_url}
+          status={item.status}
+          isDeleted={item.isDeleted}
+          isRevoked={item.isRevoked}
+          defaultName={title}
+          isFocused={String(item.id) === focusedMessageId}
+          readBy={item.readBy}
+          onLongPress={(msg) => {
+            setSelectedMessage(msg);
+          }}
+        />
+      );
+    },
     [title, focusedMessageId]
   );
 
@@ -417,7 +440,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       <View style={styles.headerBar}>
         {/* Left: Back chevron */}
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={handleBack}
           style={styles.headerBackBtn}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
