@@ -66,6 +66,7 @@ interface ChatState {
   // Messages
   messages: Record<string, Message[]>;
   pendingMessages: Record<string, 'sending' | 'sent' | 'failed'>;
+  unreadCounts: Record<string, number>;
 
   // Friends (DM partners)
   friends: FriendItem[];
@@ -108,6 +109,7 @@ const initialState: ChatState = {
   activeConversationId: null,
   messages: {},
   pendingMessages: {},
+  unreadCounts: {},
   friends: [],
   selectedFriendId: null,
   myGroups: [],
@@ -195,6 +197,9 @@ const chatSlice = createSlice({
 
     setActiveConversation(state, action: PayloadAction<string | null>) {
       state.activeConversationId = action.payload;
+      if (action.payload) {
+        state.unreadCounts[action.payload] = 0;
+      }
     },
 
     // ─── Messages ───────────────────────────────────────────────────────────
@@ -228,6 +233,12 @@ const chatSlice = createSlice({
       );
       if (!exists) {
         state.messages[convId] = [...state.messages[convId], action.payload];
+        if (
+          action.payload.status === 'delivered' &&
+          state.activeConversationId !== convId
+        ) {
+          state.unreadCounts[convId] = (state.unreadCounts[convId] || 0) + 1;
+        }
       }
 
       // Update conversation last message

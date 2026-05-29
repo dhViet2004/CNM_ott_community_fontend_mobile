@@ -98,6 +98,10 @@ export const connectSocket = (token: string) => {
   socket.on('connect', () => {
     console.log('[Socket] Connected:', socket?.id);
     reconnectAttempts = 0;
+    const activeConversationId = store.getState().chat?.activeConversationId;
+    if (activeConversationId) {
+      socket?.emit('join_room', { roomId: activeConversationId });
+    }
   });
 
   socket.on('disconnect', (reason) => {
@@ -143,7 +147,14 @@ export const connectSocket = (token: string) => {
       return;
     }
 
-    const convId = message.conversationId || (message as any).roomId;
+    const rawConvId = message.conversationId || (message as any).roomId;
+    const activeConversationId = store.getState().chat?.activeConversationId;
+    const dmConvId =
+      currentUserId && senderId
+        ? `dm:${[String(currentUserId), senderId].sort().join(':')}`
+        : '';
+    const convId =
+      activeConversationId === dmConvId ? dmConvId : rawConvId;
     console.log('[Socket] Adding message to conversation:', convId);
 
     // Get senderDisplayName - prefer from message, then try group members

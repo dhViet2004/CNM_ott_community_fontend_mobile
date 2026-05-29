@@ -13,6 +13,7 @@ export type RootStackParamList = {
   EditProfile: undefined;
   Settings: undefined;
   ContactsList: undefined;
+  QRCodeFriend: undefined;
   AddContact: undefined;
   FriendRequests: undefined;
   ForgotPassword: undefined;

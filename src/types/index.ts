@@ -35,6 +35,7 @@ export interface FriendItem {
   friend_display_name?: string;
   friend_username?: string;
   friend_avatar_url?: string | null;
+  friend_original_name?: string;
 }
 
 // Backend getPendingRequests returns: { id: friendshipId, sender_id, ... }
