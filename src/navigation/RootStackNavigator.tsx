@@ -21,6 +21,7 @@ import FriendRequestsScreen from '@features/contacts/screens/FriendRequestsScree
 import GroupsScreen from '@features/groups/screens/GroupsScreen';
 import CreateGroupScreen from '@features/groups/screens/CreateGroupScreen';
 import GroupDetailScreen from '@features/groups/screens/GroupDetailScreen';
+import GroupInviteLinkScreen from '@features/groups/screens/GroupInviteLinkScreen';
 import GroupChatScreen from '@features/groups/screens/GroupChatScreen';
 import AddMembersScreen from '@features/groups/screens/AddMembersScreen';
 import GroupSettingsScreen from '@features/groups/screens/GroupSettingsScreen';
@@ -172,6 +173,14 @@ const RootStackNavigator: React.FC = () => {
         component={GroupDetailScreen}
         options={{
           headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="GroupInviteLink"
+        component={GroupInviteLinkScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
         }}
       />
       <Stack.Screen

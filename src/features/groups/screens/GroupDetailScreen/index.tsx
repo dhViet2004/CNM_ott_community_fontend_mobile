@@ -203,14 +203,9 @@ const GroupDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     navigation.navigate('AddMembers', { groupId });
   }, [groupId, navigation]);
 
-  const handleShareInvite = useCallback(async () => {
-    if (!selectedGroup?.invite_code) return;
-    try {
-      await Share.share({
-        message: `Tham gia nhóm "${selectedGroup.name}" trên OTT Community!\nMã mời: ${selectedGroup.invite_code}`,
-      });
-    } catch {}
-  }, [selectedGroup]);
+  const handleOpenGroupLink = useCallback(() => {
+    navigation.navigate('GroupInviteLink', { groupId });
+  }, [groupId, navigation]);
 
   // Members management
   const handleViewMembers = useCallback(() => {
@@ -522,7 +517,7 @@ const GroupDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         groupLink={groupLink}
         onViewMembers={handleViewMembers}
         onReviewPending={handleReviewPendingRequests}
-        onShareLink={handleShareInvite}
+        onOpenGroupLink={handleOpenGroupLink}
         onOpenSettings={handleOpenGroupSettings}
         onToggleApprovalRequired={handleToggleApprovalRequired}
       />

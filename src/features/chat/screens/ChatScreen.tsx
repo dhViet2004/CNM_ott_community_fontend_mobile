@@ -304,7 +304,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   }, [navigation]);
 
   const handleQRScanner = useCallback(() => {
-    navigation.navigate('QRCodeFriend');
+    navigation.navigate('QRCodeFriend', { initialTab: 'scan-qr' });
   }, [navigation]);
 
   const [isAddMenuVisible, setIsAddMenuVisible] = useState(false);

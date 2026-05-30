@@ -22,7 +22,7 @@ interface MemberSectionProps {
   groupLink: string;
   onViewMembers: () => void;
   onReviewPending: () => void;
-  onShareLink: () => void;
+  onOpenGroupLink: () => void;
   onOpenSettings: () => void;
   onToggleApprovalRequired: (value: boolean) => void;
 }
@@ -37,7 +37,7 @@ export const MemberSection: React.FC<MemberSectionProps> = ({
   groupLink,
   onViewMembers,
   onReviewPending,
-  onShareLink,
+  onOpenGroupLink,
   onOpenSettings,
   onToggleApprovalRequired,
 }) => {
@@ -84,7 +84,7 @@ export const MemberSection: React.FC<MemberSectionProps> = ({
           </TouchableOpacity>
 
           {/* Share Link */}
-          <TouchableOpacity style={styles.rowItem} onPress={onShareLink}>
+          <TouchableOpacity style={styles.rowItem} onPress={onOpenGroupLink}>
             <View style={styles.rowLeft}>
               {Icons.link(IconSize.xl)}
               <View>
@@ -112,7 +112,7 @@ export const MemberSection: React.FC<MemberSectionProps> = ({
           </TouchableOpacity>
 
           {/* Share Link - visible to all */}
-          <TouchableOpacity style={styles.rowItem} onPress={onShareLink}>
+          <TouchableOpacity style={styles.rowItem} onPress={onOpenGroupLink}>
             <View style={styles.rowLeft}>
               {Icons.link(IconSize.xl)}
               <View>
