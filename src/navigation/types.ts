@@ -13,7 +13,7 @@ export type RootStackParamList = {
   EditProfile: undefined;
   Settings: undefined;
   ContactsList: undefined;
-  QRCodeFriend: undefined;
+  QRCodeFriend: { initialTab?: 'my-qr' | 'scan-qr' } | undefined;
   AddContact: undefined;
   FriendRequests: undefined;
   ForgotPassword: undefined;
@@ -21,6 +21,7 @@ export type RootStackParamList = {
   CreateGroup: undefined;
   JoinGroup: undefined;
   GroupDetail: { groupId: string };
+  GroupInviteLink: { groupId: string };
   AddMembers: { groupId: string };
   GroupSettings: { groupId: string };
   ManageMembers: { groupId: string };

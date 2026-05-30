@@ -37,7 +37,99 @@ const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL;
 let socket: Socket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
+let unsubscribeRoomSync: (() => void) | null = null;
 const MAX_RECONNECT_ATTEMPTS = 5;
+const joinedRooms = new Set<string>();
+const emittedJoinedRooms = new Set<string>();
+
+const normalizeRoomId = (roomId?: string | number | null): string =>
+  String(roomId ?? '').trim();
+
+const buildDmRoomId = (
+  userId?: string | number | null,
+  friendId?: string | number | null
+): string | null => {
+  const a = normalizeRoomId(userId);
+  const b = normalizeRoomId(friendId);
+  if (!a || !b) return null;
+
+  const aNum = Number(a);
+  const bNum = Number(b);
+  if (Number.isFinite(aNum) && Number.isFinite(bNum)) {
+    return `dm:${[aNum, bNum].sort((x, y) => x - y).join(':')}`;
+  }
+
+  return `dm:${[a, b].sort().join(':')}`;
+};
+
+const registerRoom = (roomId?: string | number | null): string => {
+  const normalized = normalizeRoomId(roomId);
+  if (normalized) joinedRooms.add(normalized);
+  return normalized;
+};
+
+const emitJoinRoom = (roomId?: string | number | null) => {
+  const normalized = registerRoom(roomId);
+  if (normalized && socket?.connected && !emittedJoinedRooms.has(normalized)) {
+    socket.emit('join_room', { roomId: normalized });
+    emittedJoinedRooms.add(normalized);
+  }
+};
+
+const emitLeaveRoom = (roomId?: string | number | null) => {
+  const normalized = normalizeRoomId(roomId);
+  if (!normalized) return;
+  joinedRooms.delete(normalized);
+  emittedJoinedRooms.delete(normalized);
+  if (socket?.connected) {
+    socket.emit('leave_room', { roomId: normalized });
+  }
+};
+
+const syncKnownConversationRooms = () => {
+  const state = store.getState();
+  const currentUserId = state.auth?.user?.userId;
+  const activeConversationId = state.chat?.activeConversationId;
+
+  if (activeConversationId) {
+    registerRoom(activeConversationId);
+  }
+
+  (state.chat?.conversations || []).forEach((conversation: any) => {
+    if (conversation?.id && !String(conversation.id).startsWith('bot:')) {
+      registerRoom(conversation.id);
+    }
+  });
+
+  (state.chat?.friends || []).forEach((friend: any) => {
+    const friendId = friend.friend_id || friend.userId || friend.id;
+    const roomId = buildDmRoomId(currentUserId, friendId);
+    if (roomId) registerRoom(roomId);
+  });
+
+  (state.groups?.myGroups || []).forEach((group: any) => {
+    const groupId = group.groupId || group.id;
+    if (groupId) registerRoom(groupId);
+  });
+};
+
+const joinKnownRooms = () => {
+  syncKnownConversationRooms();
+  if (!socket?.connected) return;
+
+  joinedRooms.forEach((roomId) => {
+    emitJoinRoom(roomId);
+  });
+};
+
+const ensureRoomSyncSubscription = () => {
+  if (unsubscribeRoomSync) return;
+
+  unsubscribeRoomSync = store.subscribe(() => {
+    if (!socket?.connected) return;
+    joinKnownRooms();
+  });
+};
 
 // Track registered event names so we can clean up before re-registering
 const REGISTERED_EVENTS = [
@@ -81,8 +173,12 @@ export interface SocketMessage {
 
 export const connectSocket = (token: string) => {
   if (socket?.connected) {
+    joinKnownRooms();
+    return socket;
+  }
+
+  if (socket) {
     removeAllListeners();
-  } else if (socket) {
     socket.disconnect();
   }
 
@@ -94,14 +190,13 @@ export const connectSocket = (token: string) => {
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
   });
+  ensureRoomSyncSubscription();
 
   socket.on('connect', () => {
     console.log('[Socket] Connected:', socket?.id);
     reconnectAttempts = 0;
-    const activeConversationId = store.getState().chat?.activeConversationId;
-    if (activeConversationId) {
-      socket?.emit('join_room', { roomId: activeConversationId });
-    }
+    emittedJoinedRooms.clear();
+    joinKnownRooms();
   });
 
   socket.on('disconnect', (reason) => {
@@ -520,6 +615,7 @@ export const connectSocket = (token: string) => {
 
     const currentUserId = store.getState().auth?.user?.userId;
     const gDetails = data.groupDetails;
+    emitJoinRoom(gDetails.groupId);
 
     // Thêm nhóm mới vào danh sách chat
     const conversationId = String(gDetails.groupId);
@@ -580,6 +676,7 @@ export const connectSocket = (token: string) => {
 
     // Nếu user hiện tại là người bị kick → xóa khỏi myGroups và conversations
     if (currentUserId && String(data.removedMember) === String(currentUserId)) {
+      emitLeaveRoom(gIdStr);
       store.dispatch(removeGroup(gIdStr));
       store.dispatch(removeConversationById(gIdStr));
       console.log('[Socket] Current user was kicked, removing from store');
@@ -605,6 +702,7 @@ export const connectSocket = (token: string) => {
 
     // Nếu user hiện tại tự rời → xóa khỏi myGroups và conversations
     if (currentUserId && String(data.leftMember) === String(currentUserId)) {
+      emitLeaveRoom(gIdStr);
       store.dispatch(removeGroup(gIdStr));
       store.dispatch(removeConversationById(gIdStr));
       console.log('[Socket] Current user left the group, removing from store');
@@ -624,6 +722,7 @@ export const connectSocket = (token: string) => {
     if (!data.groupId) return;
 
     const gIdStr = String(data.groupId);
+    emitLeaveRoom(gIdStr);
     store.dispatch(removeGroup(gIdStr));
     store.dispatch(removeConversationById(gIdStr));
     console.log('[Socket] User was removed from group:', gIdStr);
@@ -647,6 +746,7 @@ export const connectSocket = (token: string) => {
 
     const groupId = String(data.groupData.groupId || data.groupData.id || '');
     if (!groupId) return;
+    emitJoinRoom(groupId);
 
     const conversationId = groupId;
     const existingConv = store.getState().chat?.conversations?.find(
@@ -703,6 +803,7 @@ export const connectSocket = (token: string) => {
     if (!data.groupId) return;
 
     const gIdStr = String(data.groupId);
+    emitLeaveRoom(gIdStr);
     store.dispatch(removeGroup(gIdStr));
     store.dispatch(removeConversationById(gIdStr));
     console.log('[Socket] Group deleted:', gIdStr);
@@ -733,6 +834,11 @@ export const disconnectSocket = () => {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  if (unsubscribeRoomSync) {
+    unsubscribeRoomSync();
+    unsubscribeRoomSync = null;
+  }
+  emittedJoinedRooms.clear();
   socket?.disconnect();
   socket = null;
 };
@@ -746,11 +852,17 @@ export const getSocket = () => socket;
 export const socketActions = {
   // Join/Leave conversation rooms
   joinConversation: (conversationId: string) => {
-    socket?.emit('join_room', { roomId: conversationId });
+    emitJoinRoom(conversationId);
   },
 
   leaveConversation: (conversationId: string) => {
-    socket?.emit('leave_room', { roomId: conversationId });
+    // Keep chat rooms joined for app-wide realtime. Use forceLeaveConversation
+    // only when the user is no longer a participant.
+    registerRoom(conversationId);
+  },
+
+  forceLeaveConversation: (conversationId: string) => {
+    emitLeaveRoom(conversationId);
   },
 
   // Typing indicators - backend uses typing_start/typing_stop

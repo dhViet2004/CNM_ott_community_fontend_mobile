@@ -12,8 +12,11 @@ import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { friendsApi, type QRInfoResponse } from '@api/endpoints';
 import { Icons, IconSize } from '@components/common';
-import { useAppSelector } from '@store/hooks';
+import { useAppDispatch, useAppSelector } from '@store/hooks';
+import { fetchMyGroupsAsync } from '@store/slices/groupsSlice';
 import { colors, spacing, typography } from '@theme';
+import { fetchGroupByInviteCode, joinGroupByCode } from '@features/groups/api';
+import { parseGroupInviteCode } from '@features/groups/utils/invite';
 import type { RootStackScreenProps } from '@navigation/types';
 
 type Props = RootStackScreenProps<'QRCodeFriend'>;
@@ -26,6 +29,16 @@ interface ScannedUser {
   qrData: string;
 }
 
+interface ScannedGroupInvite {
+  inviteCode: string;
+  qrData: string;
+  groupId?: string | number;
+  groupName?: string;
+  memberCount?: number;
+  isApprovalRequired?: boolean;
+  loading?: boolean;
+}
+
 const parseFriendQR = (value: string): string | null => {
   const [type, version, userId] = value.split('|');
   if (type !== 'OTT_FR' || version !== '1' || !userId) return null;
@@ -34,9 +47,10 @@ const parseFriendQR = (value: string): string | null => {
 
 const getInitial = (name?: string) => name?.trim()?.charAt(0)?.toUpperCase() || '?';
 
-const QRCodeFriendScreen: React.FC<Props> = ({ navigation }) => {
+const QRCodeFriendScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
+  const dispatch = useAppDispatch();
   const authUser = useAppSelector((state) => state.auth.user);
   const friends = useAppSelector((state) => state.chat.friends);
 
@@ -45,11 +59,13 @@ const QRCodeFriendScreen: React.FC<Props> = ({ navigation }) => {
     [authUser]
   );
 
-  const [tab, setTab] = useState<Tab>('my-qr');
+  const [tab, setTab] = useState<Tab>(route.params?.initialTab || 'my-qr');
   const [qrInfo, setQrInfo] = useState<QRInfoResponse | null>(null);
   const [loadingQR, setLoadingQR] = useState(false);
   const [scannedUser, setScannedUser] = useState<ScannedUser | null>(null);
+  const [scannedGroupInvite, setScannedGroupInvite] = useState<ScannedGroupInvite | null>(null);
   const [sending, setSending] = useState(false);
+  const [joiningGroup, setJoiningGroup] = useState(false);
   const [sent, setSent] = useState(false);
   const [alreadyFriend, setAlreadyFriend] = useState(false);
   const [selfScan, setSelfScan] = useState(false);
@@ -82,7 +98,9 @@ const QRCodeFriendScreen: React.FC<Props> = ({ navigation }) => {
 
   const resetScanResult = useCallback(() => {
     setScannedUser(null);
+    setScannedGroupInvite(null);
     setSending(false);
+    setJoiningGroup(false);
     setSent(false);
     setAlreadyFriend(false);
     setSelfScan(false);
@@ -97,7 +115,33 @@ const QRCodeFriendScreen: React.FC<Props> = ({ navigation }) => {
       if (!rawCode || rawCode === qrInfo?.qrData) return;
 
       const userId = parseFriendQR(rawCode);
-      if (!userId) return;
+      if (!userId) {
+        const inviteCode = parseGroupInviteCode(rawCode);
+        if (!inviteCode) return;
+
+        setScanEnabled(false);
+        setScannedGroupInvite({ inviteCode, qrData: rawCode, loading: true });
+
+        try {
+          const group = await fetchGroupByInviteCode(inviteCode);
+          setScannedGroupInvite({
+            inviteCode,
+            qrData: rawCode,
+            groupId: group.groupId,
+            groupName: group.name,
+            memberCount: group.memberCount,
+            isApprovalRequired: group.isApprovalRequired,
+            loading: false,
+          });
+        } catch (err: any) {
+          Alert.alert(
+            'Lỗi',
+            err?.response?.data?.message || 'Không tìm thấy nhóm từ mã QR này.'
+          );
+          resetScanResult();
+        }
+        return;
+      }
 
       setScanEnabled(false);
       setSelfScan(userId === currentUserId);
@@ -122,7 +166,7 @@ const QRCodeFriendScreen: React.FC<Props> = ({ navigation }) => {
         });
       }
     },
-    [currentUserId, friends, qrInfo?.qrData, scanEnabled, scannedUser]
+    [currentUserId, friends, qrInfo?.qrData, resetScanResult, scanEnabled, scannedUser]
   );
 
   const handleSendRequest = useCallback(async () => {
@@ -161,6 +205,59 @@ const QRCodeFriendScreen: React.FC<Props> = ({ navigation }) => {
       setSending(false);
     }
   }, [alreadyFriend, resetScanResult, scannedUser?.qrData, selfScan, sending, sent]);
+
+  const handleJoinGroup = useCallback(async () => {
+    if (!scannedGroupInvite?.inviteCode || joiningGroup) return;
+
+    setJoiningGroup(true);
+    try {
+      const result: any = await joinGroupByCode(scannedGroupInvite.inviteCode);
+      await dispatch(fetchMyGroupsAsync()).unwrap();
+
+      const groupId = result?.group?.groupId || result?.groupId || scannedGroupInvite.groupId;
+      const groupName = result?.group?.name || scannedGroupInvite.groupName || 'Nhóm';
+      const isPending = result?.status === 'PENDING';
+
+      if (isPending) {
+        Alert.alert('Đã gửi yêu cầu', result?.message || 'Yêu cầu tham gia nhóm đang chờ duyệt.');
+        resetScanResult();
+        return;
+      }
+
+      Alert.alert('Thành công', result?.message || 'Bạn đã tham gia nhóm.', [
+        {
+          text: 'Mở nhóm',
+          onPress: () => {
+            resetScanResult();
+            if (groupId) {
+              navigation.navigate('GroupChat', {
+                groupId: String(groupId),
+                title: groupName,
+              });
+            }
+          },
+        },
+      ]);
+    } catch (err: any) {
+      Alert.alert(
+        'Lỗi',
+        err?.response?.data?.message ||
+          err?.message ||
+          'Không thể tham gia nhóm từ mã QR này.'
+      );
+      resetScanResult();
+    } finally {
+      setJoiningGroup(false);
+    }
+  }, [
+    dispatch,
+    joiningGroup,
+    navigation,
+    resetScanResult,
+    scannedGroupInvite?.groupId,
+    scannedGroupInvite?.groupName,
+    scannedGroupInvite?.inviteCode,
+  ]);
 
   const renderMyQR = () => (
     <View style={styles.content}>
@@ -204,6 +301,49 @@ const QRCodeFriendScreen: React.FC<Props> = ({ navigation }) => {
   );
 
   const renderScanResult = () => {
+    if (scannedGroupInvite) {
+      return (
+        <View style={styles.resultCard}>
+          <View style={[styles.avatar, styles.groupAvatar]}>
+            {Icons.people(IconSize.xl, colors.text.inverse)}
+          </View>
+          <Text style={styles.displayName}>
+            {scannedGroupInvite.loading
+              ? 'Đang tải thông tin nhóm...'
+              : scannedGroupInvite.groupName || 'Lời mời tham gia nhóm'}
+          </Text>
+          <Text style={styles.resultTitle}>
+            {scannedGroupInvite.loading ? 'Đang kiểm tra mã QR' : 'Tìm thấy nhóm'}
+          </Text>
+          <Text style={styles.helperText}>
+            {scannedGroupInvite.loading
+              ? 'Vui lòng chờ trong giây lát.'
+              : scannedGroupInvite.memberCount
+              ? `${scannedGroupInvite.memberCount} thành viên. Bạn có muốn tham gia nhóm này?`
+              : 'Bạn có muốn tham gia nhóm này?'}
+          </Text>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={handleJoinGroup}
+            disabled={joiningGroup || scannedGroupInvite.loading}
+            activeOpacity={0.75}
+          >
+            {joiningGroup ? (
+              <ActivityIndicator size="small" color={colors.text.inverse} />
+            ) : (
+              Icons.userGroup(IconSize.md, colors.text.inverse)
+            )}
+            <Text style={styles.primaryButtonText}>
+              {joiningGroup ? 'Đang tham gia...' : 'Tham gia nhóm'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryButton} onPress={resetScanResult}>
+            <Text style={styles.secondaryButtonText}>Quét mã khác</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     if (!scannedUser) return null;
 
     let title = 'Tìm thấy người dùng';
@@ -404,6 +544,9 @@ const styles = StyleSheet.create({
     ...typography.h2,
     color: colors.text.inverse,
     fontWeight: '700',
+  },
+  groupAvatar: {
+    backgroundColor: colors.primary,
   },
   displayName: {
     ...typography.h3,

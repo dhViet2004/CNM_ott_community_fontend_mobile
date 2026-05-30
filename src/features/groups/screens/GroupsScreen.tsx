@@ -102,6 +102,10 @@ const GroupsScreen: React.FC<Props> = ({ navigation }) => {
     );
   }, [joinGroupByCode, loadGroups]);
 
+  const handleScanQR = useCallback(() => {
+    navigation.navigate('QRCodeFriend', { initialTab: 'scan-qr' });
+  }, [navigation]);
+
   const renderGroupItem = ({ item }: { item: (typeof myGroups)[0] }) => (
     <TouchableOpacity
       style={styles.groupItem}
@@ -141,6 +145,11 @@ const GroupsScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.headerTitle}>Nhóm của tôi</Text>
           </View>
           <View style={styles.headerActions}>
+            <TouchableOpacity onPress={handleScanQR} style={styles.headerIcon}>
+              <View style={styles.headerIconContainer}>
+                {Icons.qrCodeScanner(IconSize.lg)}
+              </View>
+            </TouchableOpacity>
             <TouchableOpacity onPress={handleJoinGroup} style={styles.headerIcon}>
               <View style={styles.headerIconContainer}>
                 {Icons.userGroup(IconSize.lg)}
