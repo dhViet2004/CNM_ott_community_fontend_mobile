@@ -259,6 +259,7 @@ const MediaGalleryScreen: React.FC<Props> = ({ route, navigation }) => {
       {/* Image Viewer Modal */}
       <Modal visible={!!viewerImage} transparent animationType="fade" onRequestClose={() => setViewerImage(null)}>
         <View style={galStyles.viewerBg}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setViewerImage(null)} />
           <TouchableOpacity style={[galStyles.viewerClose, { top: insets.top + 10 }]} onPress={() => setViewerImage(null)}>
             <Ionicons name="close" size={28} color="#FFF" />
           </TouchableOpacity>

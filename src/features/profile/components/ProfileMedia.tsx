@@ -71,6 +71,7 @@ const ProfileMedia: React.FC<ProfileMediaProps> = ({ photos = [], totalPhotos = 
         onRequestClose={() => setActivePhoto(null)}
       >
         <View style={styles.lightboxContainer}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setActivePhoto(null)} />
           {/* Header */}
           <View style={styles.lightboxHeader}>
             <TouchableOpacity onPress={() => setActivePhoto(null)} style={styles.lightboxButton}>

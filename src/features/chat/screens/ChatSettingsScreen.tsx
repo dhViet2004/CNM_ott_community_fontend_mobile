@@ -548,6 +548,7 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
         onRequestClose={() => setIsNicknameModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setIsNicknameModalVisible(false)} />
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Đổi tên gợi nhớ</Text>
             <Text style={styles.modalSubtitle}>Tên này sẽ chỉ hiển thị với bạn</Text>
@@ -613,6 +614,7 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
         onRequestClose={() => setViewerImage(null)}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', alignItems: 'center', justifyContent: 'center' }}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setViewerImage(null)} />
           {/* Header trong Lightbox */}
           <View
             style={{
