@@ -257,13 +257,18 @@ export const connectSocket = (token: string) => {
     let senderAvatar = message.sender_avatar ?? message.senderAvatarUrl ?? null;
 
     // If no senderDisplayName, try to get from group members in store
-    if (!senderDisplayName) {
-      const groupMembers = store.getState().groups?.groupMembers?.[convId] || [];
+    if (!senderDisplayName || String(senderDisplayName).trim().toLowerCase() === 'unknown') {
+      const conversationKey = String(convId || '');
+      const strippedGroupKey = conversationKey.replace(/^group:/, '');
+      const groupMembers =
+        store.getState().groups?.groupMembers?.[conversationKey] ||
+        store.getState().groups?.groupMembers?.[strippedGroupKey] ||
+        [];
       const senderMember = groupMembers.find((m: any) => 
         String(m.userId) === String(senderId) || String(m.id) === String(senderId)
       );
       if (senderMember) {
-        senderDisplayName = senderMember.display_name || senderMember.username;
+        senderDisplayName = senderMember.display_name || (senderMember as any).displayName || senderMember.username;
         senderAvatar = senderMember.avatar_url ?? senderAvatar;
       }
     }
