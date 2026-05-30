@@ -15,7 +15,7 @@ interface MessageItem {
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'voice' | 'audio' | 'system' | 'poll';
+  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'voice' | 'audio' | 'system' | 'poll' | 'reminder' | 'reminder_due';
   pollData?: PollData | null;
   file_url?: string | null;
   replyTo?: string | number | null;

@@ -52,6 +52,8 @@ const getMessagePreview = (message?: any): string => {
   if (type === 'file') return message.file_name || '[Tệp đính kèm]';
   if (type === 'sticker') return '[Sticker]';
   if (type === 'emoji') return message.content || '[Emoji]';
+  if (type === 'reminder') return '[Nhắc hẹn]';
+  if (type === 'reminder_due') return message.content || 'Đến giờ nhắc hẹn';
 
   return message.content || '';
 };

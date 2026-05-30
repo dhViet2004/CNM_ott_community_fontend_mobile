@@ -54,6 +54,7 @@ interface ChatInputProps {
   onCancelReply?: () => void;
   onJumpToReply?: (messageId: string | number) => void;
   onCreatePoll?: (payload: { content: string; pollData: PollData }) => Promise<void>;
+  onCreateReminder?: () => void;
 }
 
 const getReplyContent = (message?: ChatInputProps['replyingMessage']) => {
@@ -81,6 +82,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onCancelReply,
   onJumpToReply,
   onCreatePoll,
+  onCreateReminder,
 }) => {
   const canSend = value.trim().length > 0;
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -90,6 +92,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
     if (label === 'Bình chọn') {
       setToolsOpen(false);
       setPollModalOpen(true);
+      return;
+    }
+    if (label === 'Nhắc hẹn') {
+      setToolsOpen(false);
+      onCreateReminder?.();
     }
   };
 

@@ -129,6 +129,12 @@ export interface BackendMessage {
     file_url?: string | null;
   } | null;
   pollData?: PollData | null;
+  reminderData?: {
+    reminderId?: string;
+    remindAt?: string;
+    repeat?: string;
+    status?: string;
+  } | null;
   is_revoked?: boolean;
   status?: 'sending' | 'sent' | 'delivered' | 'read';
   createdAt?: string;
