@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
@@ -39,7 +39,29 @@ interface ChatInputProps {
    * Callback khi người dùng focus vào ô nhập tin nhắn
    */
   onFocus?: () => void;
+  replyingMessage?: {
+    id: string | number;
+    content?: string | null;
+    contentType?: string;
+    type?: string;
+    senderDisplayName?: string | null;
+    senderName?: string | null;
+    attachments?: Array<{ url: string; type?: string; size?: number }> | null;
+    file_url?: string | null;
+  } | null;
+  onCancelReply?: () => void;
+  onJumpToReply?: (messageId: string | number) => void;
 }
+
+const getReplyContent = (message?: ChatInputProps['replyingMessage']) => {
+  if (!message) return '';
+  const type = message.contentType || message.type;
+  if (type === 'image' || message.file_url || message.attachments?.[0]?.url) return '[Ảnh/Tệp]';
+  if (type === 'sticker') return '[Sticker]';
+  if (type === 'emoji') return message.content || '[Emoji]';
+  if (type === 'voice' || type === 'audio') return '[Tin nhắn thoại]';
+  return message.content || '[Tin nhắn]';
+};
 
 const ChatInput: React.FC<ChatInputProps> = ({
   value,
@@ -52,11 +74,39 @@ const ChatInput: React.FC<ChatInputProps> = ({
   senderId,
   receiverId,
   onFocus,
+  replyingMessage,
+  onCancelReply,
+  onJumpToReply,
 }) => {
   const canSend = value.trim().length > 0;
 
   return (
     <View style={styles.container}>
+      {replyingMessage ? (
+        <View style={styles.replyPreview}>
+          <TouchableOpacity
+            style={styles.replyCancelBtn}
+            onPress={onCancelReply}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="close" size={18} color="#00695C" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.replyContent}
+            activeOpacity={0.75}
+            onPress={() => onJumpToReply?.(replyingMessage.id)}
+          >
+            <Text style={styles.replyLabel}>Trả lời</Text>
+            <View style={styles.replyDivider} />
+            <Text style={styles.replySender} numberOfLines={1}>
+              {replyingMessage.senderDisplayName || replyingMessage.senderName || 'Người dùng'}:
+            </Text>
+            <Text style={styles.replyText} numberOfLines={1}>
+              {getReplyContent(replyingMessage)}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
       <View style={styles.inputBar}>
         {/* Left: File picker button */}
         <View style={styles.attachBtnContainer}>
@@ -143,6 +193,54 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.background.primary,
     paddingTop: spacing.sm,
+  },
+  replyPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E0F7FA',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#B2EBF2',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  replyCancelBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(178, 235, 242, 0.55)',
+    marginRight: spacing.sm,
+  },
+  replyContent: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  replyLabel: {
+    ...typography.caption,
+    color: '#00695C',
+    fontWeight: '700',
+    marginRight: spacing.xs,
+  },
+  replyDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 16,
+    backgroundColor: 'rgba(0, 105, 92, 0.35)',
+    marginRight: spacing.xs,
+  },
+  replySender: {
+    ...typography.caption,
+    color: '#00695C',
+    fontWeight: '700',
+    maxWidth: 110,
+    marginRight: 3,
+  },
+  replyText: {
+    ...typography.caption,
+    color: '#00796B',
+    flex: 1,
   },
   inputBar: {
     flexDirection: 'row',

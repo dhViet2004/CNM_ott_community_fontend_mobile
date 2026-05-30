@@ -26,8 +26,8 @@ import {
   updateMessage,
   deleteMessage,
   addDeletedForMeId,
-  Message,
 } from '@store/slices/chatSlice';
+import type { Message, ReplyToMessage } from '@store/slices/chatSlice';
 import { setGroupMembers } from '@store/slices/groupsSlice';
 import { messageApi, channelApi } from '@api/endpoints';
 import { socketActions } from '@api/socket';
@@ -100,18 +100,6 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     });
   }, [conversationId]);
 
-  const handleNavigateToMessage = useCallback((messageId: string) => {
-    const index = messages.findIndex(m => String(m.id) === String(messageId));
-    if (index !== -1) {
-      navigation.setParams({ focusedMessageId: String(messageId) } as any);
-      flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
-      
-      setTimeout(() => {
-        navigation.setParams({ focusedMessageId: undefined } as any);
-      }, 3000);
-    }
-  }, [messages, navigation]);
-
   // Bottom padding cho input
   const bottomPadding = Platform.OS === 'ios'
     ? insets.bottom
@@ -127,6 +115,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const isLoadingMessages = useAppSelector((state) => state.chat.isLoadingMessages);
 
   const [inputText, setInputText] = useState('');
+  const [replyingMessage, setReplyingMessage] = useState<ReplyToMessage | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [defaultChannelId, setDefaultChannelId] = useState<string | null>(null);
@@ -136,10 +125,23 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     messageId: string;
     content: string;
   } | null>(null);
+  const [isPinnedExpanded, setIsPinnedExpanded] = useState(false);
   const selectedMessageRef = useRef<SelectedMessage>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  const handleNavigateToMessage = useCallback((messageId: string) => {
+    const index = messages.findIndex(m => String(m.id) === String(messageId));
+    if (index !== -1) {
+      navigation.setParams({ focusedMessageId: String(messageId) } as any);
+      flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+
+      setTimeout(() => {
+        navigation.setParams({ focusedMessageId: undefined } as any);
+      }, 3000);
+    }
+  }, [messages, navigation]);
 
   // Keep ref in sync with state — so callbacks always read latest value
   useEffect(() => {
@@ -225,6 +227,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           isRevoked: m.contentType === 'revoked' || m.is_revoked || m.isRevoked || false,
           is_revoked: m.contentType === 'revoked' || m.is_revoked || m.isRevoked || false,
           isDeleted: m.isDeleted || false,
+          replyTo: m.replyTo ?? null,
+          replyToMessage: m.replyToMessage ?? null,
         };
       });
       dispatch(setMessages({ conversationId, messages: mapped as Message[] }));
@@ -309,7 +313,9 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
 
     const tempId = `temp_${Date.now()}`;
     const text = inputText.trim();
+    const replySnapshot = replyingMessage;
     setInputText('');
+    setReplyingMessage(null);
     socketActions.sendStopTyping(conversationId);
     setIsTyping(false);
 
@@ -325,6 +331,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       timestamp: new Date().toISOString(),
       type: 'text',
       status: 'sending',
+      replyTo: replySnapshot?.id ?? null,
+      replyToMessage: replySnapshot,
     };
     dispatch(addMessage(optimisticMsg));
 
@@ -334,7 +342,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     }
 
     try {
-      const result = await messageApi.sendMessage(conversationId, text, currentUserId || '');
+      const result = await messageApi.sendMessage(conversationId, text, currentUserId || '', 'text', replySnapshot?.id ?? null);
       const realId = String(result.id ?? result.messageId ?? tempId);
 
       dispatch(
@@ -348,6 +356,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           content: result.content ?? '',
           type: (result.contentType ?? (result as any).type ?? 'text') as Message['type'],
           file_url: result.file_url ?? (result as any).attachments?.[0]?.url ?? null,
+          replyTo: result.replyTo ?? replySnapshot?.id ?? null,
+          replyToMessage: result.replyToMessage ?? replySnapshot ?? null,
         })
       );
     } catch {
@@ -394,6 +404,20 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const handleCopy = useCallback(() => {
     const msg = selectedMessageRef.current;
     if (msg) Alert.alert('Sao chép', msg.content);
+  }, []);
+
+  const handleReplyToMessage = useCallback(() => {
+    const msg = selectedMessageRef.current;
+    if (!msg) return;
+    setReplyingMessage({
+      id: msg.id,
+      content: msg.content || '',
+      contentType: msg.type,
+      senderId: msg.senderId,
+      senderDisplayName: msg.senderName || null,
+      senderAvatarUrl: msg.senderAvatar || null,
+    });
+    setSelectedMessage(null);
   }, []);
 
   const handlePin = useCallback(() => {
@@ -502,12 +526,14 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           isRevoked={item.isRevoked}
           defaultName={title}
           isFocused={isFocused}
+          replyToMessage={item.replyToMessage}
+          onJumpToMessage={(messageId) => handleNavigateToMessage(String(messageId))}
           onLongPress={setSelectedMessage}
           readBy={item.readBy}
         />
       );
     },
-    [title, currentUserId, route.params]
+    [title, currentUserId, route.params, handleNavigateToMessage]
   );
 
   const keyExtractor = useCallback((item: Message) => String(item.id), []);
@@ -610,6 +636,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       >
         <PinnedHeader
           pinnedMessages={pinnedMessages}
+          isExpanded={isPinnedExpanded}
+          onToggle={setIsPinnedExpanded}
           onUnpin={handleUnpinMessage}
           onNavigateToMessage={handleNavigateToMessage}
         />
@@ -651,6 +679,9 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
             value={inputText}
             onChangeText={handleTextChange}
             onSend={handleSend}
+            replyingMessage={replyingMessage}
+            onCancelReply={() => setReplyingMessage(null)}
+            onJumpToReply={(messageId) => handleNavigateToMessage(String(messageId))}
             conversationId={conversationId}
             senderId={currentUserId ? String(currentUserId) : undefined}
             onUploadSuccess={async (url, name, size, msgData) => {
@@ -733,7 +764,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         onClose={() => setSelectedMessage(null)}
         isOwn={selectedMessage?.isMe ?? false}
         isDeleting={deletingMessageId === String(selectedMessage?.id)}
-        onReply={() => Alert.alert('Trả lời', 'Tính năng đang phát triển')}
+        onReply={handleReplyToMessage}
         onForward={() => {
           const msg = selectedMessageRef.current;
           if (!msg) return;

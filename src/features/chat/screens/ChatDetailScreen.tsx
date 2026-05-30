@@ -26,6 +26,7 @@ import { socketActions } from '@api/socket';
 import { messageApi, friendsApi } from '@api/endpoints';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { confirmPendingMessage, failPendingMessage, setActiveConversation, setMessageFailed, setMessageRevoked, updateMessage, addMessage, deleteMessage, addDeletedForMeId } from '@store/slices/chatSlice';
+import type { ReplyToMessage } from '@store/slices/chatSlice';
 import { colors, spacing } from '@theme';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 
@@ -159,6 +160,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [inputText, setInputText] = useState('');
+  const [replyingMessage, setReplyingMessage] = useState<ReplyToMessage | null>(null);
   const isNearBottomRef = useRef(true);
   const isInitializedRef = useRef(false);
   const prevMessagesLengthRef = useRef(0);
@@ -309,6 +311,18 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [messages]);
 
+  const handleReplyToMessage = useCallback((msg: NonNullable<SelectedMessage>) => {
+    setReplyingMessage({
+      id: msg.id,
+      content: msg.content || '',
+      contentType: msg.type,
+      senderId: msg.senderId,
+      senderDisplayName: msg.senderName || null,
+      senderAvatarUrl: msg.senderAvatar || null,
+    });
+    setSelectedMessage(null);
+  }, []);
+
   const handleSend = useCallback(
     async (text: string) => {
       if (!text.trim()) return;
@@ -317,6 +331,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       Keyboard.dismiss();
       socketActions.sendStopTyping(conversationId);
 
+      const replySnapshot = replyingMessage;
       const tempId = addOptimisticMessage({
         conversationId,
         senderId: currentUserId || '',
@@ -325,10 +340,13 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         content: text,
         type: 'text',
         file_url: null,
+        replyTo: replySnapshot?.id ?? null,
+        replyToMessage: replySnapshot,
       });
+      setReplyingMessage(null);
 
       try {
-        const result = await messageApi.sendMessage(conversationId, text, currentUserId || '');
+        const result = await messageApi.sendMessage(conversationId, text, currentUserId || '', 'text', replySnapshot?.id ?? null);
         const realId = String(result.id ?? result.messageId ?? tempId);
 
         dispatch(confirmPendingMessage({
@@ -341,6 +359,8 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           content: result.content ?? text,
           type: (result.contentType ?? result.type ?? 'text') as MessageItem['type'],
           file_url: result.file_url ?? result.attachments?.[0]?.url ?? null,
+          replyTo: result.replyTo ?? replySnapshot?.id ?? null,
+          replyToMessage: result.replyToMessage ?? replySnapshot ?? null,
         }));
 
         if (isNearBottomRef.current) {
@@ -352,7 +372,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         Alert.alert('Lỗi', 'Không thể gửi tin nhắn. Vui lòng thử lại.');
       }
     },
-    [conversationId, currentUserId, currentUser, dispatch, addOptimisticMessage]
+    [conversationId, currentUserId, currentUser, dispatch, addOptimisticMessage, replyingMessage]
   );
 
   const onTextChange = useCallback(
@@ -389,13 +409,15 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           defaultName={title}
           isFocused={String(item.id) === focusedMessageId}
           readBy={item.readBy}
+          replyToMessage={item.replyToMessage}
+          onJumpToMessage={(messageId) => handleNavigateToMessage(String(messageId))}
           onLongPress={(msg) => {
             setSelectedMessage(msg);
           }}
         />
       );
     },
-    [title, focusedMessageId]
+    [title, focusedMessageId, handleNavigateToMessage]
   );
 
   const keyExtractor = useCallback((item: MessageItem) => String(item.id), []);
@@ -630,6 +652,9 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             onChangeText={onTextChange}
             onFocus={() => markAsReadRef.current()}
             onSend={handleSend}
+            replyingMessage={replyingMessage}
+            onCancelReply={() => setReplyingMessage(null)}
+            onJumpToReply={(messageId) => handleNavigateToMessage(String(messageId))}
             conversationId={conversationId}
             senderId={currentUserId || undefined}
             receiverId={route.params.userId}
@@ -726,7 +751,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         isOwn={selectedMessage?.isMe ?? false}
         isDeleting={deletingMessageId === String(selectedMessage?.id)}
         onReply={() => {
-          Alert.alert('Trả lời', 'Tính năng đang phát triển');
+          if (selectedMessage) handleReplyToMessage(selectedMessage);
         }}
         onForward={() => {
           if (!selectedMessage) return;
