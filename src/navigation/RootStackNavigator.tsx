@@ -8,6 +8,7 @@ import type { RootStackParamList } from './types';
 
 import MainTabNavigator from './MainTabNavigator';
 import ChatDetailScreen from '@features/chat/screens/ChatDetailScreen';
+import CreateReminderScreen from '@features/chat/screens/CreateReminderScreen';
 import BotChatScreen from '@features/chat/screens/BotChatScreen';
 import UserProfileScreen from '@features/profile/screens/UserProfileScreen';
 import EditProfileScreen from '@features/profile/screens/EditProfileScreen';
@@ -79,6 +80,14 @@ const RootStackNavigator: React.FC = () => {
         component={ChatDetailScreen}
         options={{
           headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="CreateReminder"
+        component={CreateReminderScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_bottom',
         }}
       />
       <Stack.Screen

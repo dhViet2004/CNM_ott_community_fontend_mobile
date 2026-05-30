@@ -285,7 +285,7 @@ export const connectSocket = (token: string) => {
       senderName: senderDisplayName || 'Unknown',
       sender_name: senderDisplayName || 'Unknown',
       sender_avatar: senderAvatar,
-      type: (message.contentType ?? 'text') as 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system' | 'poll',
+      type: (message.contentType ?? 'text') as 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system' | 'poll' | 'reminder' | 'reminder_due',
       content: message.content ?? '',
       pollData: message.pollData ?? null,
       file_url: message.file_url ?? (message as any).attachments?.[0]?.url ?? null,

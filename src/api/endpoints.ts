@@ -507,6 +507,38 @@ export const messageApi = {
 
 // ─── Uploads ─────────────────────────────────────────────────────────────────
 
+export interface CreateReminderPayload {
+  conversationId: string;
+  content: string;
+  remindAt: string;
+  repeat?: 'none' | 'daily' | 'weekly' | 'monthly';
+}
+
+export interface ReminderItem {
+  reminderId: string;
+  conversationId: string;
+  content: string;
+  remindAt: string;
+  repeat: 'none' | 'daily' | 'weekly' | 'monthly';
+  status: string;
+}
+
+export interface CreateReminderResult {
+  message: BackendMessage;
+  reminder: ReminderItem;
+}
+
+type CreateReminderResponse =
+  | { data: CreateReminderResult }
+  | CreateReminderResult;
+
+export const reminderApi = {
+  createReminder: (payload: CreateReminderPayload) =>
+    apiClient
+      .post<CreateReminderResponse>('/reminders', payload)
+      .then((r): CreateReminderResult => ('data' in r.data ? r.data.data : r.data)),
+};
+
 export const uploadApi = {
   getPresignedUrl: (
     fileName: string,

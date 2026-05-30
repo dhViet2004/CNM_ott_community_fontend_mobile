@@ -705,6 +705,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             onFocus={() => markAsReadRef.current()}
             onSend={handleSend}
             onCreatePoll={handleCreatePoll}
+            onCreateReminder={() => navigation.navigate('CreateReminder', { conversationId, title })}
             replyingMessage={replyingMessage}
             onCancelReply={() => setReplyingMessage(null)}
             onJumpToReply={(messageId) => handleNavigateToMessage(String(messageId))}

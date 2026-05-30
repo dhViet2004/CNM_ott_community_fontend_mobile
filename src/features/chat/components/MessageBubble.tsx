@@ -15,6 +15,7 @@ import Avatar from '@components/common/Avatar';
 import { Icons } from '@components/common';
 import VoiceMessageBubble from './VoiceMessageBubble';
 import PollMessageBubble from './PollMessageBubble';
+import ReminderDetailCard from './ReminderDetailCard';
 import type { PollData } from '@/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -126,7 +127,7 @@ interface MessageBubbleProps {
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice' | 'audio' | 'system' | 'poll';
+  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice' | 'audio' | 'system' | 'poll' | 'reminder' | 'reminder_due';
   file_url?: string | null;
   pollData?: PollData | null;
   currentUserId?: string | number | null;
@@ -177,6 +178,75 @@ const getReplyContent = (message: ReplyToMessage) => {
   if (type === 'emoji') return message.content || '[Emoji]';
   if (type === 'voice' || type === 'audio') return '[Tin nhắn thoại]';
   return message.content || '[Tin nhắn]';
+};
+
+const padDatePart = (value: number) => String(value).padStart(2, '0');
+
+const parseReminderContent = (content: string) => {
+  const lines = String(content || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const title = lines.find((line) => !line.startsWith('[') && !line.startsWith('Thời gian:') && !line.startsWith('Lặp lại:')) || 'Nhắc hẹn';
+  const timeLine = lines.find((line) => line.startsWith('Thời gian:'));
+  const timeText = timeLine?.replace('Thời gian:', '').trim();
+  const match = timeText?.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+  const date = match
+    ? new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]), Number(match[4]), Number(match[5]))
+    : new Date();
+
+  return { title, date };
+};
+
+const formatReminderCardTime = (date: Date) => {
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  const time = `${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
+  if (sameDay) return `Hôm nay lúc ${time}`;
+  return `${padDatePart(date.getDate())}/${padDatePart(date.getMonth() + 1)} lúc ${time}`;
+};
+
+const ReminderCard: React.FC<{
+  content: string;
+  isMe: boolean;
+  senderName?: string;
+  senderAvatar?: string | null;
+}> = ({ content, isMe, senderName, senderAvatar }) => {
+  const reminder = parseReminderContent(content);
+  const actor = isMe ? 'Bạn' : senderName || 'Người dùng';
+
+  return (
+    <View style={styles.reminderContainer}>
+      <View style={styles.reminderCard}>
+        <View style={styles.reminderHeader}>
+          <Avatar
+            uri={senderAvatar ?? undefined}
+            name={actor}
+            size="xs"
+          />
+          <Text style={styles.reminderHeaderText} numberOfLines={1}>
+            {actor} đã tạo một nhắc hẹn
+          </Text>
+        </View>
+        <View style={styles.reminderDivider} />
+        <View style={styles.reminderBody}>
+          <View style={styles.reminderDateBlock}>
+            <Text style={styles.reminderMonth}>THG {reminder.date.getMonth() + 1}</Text>
+            <Text style={styles.reminderDay}>{reminder.date.getDate()}</Text>
+          </View>
+          <View style={styles.reminderInfo}>
+            <Text style={styles.reminderTitle} numberOfLines={1}>{reminder.title}</Text>
+            <Text style={styles.reminderTime} numberOfLines={1}>
+              {formatReminderCardTime(reminder.date)}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
 };
 
 const CheckIcon: React.FC<{ filled?: boolean }> = ({ filled }) =>
@@ -344,6 +414,18 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       onLongPress({ id, content, type, isMe, senderName, senderAvatar, senderId });
     }
   };
+
+  if (type === 'reminder' || content?.startsWith('[Nhắc hẹn]')) {
+    return (
+      <ReminderDetailCard
+        content={content}
+        isMe={isMe}
+        senderName={senderName || defaultName}
+        senderAvatar={senderAvatar}
+        onLongPress={handleLongPress}
+      />
+    );
+  }
 
   const renderReplyReference = () => {
     if (!replyToMessage) return null;
@@ -1121,6 +1203,91 @@ const styles = StyleSheet.create({
   },
   revokedTextMe: {
     color: '#9CA3AF',
+  },
+
+  // ── Reminder Card ────────────────────────────────────────────────────
+  reminderContainer: {
+    width: '100%',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    marginVertical: spacing.sm,
+  },
+  reminderCard: {
+    width: SCREEN_WIDTH - 58,
+    minHeight: 150,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    paddingBottom: 22,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
+  },
+  reminderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reminderHeaderText: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 22,
+    lineHeight: 28,
+    color: '#1D1D1F',
+    fontWeight: '400',
+  },
+  reminderDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#DCDDE1',
+    marginTop: 18,
+    marginBottom: 24,
+  },
+  reminderBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reminderDateBlock: {
+    width: 92,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 24,
+  },
+  reminderMonth: {
+    fontSize: 24,
+    lineHeight: 30,
+    color: '#C51D48',
+    fontWeight: '500',
+  },
+  reminderDay: {
+    fontSize: 42,
+    lineHeight: 50,
+    color: '#141414',
+    fontWeight: '300',
+  },
+  reminderInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  reminderTitle: {
+    fontSize: 28,
+    lineHeight: 34,
+    color: '#17191C',
+    fontWeight: '800',
+    marginBottom: 12,
+  },
+  reminderTime: {
+    fontSize: 24,
+    lineHeight: 30,
+    color: '#90949D',
+    fontWeight: '400',
   },
 
   // ── File Attachment ──────────────────────────────────────────────────
