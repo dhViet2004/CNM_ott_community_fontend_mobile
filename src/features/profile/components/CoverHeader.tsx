@@ -228,6 +228,7 @@ const CoverHeader: React.FC<CoverHeaderProps> = ({
         onRequestClose={() => setViewerUrl(null)}
       >
         <View style={styles.lightboxContainer}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setViewerUrl(null)} />
           {/* Header */}
           <View style={styles.lightboxHeader}>
             <TouchableOpacity onPress={() => setViewerUrl(null)} style={styles.lightboxButton}>

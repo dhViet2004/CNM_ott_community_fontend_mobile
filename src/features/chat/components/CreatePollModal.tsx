@@ -89,6 +89,7 @@ const CreatePollModal: React.FC<CreatePollModalProps> = ({ visible, onClose, onS
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.overlay}
       >
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={resetAndClose} />
         <View style={styles.sheet}>
           <View style={styles.header}>
             <TouchableOpacity onPress={resetAndClose} style={styles.headerIcon} hitSlop={10}>

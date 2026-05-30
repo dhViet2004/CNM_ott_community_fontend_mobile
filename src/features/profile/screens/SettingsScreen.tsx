@@ -172,6 +172,7 @@ const SettingsScreen: React.FC = () => {
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalBg}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setModalVisible(false)} />
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               Xác thực {modalType === 'email' ? 'Email' : 'Số điện thoại'}

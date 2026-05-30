@@ -668,6 +668,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId, onLike, onDele
 const ReactionListModal: React.FC<{ users: ReactionUser[] | null; onClose: () => void }> = ({ users, onClose }) => (
   <Modal visible={users !== null} animationType="slide" transparent onRequestClose={onClose}>
     <View style={commentStyles.overlay}>
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
       <View style={commentStyles.container}>
         <View style={commentStyles.header}>
           <Text style={commentStyles.title}>Lượt thả tim ({users?.length || 0})</Text>
@@ -902,6 +903,7 @@ const CommentsModal: React.FC<{
     <>
       <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
         <KeyboardAvoidingView style={commentStyles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
           <View style={commentStyles.container}>
           <View style={commentStyles.header}>
             <Text style={commentStyles.title}>Bình luận</Text>
