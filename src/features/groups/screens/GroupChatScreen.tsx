@@ -18,6 +18,7 @@ import { store } from '@store/store';
 import {
   setMessages,
   addMessage,
+  setActiveConversation,
   setLoadingMessages,
   confirmPendingMessage,
   failPendingMessage,
@@ -62,6 +63,13 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const conversationId = String(groupId);
   const pinnedMessages = useAppSelector((state) => state.chat.pinnedMessages[conversationId] || EMPTY_ARRAY);
+
+  useEffect(() => {
+    dispatch(setActiveConversation(conversationId));
+    return () => {
+      dispatch(setActiveConversation(null));
+    };
+  }, [conversationId, dispatch]);
 
   const handlePinMessage = useCallback((msg: Message) => {
     const pinData = {

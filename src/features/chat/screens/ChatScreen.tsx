@@ -56,6 +56,42 @@ const getMessagePreview = (message?: any): string => {
   return message.content || '';
 };
 
+const getGroupMessagePreview = (
+  message?: any,
+  currentUserId?: string,
+  groupMembers: any[] = []
+): string => {
+  const preview = getMessagePreview(message);
+  if (!message || !preview) return preview;
+
+  const senderId = message.senderId != null ? String(message.senderId) : '';
+  const isOwn = currentUserId && senderId === String(currentUserId);
+  const senderMember = groupMembers.find((member: any) =>
+    String(member.userId || member.id) === senderId
+  );
+  const socketName =
+    message.senderDisplayName ||
+    message.senderName ||
+    message.sender_name ||
+    message.displayName ||
+    message.username;
+  const shouldUseMemberName =
+    !socketName ||
+    String(socketName).trim().toLowerCase() === 'unknown';
+  const senderName = isOwn
+    ? 'Báº¡n'
+    : shouldUseMemberName
+      ? senderMember?.display_name ||
+        senderMember?.displayName ||
+        senderMember?.username ||
+        socketName ||
+        'ThÃ nh viÃªn'
+      : socketName ||
+      'ThÃ nh viÃªn';
+
+  return `${senderName}: ${preview}`;
+};
+
 const getMessageTime = (message?: any, fallback?: string): string => {
   return formatConversationTime(
     message?.createdAt ||
@@ -113,6 +149,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const onlineUsers = useAppSelector((state) => state.chat.onlineUsers, shallowEqual);
   const currentUserId = useAppSelector((state) => state.auth.user?.userId);
   const groups = useAppSelector((state) => state.groups.myGroups, shallowEqual);
+  const groupMembersByGroupId = useAppSelector((state) => state.groups.groupMembers || EMPTY_OBJECT, shallowEqual);
 
   const dmConversations: ChatConversation[] = useMemo(() => friends.map((friend) => {
     const friendId = friend.friend_id || friend.userId || '';
@@ -138,21 +175,36 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
     };
   }), [friends, messagesByConversation, onlineUsers, currentUserId, unreadCounts]);
 
-  const groupConversations: ChatConversation[] = useMemo(() => groups.map((group: any) => ({
-    id: `group:${group.groupId}`,
-    type: 'group' as const,
-    name: group.name || 'Nhóm',
-    originalName: group.name || 'Nhóm',
-    avatar: group.avatar_url || undefined,
-    lastMessage: group.lastMessage?.content || 'Nhóm mới tạo',
-    time: group.lastMessage?.createdAt || group.createdAt || '',
-    unreadCount: 0,
-    sortTime: getMessageSortTime(undefined, group.lastMessage?.createdAt || group.createdAt),
-    isPinned: false,
-    isMuted: false,
-    isOnline: false,
-    groupId: group.groupId,
-  })), [groups]);
+  const groupConversations: ChatConversation[] = useMemo(() => groups.map((group: any) => {
+    const groupId = String(group.groupId || group.id || '');
+    const legacyConversationId = `group:${groupId}`;
+    const conversationMessages =
+      messagesByConversation[groupId] ||
+      messagesByConversation[legacyConversationId] ||
+      EMPTY_ARRAY;
+    const latestMessage = conversationMessages[conversationMessages.length - 1];
+    const fallbackTime = group.lastMessage?.createdAt || group.createdAt;
+    const groupMembers =
+      groupMembersByGroupId[groupId] ||
+      groupMembersByGroupId[legacyConversationId] ||
+      EMPTY_ARRAY;
+
+    return {
+      id: legacyConversationId,
+      type: 'group' as const,
+      name: group.name || 'Nhóm',
+      originalName: group.name || 'Nhóm',
+      avatar: group.avatar_url || undefined,
+      lastMessage: getGroupMessagePreview(latestMessage, currentUserId, groupMembers) || group.lastMessage?.content || 'Nhóm mới tạo',
+      time: getMessageTime(latestMessage, fallbackTime),
+      unreadCount: unreadCounts[groupId] || unreadCounts[legacyConversationId] || group.unreadCount || 0,
+      sortTime: getMessageSortTime(latestMessage, fallbackTime),
+      isPinned: false,
+      isMuted: false,
+      isOnline: false,
+      groupId,
+    };
+  }), [groups, messagesByConversation, unreadCounts, currentUserId, groupMembersByGroupId]);
 
   // AI Bot conversation item
   const aiBotConversation: ChatConversation = {
