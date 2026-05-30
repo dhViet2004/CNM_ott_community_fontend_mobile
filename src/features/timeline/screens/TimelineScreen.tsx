@@ -10,13 +10,21 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, typography } from '@theme';
 import { Avatar } from '@components/common';
 import { postsApi, uploadApi, friendsApi } from '@api/endpoints';
-import type { PostItem, CommentItem, PostMedia } from '@api/endpoints';
+import type { PostItem, CommentItem, PostMedia, ReactionUser } from '@api/endpoints';
 import { useAppSelector } from '@store/hooks';
 import { resolveUrl } from '@/utils/url';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { formatPostTime } from '@/utils/postTime';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BLUE = '#008AF3';
+
+const reactionSummary = (users: ReactionUser[], currentUserId?: string) => {
+  if (!users.length) return '';
+  const includesMe = users.some((item) => String(item.userId) === String(currentUserId));
+  if (includesMe) return users.length === 1 ? 'Bạn' : `Bạn và ${users.length - 1} người khác`;
+  return users.length === 1 ? users[0].displayName : `${users[0].displayName} và ${users.length - 1} người khác`;
+};
 
 export const TimelineScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -30,6 +38,7 @@ export const TimelineScreen: React.FC = () => {
   // Modals
   const [showCompose, setShowCompose] = useState(false);
   const [showPostManager, setShowPostManager] = useState(false);
+  const [reactionUsers, setReactionUsers] = useState<ReactionUser[] | null>(null);
   
   // Edit post
   const [editingPost, setEditingPost] = useState<PostItem | null>(null);
@@ -55,8 +64,8 @@ export const TimelineScreen: React.FC = () => {
             if (id === currentUser?.userId) {
               return {
                 userId: id,
-                displayName: currentUser?.displayName || currentUser?.username || 'Tôi',
-                avatarUrl: currentUser?.avatarUrl || null
+                displayName: currentUser?.display_name || currentUser?.username || 'Tôi',
+                avatarUrl: currentUser?.avatar_url || null
               };
             }
             const foundFriend = friendsList.find((f: any) => 
@@ -77,9 +86,11 @@ export const TimelineScreen: React.FC = () => {
             authorAvatar: p.authorAvatar || null,
             content: p.content || '',
             createdAt: p.createdAt,
+            updatedAt: p.updatedAt || p.createdAt,
             likeCount: p.likeCount || p.likes?.length || 0,
             commentCount: p.commentCount || p.comments?.length || 0,
             likes: p.likes || [],
+            likeUsers: p.likeUsers || likedBy,
             media: p.media || [],
             likedBy,
             comments: p.comments || []
@@ -102,6 +113,7 @@ export const TimelineScreen: React.FC = () => {
           authorAvatar: p.authorAvatar,
           content: p.content,
           createdAt: p.createdAt,
+          updatedAt: p.updatedAt || p.createdAt,
           likeCount: p.likedBy?.length || 0,
           commentCount: p.comments?.length || 0,
           likes: p.likedBy?.map((l: any) => l.userId) || [],
@@ -143,7 +155,7 @@ export const TimelineScreen: React.FC = () => {
         setPosts((prev) =>
           prev.map((p) =>
             p.postId === postId
-              ? { ...p, likes: res.likes, likeCount: res.likeCount }
+              ? { ...p, likes: res.likes, likeCount: res.likeCount, likeUsers: res.likeUsers, likedBy: res.likeUsers }
               : p
           )
         );
@@ -161,7 +173,7 @@ export const TimelineScreen: React.FC = () => {
               } else {
                 nextLikes.push({
                   userId: currentUser?.userId,
-                  displayName: currentUser?.display_name || currentUser?.fullName,
+                  displayName: currentUser?.display_name || currentUser?.username,
                   avatarUrl: currentUser?.avatar_url
                 });
               }
@@ -247,11 +259,7 @@ export const TimelineScreen: React.FC = () => {
 
   // Xem lượt tim đến từ ai
   const handleShowLikeDetails = useCallback((post: PostItem) => {
-    // Tìm trong post.likedBy hoặc danh sách likes
-    const names = post.likedBy && post.likedBy.length > 0 
-      ? post.likedBy.map((l: any) => l.displayName).join('\n') 
-      : 'Chưa có thông tin lượt tim';
-    Alert.alert('Lượt tim đến từ', names);
+    setReactionUsers(post.likeUsers || (post as any).likedBy || []);
   }, []);
 
   const handlePostCreated = useCallback(async (newPost: PostItem) => {
@@ -262,7 +270,7 @@ export const TimelineScreen: React.FC = () => {
       const newLocalPost = {
         id: newPost.postId,
         userId: currentUser?.userId,
-        authorName: currentUser?.display_name || currentUser?.fullName,
+        authorName: currentUser?.display_name || currentUser?.username,
         authorAvatar: currentUser?.avatar_url,
         content: newPost.content,
         imageUrl: newPost.media?.[0]?.url || '',
@@ -317,7 +325,7 @@ export const TimelineScreen: React.FC = () => {
         {/* Khung đăng nhanh */}
         <View style={headerStyles.quickPost}>
           <View style={headerStyles.quickPostInputRow}>
-            <Avatar uri={currentUser?.avatar_url} name={currentUser?.display_name || ''} size="md" />
+            <Avatar uri={currentUser?.avatar_url || undefined} name={currentUser?.display_name || ''} size="md" />
             <TouchableOpacity style={headerStyles.quickPostInput} onPress={() => setShowCompose(true)}>
               <Text style={headerStyles.quickPostPlaceholder}>Hôm nay bạn thế nào?</Text>
             </TouchableOpacity>
@@ -374,10 +382,10 @@ export const TimelineScreen: React.FC = () => {
                   </View>
                 ) : (
                   <View style={headerStyles.friendStoryContainer}>
-                    <Image source={{ uri: item.avatar }} style={headerStyles.storyAvatar} />
+                    <Image source={{ uri: item.avatar || undefined }} style={headerStyles.storyAvatar} />
                     <View style={headerStyles.friendStoryOverlay}>
                       <View style={headerStyles.friendStoryBadge}>
-                        <Image source={{ uri: item.avatar }} style={headerStyles.friendStoryBadgeAvatar} />
+                        <Image source={{ uri: item.avatar || undefined }} style={headerStyles.friendStoryBadgeAvatar} />
                       </View>
                     </View>
                   </View>
@@ -400,7 +408,7 @@ export const TimelineScreen: React.FC = () => {
           <Text style={styles.headerSearchText}>Tìm kiếm</Text>
         </View>
         <View style={styles.headerRightButtons}>
-          <TouchableOpacity onPress={() => setShowPostManager(true)} style={styles.headerIconBtn} title="Quản lý bài đăng">
+          <TouchableOpacity onPress={() => setShowPostManager(true)} style={styles.headerIconBtn}>
             <Ionicons name="list-outline" size={24} color="#FFF" />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowCompose(true)} style={styles.headerIconBtn}>
@@ -442,6 +450,7 @@ export const TimelineScreen: React.FC = () => {
         onPostCreated={handlePostCreated}
         currentUser={currentUser}
       />
+      <ReactionListModal users={reactionUsers} onClose={() => setReactionUsers(null)} />
 
       {/* Modal chỉnh sửa bài viết */}
       <Modal visible={editingPost !== null} animationType="slide">
@@ -541,6 +550,8 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId, onLike, onDele
   const [showComments, setShowComments] = useState(false);
   const [resolvedAvatar, setResolvedAvatar] = useState<string | undefined>(undefined);
   const [resolvedMedia, setResolvedMedia] = useState<string[]>([]);
+  const [commentCount, setCommentCount] = useState(post.commentCount || 0);
+  const [, setClock] = useState(Date.now());
   
   const isLiked = post.likes?.includes(currentUserId);
   const isOwner = String(post.userId) === String(currentUserId);
@@ -555,10 +566,16 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId, onLike, onDele
     );
   }, [post.authorAvatar, post.media]);
 
-  // Hiển thị ngày giờ đăng chính xác tuyệt đối như mockup
-  const formatExactDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('en-US');
-  };
+  useEffect(() => {
+    setCommentCount(post.commentCount || 0);
+  }, [post.commentCount]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const postReactionUsers = post.likeUsers || (post as any).likedBy || [];
 
   return (
     <View style={cardStyles.container}>
@@ -566,7 +583,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId, onLike, onDele
         <Avatar uri={resolvedAvatar} name={post.authorName} size="md" />
         <View style={cardStyles.authorInfo}>
           <Text style={cardStyles.authorName}>{post.authorName}</Text>
-          <Text style={cardStyles.time}>{formatExactDate(post.createdAt)}</Text>
+          <Text style={cardStyles.time}>{formatPostTime(post.createdAt)}</Text>
         </View>
         
         {isOwner && (
@@ -613,14 +630,15 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId, onLike, onDele
         </View>
       )}
 
-      {/* Đọc đếm tim để biết tim đến từ ai */}
       <View style={cardStyles.statsRow}>
         <TouchableOpacity style={cardStyles.statsLeft} onPress={() => onShowLikes(post)}>
           <Ionicons name="heart" size={14} color="#FF3B5C" />
-          <Text style={cardStyles.statText}> {post.likeCount || 0} lượt tim (Xem ai thả tim)</Text>
+          <Text style={cardStyles.statText}> {reactionSummary(postReactionUsers, currentUserId)}</Text>
         </TouchableOpacity>
-        {post.commentCount > 0 && (
-          <Text style={cardStyles.statText}>{post.commentCount} bình luận</Text>
+        {commentCount > 0 && (
+          <TouchableOpacity onPress={() => setShowComments(true)}>
+            <Text style={cardStyles.statText}>{commentCount} bình luận</Text>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -640,24 +658,67 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId, onLike, onDele
         onClose={() => setShowComments(false)}
         postId={post.postId}
         currentUserId={currentUserId}
+        onCommentAdded={() => setCommentCount((current) => current + 1)}
+        onCommentsDeleted={(count) => setCommentCount((current) => Math.max(0, current - count))}
       />
     </View>
   );
 };
 
-// ─── Comments Modal (Có Trả lời + Tim bình luận) ─────────────────────────────
+const ReactionListModal: React.FC<{ users: ReactionUser[] | null; onClose: () => void }> = ({ users, onClose }) => (
+  <Modal visible={users !== null} animationType="slide" transparent onRequestClose={onClose}>
+    <View style={commentStyles.overlay}>
+      <View style={commentStyles.container}>
+        <View style={commentStyles.header}>
+          <Text style={commentStyles.title}>Lượt thả tim ({users?.length || 0})</Text>
+          <TouchableOpacity onPress={onClose}><Ionicons name="close" size={24} color={colors.text.primary} /></TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
+          {(users || []).map((user) => (
+            <View key={user.userId} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Avatar uri={user.avatarUrl || undefined} name={user.displayName} size="sm" />
+              <Text style={{ flex: 1, fontWeight: '600', color: colors.text.primary }}>{user.displayName}</Text>
+              <Ionicons name="heart" size={16} color="#FF3B5C" />
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    </View>
+  </Modal>
+);
+
+type CommentNode = CommentItem & { children: CommentNode[] };
+
+const buildCommentTree = (comments: CommentItem[]) => {
+  const nodes = new Map<string, CommentNode>();
+  comments.forEach((comment) => nodes.set(comment.commentId, { ...comment, children: [] }));
+  const roots: CommentNode[] = [];
+  nodes.forEach((node) => {
+    const parent = node.parentCommentId ? nodes.get(node.parentCommentId) : null;
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+  });
+  return roots;
+};
+
+// ─── Comments Modal (Cây phản hồi + reaction lưu backend) ────────────────────
 const CommentsModal: React.FC<{
   visible: boolean;
   onClose: () => void;
   postId: string;
   currentUserId: string;
-}> = ({ visible, onClose, postId, currentUserId }) => {
+  onCommentAdded: () => void;
+  onCommentsDeleted: (count: number) => void;
+}> = ({ visible, onClose, postId, currentUserId, onCommentAdded, onCommentsDeleted }) => {
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  
-  // Trả lời bình luận
   const [replyTarget, setReplyTarget] = useState<CommentItem | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [reactionUsers, setReactionUsers] = useState<ReactionUser[] | null>(null);
+  const [editingComment, setEditingComment] = useState<CommentItem | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+  const roots = buildCommentTree(comments);
 
   const loadComments = useCallback(async () => {
     try {
@@ -676,15 +737,14 @@ const CommentsModal: React.FC<{
     if (!text.trim() || sending) return;
     setSending(true);
     try {
-      let finalContent = text.trim();
-      if (replyTarget) {
-        finalContent = `@${replyTarget.authorName} ${finalContent}`;
-      }
-      
-      const comment = await postsApi.createComment(postId, finalContent);
+      const comment = await postsApi.createComment(postId, text.trim(), replyTarget?.commentId);
       setComments((prev) => [...prev, comment]);
+      if (replyTarget) {
+        setExpanded((current) => new Set(current).add(replyTarget.commentId));
+      }
       setText('');
       setReplyTarget(null);
+      onCommentAdded();
     } catch (e: any) {
       Alert.alert('Lỗi', e.message);
     } finally {
@@ -692,64 +752,171 @@ const CommentsModal: React.FC<{
     }
   };
 
-  // Thả tim bình luận
-  const handleLikeComment = (commentId: string) => {
-    setComments((prev) =>
+  const handleLikeComment = async (commentId: string) => {
+    try {
+      const result = await postsApi.toggleCommentLike(commentId);
+      setComments((prev) =>
       prev.map((c) =>
         c.commentId === commentId
-          ? { ...c, likesCount: (c.likesCount || 0) + 1 }
+          ? { ...c, likes: result.likes, likeCount: result.likeCount, likeUsers: result.likeUsers }
           : c
       )
+      );
+    } catch (e: any) {
+      Alert.alert('Lỗi', e.message || 'Không thể thả tim bình luận');
+    }
+  };
+
+  const handleEditComment = (comment: CommentItem) => {
+    if (Platform.OS === 'ios') {
+      Alert.prompt(
+        'Chỉnh sửa bình luận',
+        undefined,
+        async (value) => {
+          if (!value?.trim()) return;
+          try {
+            const updated = await postsApi.updateComment(comment.commentId, value.trim());
+            setComments((current) => current.map((item) => item.commentId === updated.commentId ? { ...item, ...updated } : item));
+          } catch (e: any) {
+            Alert.alert('Lỗi', e.message || 'Không thể chỉnh sửa bình luận');
+          }
+        },
+        'plain-text',
+        comment.content
+      );
+      return;
+    }
+    setReplyTarget(null);
+    setEditingComment(comment);
+    setEditingCommentText(comment.content);
+  };
+
+  const handleSaveCommentEdit = async () => {
+    if (!editingComment || !editingCommentText.trim()) return;
+    try {
+      const updated = await postsApi.updateComment(editingComment.commentId, editingCommentText.trim());
+      setComments((current) => current.map((item) => item.commentId === updated.commentId ? { ...item, ...updated } : item));
+      setEditingComment(null);
+      setEditingCommentText('');
+    } catch (e: any) {
+      Alert.alert('Lỗi', e.message || 'Không thể chỉnh sửa bình luận');
+    }
+  };
+
+  const handleDeleteComment = (commentId: string) => {
+    Alert.alert('Xóa bình luận', 'Xóa bình luận này và toàn bộ phản hồi bên dưới?', [
+      { text: 'Hủy', style: 'cancel' },
+      {
+        text: 'Xóa',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const result = await postsApi.deleteComment(commentId);
+            const ids = new Set(result.deletedCommentIds || [commentId]);
+            setComments((current) => current.filter((item) => !ids.has(item.commentId)));
+            onCommentsDeleted(ids.size);
+          } catch (e: any) {
+            Alert.alert('Lỗi', e.message || 'Không thể xóa bình luận');
+          }
+        },
+      },
+    ]);
+  };
+
+  const renderComment = (item: CommentNode, depth = 0): React.ReactNode => {
+    const isExpanded = expanded.has(item.commentId);
+    return (
+      <View key={item.commentId} style={[depth > 0 && commentStyles.nestedItem]}>
+        <View style={commentStyles.item}>
+          <Avatar uri={item.authorAvatar || undefined} name={item.authorName} size="sm" />
+          <View style={{ flex: 1 }}>
+            <View style={commentStyles.bubble}>
+              <Text style={commentStyles.cAuthor}>{item.authorName}</Text>
+              {editingComment?.commentId === item.commentId ? (
+                <View style={{ gap: 8 }}>
+                  <TextInput
+                    value={editingCommentText}
+                    onChangeText={setEditingCommentText}
+                    style={commentStyles.editInput}
+                    multiline
+                    autoFocus
+                  />
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+                    <TouchableOpacity onPress={() => setEditingComment(null)}>
+                      <Text style={commentStyles.actionLabel}>Hủy</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleSaveCommentEdit}>
+                      <Text style={[commentStyles.actionLabel, { color: BLUE }]}>Lưu</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <Text style={commentStyles.cContent}>{item.content}</Text>
+              )}
+            </View>
+            <View style={commentStyles.actionLine}>
+              <Text style={commentStyles.cTime}>{formatPostTime(item.createdAt)}</Text>
+              <TouchableOpacity onPress={() => handleLikeComment(item.commentId)}>
+                <Text style={[commentStyles.actionLabel, item.likes?.includes(currentUserId) && { color: '#FF3B5C' }]}>Thích</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setReplyTarget(item)}>
+                <Text style={commentStyles.actionLabel}>Trả lời</Text>
+              </TouchableOpacity>
+              {String(item.userId) === String(currentUserId) && (
+                <>
+                  <TouchableOpacity onPress={() => handleEditComment(item)}>
+                    <Ionicons name="create-outline" size={14} color={BLUE} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDeleteComment(item.commentId)}>
+                    <Ionicons name="trash-outline" size={14} color="#FF3B5C" />
+                  </TouchableOpacity>
+                </>
+              )}
+              {(item.likeCount || 0) > 0 && (
+                <TouchableOpacity onPress={() => setReactionUsers(item.likeUsers || [])} style={commentStyles.commentReaction}>
+                  <Ionicons name="heart" size={12} color="#FF3B5C" />
+                  <Text style={{ fontSize: 11, color: '#FF3B5C' }}>{item.likeCount}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+        {item.children.length > 0 && !isExpanded && (
+          <TouchableOpacity onPress={() => setExpanded((current) => new Set(current).add(item.commentId))} style={commentStyles.replyToggle}>
+            <Text style={commentStyles.replyToggleText}>Xem {item.children.length} phản hồi</Text>
+          </TouchableOpacity>
+        )}
+        {isExpanded && (
+          <View>
+            {item.children.map((child) => renderComment(child, depth + 1))}
+            <TouchableOpacity onPress={() => setExpanded((current) => { const next = new Set(current); next.delete(item.commentId); return next; })} style={commentStyles.replyToggle}>
+              <Text style={commentStyles.replyToggleText}>Ẩn phản hồi</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
     );
-    Alert.alert('Thành công', 'Đã thả tim bình luận này!');
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView style={commentStyles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={commentStyles.container}>
+    <>
+      <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+        <KeyboardAvoidingView style={commentStyles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={commentStyles.container}>
           <View style={commentStyles.header}>
             <Text style={commentStyles.title}>Bình luận</Text>
             <TouchableOpacity onPress={onClose}><Ionicons name="close" size={24} color={colors.text.primary} /></TouchableOpacity>
           </View>
           
-          <FlatList
-            data={comments}
-            keyExtractor={(item) => item.commentId}
-            style={{ flex: 1 }}
-            renderItem={({ item }) => (
-              <View style={commentStyles.item}>
-                <Avatar uri={item.authorAvatar || undefined} name={item.authorName} size="sm" />
-                <View style={commentStyles.bubble}>
-                  <Text style={commentStyles.cAuthor}>{item.authorName}</Text>
-                  <Text style={commentStyles.cContent}>{item.content}</Text>
-                  
-                  {/* Action comment */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 6 }}>
-                    <Text style={commentStyles.cTime}>{new Date(item.createdAt).toLocaleTimeString()}</Text>
-                    <TouchableOpacity onPress={() => handleLikeComment(item.commentId)} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                      <Ionicons name="heart" size={12} color="#FF3B5C" />
-                      <Text style={{ fontSize: 11, color: '#666', fontWeight: 'bold' }}>Thả tim ({item.likesCount || 0})</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => {
-                      setReplyTarget(item);
-                      setText(`@${item.authorName} `);
-                    }}>
-                      <Text style={{ fontSize: 11, color: BLUE, fontWeight: 'bold' }}>Trả lời</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            )}
-            ListEmptyComponent={<Text style={commentStyles.empty}>Chưa có bình luận</Text>}
-          />
+            <ScrollView style={{ flex: 1 }}>
+              {roots.length ? roots.map((item) => renderComment(item)) : <Text style={commentStyles.empty}>Chưa có bình luận</Text>}
+            </ScrollView>
           
           {replyTarget && (
             <View style={{ backgroundColor: '#F0F2F5', paddingHorizontal: 16, paddingVertical: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontSize: 12, color: '#666' }}>Đang trả lời bình luận của <Text style={{ fontWeight: 'bold' }}>{replyTarget.authorName}</Text></Text>
               <TouchableOpacity onPress={() => {
                 setReplyTarget(null);
-                setText('');
               }}>
                 <Ionicons name="close-circle" size={16} color="#999" />
               </TouchableOpacity>
@@ -768,9 +935,11 @@ const CommentsModal: React.FC<{
               <Ionicons name="send" size={24} color={text.trim() ? BLUE : '#CCC'} />
             </TouchableOpacity>
           </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+      <ReactionListModal users={reactionUsers} onClose={() => setReactionUsers(null)} />
+    </>
   );
 };
 
@@ -821,10 +990,11 @@ const ComposeModal: React.FC<{
       const newPostFallback: PostItem = {
         postId: `post-${Date.now()}`,
         userId: currentUser?.userId,
-        authorName: currentUser?.display_name || currentUser?.fullName || 'User',
+        authorName: currentUser?.display_name || currentUser?.username || 'User',
         authorAvatar: currentUser?.avatar_url,
         content: content.trim(),
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         likeCount: 0,
         commentCount: 0,
         likes: [],
@@ -1175,6 +1345,13 @@ const commentStyles = StyleSheet.create({
   empty: { textAlign: 'center', padding: 32, color: colors.text.tertiary },
   inputRow: { flexDirection: 'row', alignItems: 'center', padding: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E4E6EB', gap: 8 },
   input: { flex: 1, backgroundColor: '#F0F2F5', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, maxHeight: 80, fontSize: 14 },
+  nestedItem: { marginLeft: 28, borderLeftWidth: 1, borderLeftColor: '#D5D9DE' },
+  actionLine: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 5, paddingHorizontal: 8 },
+  actionLabel: { fontSize: 11, color: '#666', fontWeight: '700' },
+  commentReaction: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 2 },
+  replyToggle: { marginLeft: 52, paddingBottom: 6 },
+  replyToggleText: { fontSize: 12, color: '#666', fontWeight: '700' },
+  editInput: { borderWidth: 1, borderColor: '#D5D9DE', borderRadius: 8, backgroundColor: '#FFF', paddingHorizontal: 8, paddingVertical: 6, fontSize: 14 },
 });
 
 const composeStyles = StyleSheet.create({
