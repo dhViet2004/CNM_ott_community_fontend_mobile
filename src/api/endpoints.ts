@@ -667,10 +667,17 @@ export interface PostItem {
   content: string;
   media: PostMedia[];
   likes: string[];
+  likeUsers?: ReactionUser[];
   likeCount: number;
   commentCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ReactionUser {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
 }
 
 export interface CommentItem {
@@ -680,6 +687,11 @@ export interface CommentItem {
   authorName: string;
   authorAvatar: string | null;
   content: string;
+  parentCommentId?: string | null;
+  rootCommentId?: string;
+  likes: string[];
+  likeCount: number;
+  likeUsers?: ReactionUser[];
   createdAt: string;
 }
 
@@ -706,7 +718,7 @@ export const postsApi = {
 
   toggleLike: (postId: string) =>
     apiClient
-      .put<{ liked: boolean; likeCount: number; likes: string[] }>(`/posts/${postId}/like`)
+      .put<{ liked: boolean; likeCount: number; likes: string[]; likeUsers: ReactionUser[] }>(`/posts/${postId}/like`)
       .then((r) => r.data),
 
   deletePost: (postId: string) =>
@@ -714,9 +726,19 @@ export const postsApi = {
       .delete<{ deleted: boolean }>(`/posts/${postId}`)
       .then((r) => r.data),
 
-  createComment: (postId: string, content: string) =>
+  createComment: (postId: string, content: string, parentCommentId?: string | null) =>
     apiClient
-      .post<CommentItem>(`/posts/${postId}/comments`, { content })
+      .post<CommentItem>(`/posts/${postId}/comments`, { content, parentCommentId })
+      .then((r) => r.data),
+
+  toggleCommentLike: (commentId: string) =>
+    apiClient
+      .put<{ liked: boolean; likeCount: number; likes: string[]; likeUsers: ReactionUser[] }>(`/posts/comments/${commentId}/like`)
+      .then((r) => r.data),
+
+  updateComment: (commentId: string, content: string) =>
+    apiClient
+      .put<CommentItem>(`/posts/comments/${commentId}`, { content })
       .then((r) => r.data),
 
   getComments: (postId: string, limit = 50) =>
@@ -726,6 +748,6 @@ export const postsApi = {
 
   deleteComment: (commentId: string) =>
     apiClient
-      .delete<{ deleted: boolean }>(`/posts/comments/${commentId}`)
+      .delete<{ deleted: boolean; deletedCommentIds?: string[] }>(`/posts/comments/${commentId}`)
       .then((r) => r.data),
 };
