@@ -493,14 +493,14 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       return url;
     }
     if (url.startsWith('/')) {
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.2.47:4000/api';
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.2.66:4000/api';
       try {
         const urlObj = new URL(apiUrl);
         // Replace port 4000 with 3000 (Next.js frontend port)
         const frontendHost = `${urlObj.protocol}//${urlObj.hostname}:3000`;
         return `${frontendHost}${url}`;
       } catch {
-        return `http://192.168.2.47:3000${url}`;
+        return `http://192.168.2.66:3000${url}`;
       }
     }
     return url;
