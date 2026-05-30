@@ -539,6 +539,30 @@ export const reminderApi = {
       .then((r): CreateReminderResult => ('data' in r.data ? r.data.data : r.data)),
 };
 
+export interface CreateNotePayload {
+  conversationId: string;
+  content: string;
+  pinToTop: boolean;
+}
+
+export interface CreateNoteResult {
+  note: BackendMessage;
+  message: BackendMessage;
+  pinnedMessages?: any[] | null;
+  pinError?: string | null;
+}
+
+type CreateNoteResponse =
+  | { data: CreateNoteResult }
+  | CreateNoteResult;
+
+export const notesApi = {
+  createNote: (payload: CreateNotePayload) =>
+    apiClient
+      .post<CreateNoteResponse>('/notes', payload)
+      .then((r): CreateNoteResult => ('data' in r.data ? r.data.data : r.data)),
+};
+
 export const uploadApi = {
   getPresignedUrl: (
     fileName: string,

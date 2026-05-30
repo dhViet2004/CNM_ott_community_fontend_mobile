@@ -55,6 +55,7 @@ interface ChatInputProps {
   onJumpToReply?: (messageId: string | number) => void;
   onCreatePoll?: (payload: { content: string; pollData: PollData }) => Promise<void>;
   onCreateReminder?: () => void;
+  onCreateNote?: () => void;
 }
 
 const getReplyContent = (message?: ChatInputProps['replyingMessage']) => {
@@ -83,6 +84,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onJumpToReply,
   onCreatePoll,
   onCreateReminder,
+  onCreateNote,
 }) => {
   const canSend = value.trim().length > 0;
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -97,6 +99,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
     if (label === 'Nhắc hẹn') {
       setToolsOpen(false);
       onCreateReminder?.();
+      return;
+    }
+    if (label === 'Tạo ghi chú') {
+      setToolsOpen(false);
+      onCreateNote?.();
+      return;
     }
   };
 
@@ -105,7 +113,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
     { label: 'Tài liệu', icon: 'document-attach', color: '#3E4FE0' },
     { label: 'Nhắc hẹn', icon: 'alarm', color: '#DD3F62' },
     { label: 'Bình chọn', icon: 'bar-chart', color: '#16C879' },
-    { label: 'Chia tiền nhóm', icon: 'cash', color: '#20C66F' },
+    { label: 'Tạo ghi chú', icon: 'document-text', color: '#FF9800' },
     { label: 'Danh thiếp', icon: 'id-card', color: '#1497D5' },
     { label: 'My Documents', icon: 'folder', color: '#3384F0' },
     { label: 'Tin nhắn nhanh', icon: 'chatbubble', color: '#0768D8' },
