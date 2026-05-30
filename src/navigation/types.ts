@@ -6,6 +6,7 @@ export type RootStackParamList = {
   MainTabs: undefined;
   Chat: { conversationId: string; title: string; userId?: string; originalName?: string; focusedMessageId?: string };
   CreateReminder: { conversationId: string; title?: string };
+  CreateNote: { conversationId: string; title?: string };
   BotChat: undefined;
   GroupChat: { groupId: string; title: string; focusedMessageId?: string };
   UserProfile: { userId: string };

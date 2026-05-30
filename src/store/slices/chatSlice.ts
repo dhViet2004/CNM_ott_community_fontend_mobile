@@ -15,7 +15,7 @@ export interface Message {
   // Legacy field names (sender_name, sender_avatar) - từ socket/addMessage
   sender_name?: string;
   sender_avatar?: string | null;
-  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system' | 'poll' | 'reminder' | 'reminder_due';
+  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system' | 'poll' | 'reminder' | 'reminder_due' | 'note';
   content: string;
   pollData?: PollData | null;
   file_url?: string | null;
