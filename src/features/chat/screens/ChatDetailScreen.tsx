@@ -29,6 +29,7 @@ import { confirmPendingMessage, failPendingMessage, setActiveConversation, setMe
 import type { ReplyToMessage } from '@store/slices/chatSlice';
 import { colors, spacing } from '@theme';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
+import type { PollData } from '@/types';
 
 type Props = RootStackScreenProps<'Chat'>;
 const EMPTY_ARRAY: any[] = [];
@@ -375,6 +376,54 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     [conversationId, currentUserId, currentUser, dispatch, addOptimisticMessage, replyingMessage]
   );
 
+  const handleCreatePoll = useCallback(
+    async (pollPayload: { content: string; pollData: PollData }) => {
+      try {
+        const result: any = await new Promise((resolve) => {
+          socketActions.sendMessage(
+            conversationId,
+            pollPayload.content,
+            'poll',
+            pollPayload.pollData,
+            resolve
+          );
+        });
+
+        if (result?.ok === false) {
+          throw new Error(result.error || 'Không thể tạo bình chọn');
+        }
+
+        const sentMessage = result?.message || result;
+
+        dispatch(addMessage({
+          id: String(sentMessage.id || sentMessage.messageId || Date.now()),
+          conversationId: sentMessage.conversationId || conversationId,
+          senderId: String(sentMessage.senderId || currentUserId),
+          senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+          sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+          sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+          type: 'poll',
+          content: sentMessage.content || pollPayload.content,
+          pollData: sentMessage.pollData || pollPayload.pollData,
+          file_url: null,
+          file_name: null,
+          file_size: null,
+          timestamp: sentMessage.createdAt || sentMessage.created_at || new Date().toISOString(),
+          status: 'sent',
+        }));
+
+        if (isNearBottomRef.current) {
+          setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+        }
+      } catch (err) {
+        console.error('[ChatDetail] Error creating poll:', err);
+        Alert.alert('Lỗi', 'Không thể tạo bình chọn. Vui lòng thử lại.');
+        throw err;
+      }
+    },
+    [conversationId, currentUserId, currentUser, dispatch]
+  );
+
   const onTextChange = useCallback(
     (text: string) => {
       setInputText(text);
@@ -395,6 +444,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       return (
         <MessageBubble
           id={item.id}
+          conversationId={item.conversationId}
           senderId={item.senderId}
           senderName={senderName}
           senderAvatar={item.senderAvatar}
@@ -410,6 +460,8 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           isFocused={String(item.id) === focusedMessageId}
           readBy={item.readBy}
           replyToMessage={item.replyToMessage}
+          pollData={item.pollData}
+          currentUserId={currentUserId}
           onJumpToMessage={(messageId) => handleNavigateToMessage(String(messageId))}
           onLongPress={(msg) => {
             setSelectedMessage(msg);
@@ -417,7 +469,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         />
       );
     },
-    [title, focusedMessageId, handleNavigateToMessage]
+    [title, focusedMessageId, handleNavigateToMessage, currentUserId]
   );
 
   const keyExtractor = useCallback((item: MessageItem) => String(item.id), []);
@@ -652,6 +704,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             onChangeText={onTextChange}
             onFocus={() => markAsReadRef.current()}
             onSend={handleSend}
+            onCreatePoll={handleCreatePoll}
             replyingMessage={replyingMessage}
             onCancelReply={() => setReplyingMessage(null)}
             onJumpToReply={(messageId) => handleNavigateToMessage(String(messageId))}

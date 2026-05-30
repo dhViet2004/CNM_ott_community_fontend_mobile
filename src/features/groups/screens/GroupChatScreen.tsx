@@ -38,6 +38,7 @@ import PinnedHeader from '@features/chat/components/PinnedHeader';
 import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
 import { MessageContextMenu, ChatInput, ForwardMessageModal } from '@features/chat/components';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
+import type { PollData } from '@/types';
 import { getGroupMembers } from '../api';
 
 type Props = RootStackScreenProps<'GroupChat'>;
@@ -219,6 +220,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           sender_name: senderDisplayName,
           sender_avatar: senderAvatarUrl,
           content: m.content ?? '',
+          pollData: m.pollData ?? null,
           timestamp: m.createdAt ?? m.created_at ?? new Date().toISOString(),
           createdAt: m.createdAt ?? m.created_at,
           type: (m.contentType ?? m.type ?? 'text') as Message['type'],
@@ -364,6 +366,54 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       dispatch(failPendingMessage(tempId));
     }
   };
+
+  const handleCreatePoll = useCallback(
+    async (pollPayload: { content: string; pollData: PollData }) => {
+      try {
+        const result: any = await new Promise((resolve) => {
+          socketActions.sendMessage(
+            conversationId,
+            pollPayload.content,
+            'poll',
+            pollPayload.pollData,
+            resolve
+          );
+        });
+
+        if (result?.ok === false) {
+          throw new Error(result.error || 'Không thể tạo bình chọn');
+        }
+
+        const sentMessage = result?.message || result;
+
+        dispatch(addMessage({
+          id: String(sentMessage.id || sentMessage.messageId || Date.now()),
+          conversationId: sentMessage.conversationId || conversationId,
+          senderId: String(sentMessage.senderId || currentUserId),
+          senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+          sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+          sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+          type: 'poll',
+          content: sentMessage.content || pollPayload.content,
+          pollData: sentMessage.pollData || pollPayload.pollData,
+          file_url: null,
+          file_name: null,
+          file_size: null,
+          timestamp: sentMessage.createdAt || sentMessage.created_at || new Date().toISOString(),
+          status: 'sent',
+        }));
+
+        if (isNearBottomRef.current) {
+          setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+        }
+      } catch (err) {
+        console.error('[GroupChat] Error creating poll:', err);
+        Alert.alert('Lỗi', 'Không thể tạo bình chọn. Vui lòng thử lại.');
+        throw err;
+      }
+    },
+    [conversationId, currentUserId, currentUser, dispatch]
+  );
 
 
   // ─── Context Menu callbacks (hoisted to top level — Rules of Hooks) ──────────
@@ -513,6 +563,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       return (
         <MessageBubble
           id={item.id}
+          conversationId={conversationId}
           senderId={item.senderId}
           senderName={senderName}
           senderAvatar={senderAvatar}
@@ -527,6 +578,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           defaultName={title}
           isFocused={isFocused}
           replyToMessage={item.replyToMessage}
+          pollData={item.pollData}
+          currentUserId={currentUserId}
           onJumpToMessage={(messageId) => handleNavigateToMessage(String(messageId))}
           onLongPress={setSelectedMessage}
           readBy={item.readBy}
@@ -679,6 +732,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
             value={inputText}
             onChangeText={handleTextChange}
             onSend={handleSend}
+            onCreatePoll={handleCreatePoll}
             replyingMessage={replyingMessage}
             onCancelReply={() => setReplyingMessage(null)}
             onJumpToReply={(messageId) => handleNavigateToMessage(String(messageId))}

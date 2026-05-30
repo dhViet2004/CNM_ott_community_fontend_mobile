@@ -12,7 +12,9 @@ import {
   addReaderToMessage,
   addNewConversation,
   removeConversationById,
+  updateMessage,
 } from '@store/slices/chatSlice';
+import type { PollData } from '@/types';
 import {
   removeGroup,
   addGroup,
@@ -141,7 +143,7 @@ const REGISTERED_EVENTS = [
   'incoming-call', 'call-accepted', 'call-ended', 'call-timeout', 'group-call-request',
   'user_joined', 'user_left', 'room_joined', 'message_read',
   'live_location_started', 'live_location_updated', 'live_location_stopped',
-  'message_pinned_updated',
+  'message_pinned_updated', 'poll_updated',
   // Nhiệm vụ 2: Group management socket events
   'group:members_added', 'group:member_removed', 'group:member_left',
   'group:you_were_removed', 'group:you_were_added', 'group:deleted',
@@ -169,6 +171,7 @@ export interface SocketMessage {
   senderAvatarUrl?: string;
   replyTo?: string | number | null;
   replyToMessage?: any;
+  pollData?: PollData | null;
 }
 
 // ─── Connect ─────────────────────────────────────────────────────────────────
@@ -282,8 +285,9 @@ export const connectSocket = (token: string) => {
       senderName: senderDisplayName || 'Unknown',
       sender_name: senderDisplayName || 'Unknown',
       sender_avatar: senderAvatar,
-      type: (message.contentType ?? 'text') as 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system',
+      type: (message.contentType ?? 'text') as 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system' | 'poll',
       content: message.content ?? '',
+      pollData: message.pollData ?? null,
       file_url: message.file_url ?? (message as any).attachments?.[0]?.url ?? null,
       file_name: message.file_name ?? null,
       file_size: message.file_size ?? null,
@@ -550,6 +554,16 @@ export const connectSocket = (token: string) => {
       type: 'chat/setPinnedMessages',
       payload: { conversationId: data.roomId, pinnedMessages: data.pinnedMessages }
     });
+  });
+
+  socket.on('poll_updated', (data: { roomId?: string; conversationId?: string; messageId: string; pollData: PollData }) => {
+    const conversationId = data.roomId || data.conversationId;
+    if (!conversationId || !data.messageId) return;
+    store.dispatch(updateMessage({
+      conversationId,
+      messageId: String(data.messageId),
+      updates: { pollData: data.pollData },
+    }));
   });
 
   socket.on('chat_background_updated', (data: { friendshipId: string; bgUrl: string | null; updatedBy: string }) => {
@@ -884,8 +898,20 @@ export const socketActions = {
   },
 
   // Send message via socket - backend uses send_message
-  sendMessage: (conversationId: string, content: string, type: string = 'text') => {
-    socket?.emit('send_message', { roomId: conversationId, content, contentType: type });
+  sendMessage: (conversationId: string, content: string, type: string = 'text', pollData?: PollData, callback?: (res: any) => void) => {
+    if (!socket) {
+      callback?.({ ok: false, error: 'Socket chưa kết nối' });
+      return;
+    }
+    socket?.emit('send_message', { roomId: conversationId, content, contentType: type, ...(pollData ? { pollData } : {}) }, callback);
+  },
+
+  votePoll: (conversationId: string, messageId: string | number, optionId: string, callback?: (res: any) => void) => {
+    if (!socket) {
+      callback?.({ ok: false, error: 'Socket chưa kết nối' });
+      return;
+    }
+    socket?.emit('vote_poll', { roomId: conversationId, messageId, optionId }, callback);
   },
 
   // Call actions - backend uses call-request, call-accept, call-reject, end-call

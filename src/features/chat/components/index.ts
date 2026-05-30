@@ -11,5 +11,7 @@ export { default as VoiceRecorderButton } from './VoiceRecorderButton';
 export { default as VoiceMessageBubble } from './VoiceMessageBubble';
 export { default as FilePickerButton } from './FilePickerButton';
 export { default as AddMenuModal } from './AddMenuModal';
+export { default as CreatePollModal } from './CreatePollModal';
+export { default as PollMessageBubble } from './PollMessageBubble';
 export { default as ForwardMessageModal } from './ForwardMessageModal';
 export * from './ImagePickerButton';

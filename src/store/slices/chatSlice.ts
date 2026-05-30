@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import type { FriendItem } from '@/types';
+import type { FriendItem, PollData } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -15,8 +15,9 @@ export interface Message {
   // Legacy field names (sender_name, sender_avatar) - từ socket/addMessage
   sender_name?: string;
   sender_avatar?: string | null;
-  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system';
+  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system' | 'poll';
   content: string;
+  pollData?: PollData | null;
   file_url?: string | null;
   file_name?: string | null;
   file_size?: number | null;
@@ -293,9 +294,10 @@ const chatSlice = createSlice({
         file_url?: string | null;
         replyTo?: string | number | null;
         replyToMessage?: ReplyToMessage | null;
+        pollData?: PollData | null;
       }>
     ) {
-      const { tempId, realId, conversationId, senderId, senderName, senderAvatar, content, type, file_url, replyTo, replyToMessage } = action.payload;
+      const { tempId, realId, conversationId, senderId, senderName, senderAvatar, content, type, file_url, replyTo, replyToMessage, pollData } = action.payload;
       delete state.pendingMessages[tempId];
 
       const messages = state.messages[conversationId];
@@ -315,6 +317,7 @@ const chatSlice = createSlice({
             file_url: file_url ?? null,
             replyTo: replyTo ?? updated[idx].replyTo ?? null,
             replyToMessage: replyToMessage ?? updated[idx].replyToMessage ?? null,
+            pollData: pollData ?? updated[idx].pollData ?? null,
             status: 'sent',
           };
           state.messages[conversationId] = updated;

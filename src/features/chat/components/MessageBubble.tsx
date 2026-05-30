@@ -14,6 +14,8 @@ import { colors, spacing, typography } from '@theme';
 import Avatar from '@components/common/Avatar';
 import { Icons } from '@components/common';
 import VoiceMessageBubble from './VoiceMessageBubble';
+import PollMessageBubble from './PollMessageBubble';
+import type { PollData } from '@/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const MAX_BUBBLE_WIDTH = SCREEN_WIDTH * 0.72;
@@ -117,14 +119,17 @@ export const CallHistoryBubble: React.FC<CallHistoryBubbleProps> = ({
 // ─── Main Message Bubble ──────────────────────────────────────────────────────
 interface MessageBubbleProps {
   id: string | number;
+  conversationId?: string;
   senderId: string;
   senderName?: string;
   senderAvatar?: string | null;
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice' | 'audio' | 'system';
+  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice' | 'audio' | 'system' | 'poll';
   file_url?: string | null;
+  pollData?: PollData | null;
+  currentUserId?: string | number | null;
   replyToMessage?: ReplyToMessage | null;
   onJumpToMessage?: (messageId: string | number) => void;
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
@@ -270,6 +275,7 @@ const ReadByAvatars: React.FC<ReadByAvatarsProps> = ({ readers, isMe }) => {
 
 const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   id,
+  conversationId,
   senderId,
   senderName,
   senderAvatar,
@@ -292,6 +298,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   voiceDuration,
   replyToMessage,
   onJumpToMessage,
+  pollData,
+  currentUserId,
 }) => {
   const [isImageViewVisible, setIsImageViewVisible] = useState(false);
   const [replyReferenceBodyWidth, setReplyReferenceBodyWidth] = useState<number | undefined>();
@@ -313,6 +321,21 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
           <Text style={styles.systemMessageText}>{content}</Text>
         </View>
       </View>
+    );
+  }
+
+  if (type === 'poll' && pollData) {
+    return (
+      <PollMessageBubble
+        conversationId={conversationId || ''}
+        messageId={id}
+        question={content}
+        pollData={pollData}
+        currentUserId={currentUserId}
+        time={time}
+        isMe={isMe}
+        status={status}
+      />
     );
   }
 
@@ -619,6 +642,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     prev.isRevoked === next.isRevoked &&
     prev.isFocused === next.isFocused &&
     prev.file_url === next.file_url &&
+    prev.pollData === next.pollData &&
     prev.replyToMessage?.id === next.replyToMessage?.id &&
     prev.readBy?.length === next.readBy?.length &&
     prev.voiceDuration === next.voiceDuration
