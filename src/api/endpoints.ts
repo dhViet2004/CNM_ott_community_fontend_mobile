@@ -403,7 +403,8 @@ export const messageApi = {
     conversationId: string,
     content: string,
     senderId: string,
-    contentType: 'text' | 'sticker' | 'emoji' | 'system' = 'text'
+    contentType: 'text' | 'sticker' | 'emoji' | 'system' = 'text',
+    replyTo?: string | number | null
   ) =>
     apiClient
       .post<BackendMessage>('/messages', {
@@ -411,6 +412,7 @@ export const messageApi = {
         senderId,
         content,
         contentType,
+        replyTo: replyTo || null,
       })
       .then((r) => r.data),
 

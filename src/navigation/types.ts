@@ -4,9 +4,9 @@ import type { CompositeScreenProps } from '@react-navigation/native';
 
 export type RootStackParamList = {
   MainTabs: undefined;
-  Chat: { conversationId: string; title: string; userId?: string; originalName?: string };
+  Chat: { conversationId: string; title: string; userId?: string; originalName?: string; focusedMessageId?: string };
   BotChat: undefined;
-  GroupChat: { groupId: string; title: string };
+  GroupChat: { groupId: string; title: string; focusedMessageId?: string };
   UserProfile: { userId: string };
   Login: undefined;
   Register: undefined;

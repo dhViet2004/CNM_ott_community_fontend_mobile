@@ -123,8 +123,10 @@ interface MessageBubbleProps {
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice';
+  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice' | 'audio' | 'system';
   file_url?: string | null;
+  replyToMessage?: ReplyToMessage | null;
+  onJumpToMessage?: (messageId: string | number) => void;
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
   isRevoked?: boolean;
@@ -151,6 +153,26 @@ interface MessageBubbleProps {
   }>;
   voiceDuration?: number;
 }
+
+type ReplyToMessage = {
+  id: string | number;
+  content?: string | null;
+  contentType?: string;
+  type?: string;
+  senderDisplayName?: string | null;
+  senderName?: string | null;
+  attachments?: Array<{ url: string; type?: string; size?: number }> | null;
+  file_url?: string | null;
+};
+
+const getReplyContent = (message: ReplyToMessage) => {
+  const type = message.contentType || message.type;
+  if (type === 'image' || message.file_url || message.attachments?.[0]?.url) return '[Ảnh/Tệp]';
+  if (type === 'sticker') return '[Sticker]';
+  if (type === 'emoji') return message.content || '[Emoji]';
+  if (type === 'voice' || type === 'audio') return '[Tin nhắn thoại]';
+  return message.content || '[Tin nhắn]';
+};
 
 const CheckIcon: React.FC<{ filled?: boolean }> = ({ filled }) =>
   filled
@@ -248,6 +270,7 @@ const ReadByAvatars: React.FC<ReadByAvatarsProps> = ({ readers, isMe }) => {
 
 const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   id,
+  senderId,
   senderName,
   senderAvatar,
   content,
@@ -267,8 +290,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   timeDividerLabel,
   readBy,
   voiceDuration,
+  replyToMessage,
+  onJumpToMessage,
 }) => {
   const [isImageViewVisible, setIsImageViewVisible] = useState(false);
+  const [replyReferenceBodyWidth, setReplyReferenceBodyWidth] = useState<number | undefined>();
 
   // Time divider inline component
   if (isTimeDivider) {
@@ -292,8 +318,52 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
 
   const handleLongPress = () => {
     if (onLongPress) {
-      onLongPress({ id, content, type, isMe, senderName, senderAvatar, senderId: String(id) });
+      onLongPress({ id, content, type, isMe, senderName, senderAvatar, senderId });
     }
+  };
+
+  const renderReplyReference = () => {
+    if (!replyToMessage) return null;
+
+    const replySenderName = replyToMessage.senderDisplayName || replyToMessage.senderName || 'Người dùng';
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.replyReference,
+          isMe ? styles.replyReferenceMe : styles.replyReferenceOther,
+        ]}
+        activeOpacity={0.75}
+        onPress={() => onJumpToMessage?.(replyToMessage.id)}
+      >
+        <View style={styles.replyReferenceLine} />
+        <View
+          style={[
+            styles.replyReferenceBody,
+            replyReferenceBodyWidth ? { width: replyReferenceBodyWidth } : null,
+          ]}
+        >
+          <Text
+            style={[styles.replyReferenceSender, isMe && styles.replyReferenceSenderMe]}
+            numberOfLines={1}
+            onLayout={(event) => {
+              const nextWidth = Math.ceil(event.nativeEvent.layout.width);
+              if (nextWidth && nextWidth !== replyReferenceBodyWidth) {
+                setReplyReferenceBodyWidth(nextWidth);
+              }
+            }}
+          >
+            {replySenderName}
+          </Text>
+          <Text
+            style={[styles.replyReferenceText, isMe && styles.replyReferenceTextMe]}
+            numberOfLines={1}
+          >
+            {getReplyContent(replyToMessage)}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   // ── Call history bubble ──────────────────────────────────────────────────
@@ -464,7 +534,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     // Text
     return (
       <Text
-        style={[styles.messageText, isMe ? styles.textMe : styles.textOther]}
+        style={[
+          styles.messageText,
+          isMe ? styles.textMe : styles.textOther,
+        ]}
         numberOfLines={0}
       >
         {content}
@@ -474,7 +547,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
 
   const renderFooter = () => (
     <View style={[styles.bubbleFooter, isMe ? styles.bubbleFooterMe : styles.bubbleFooterOther]}>
-      <Text style={[styles.bubbleTime, isMe ? styles.timeMe : styles.timeOther]}>
+      <Text
+        style={[
+          styles.bubbleTime,
+          isMe ? styles.timeMe : styles.timeOther,
+        ]}
+      >
         {time}
       </Text>
       {isMe && status && (
@@ -521,6 +599,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
             isFocused && styles.focusedBubble,
           ]}
         >
+          {renderReplyReference()}
           {renderBubbleContent()}
           {renderFooter()}
         </View>
@@ -540,6 +619,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     prev.isRevoked === next.isRevoked &&
     prev.isFocused === next.isFocused &&
     prev.file_url === next.file_url &&
+    prev.replyToMessage?.id === next.replyToMessage?.id &&
     prev.readBy?.length === next.readBy?.length &&
     prev.voiceDuration === next.voiceDuration
   );
@@ -776,6 +856,57 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.95,
     shadowRadius: 12,
     elevation: 10,
+  },
+  replyReference: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    alignSelf: 'flex-start',
+    paddingTop: 2,
+    paddingBottom: spacing.sm,
+    marginBottom: spacing.sm,
+    maxWidth: '100%',
+  },
+  replyReferenceMe: {
+    alignSelf: 'flex-start',
+  },
+  replyReferenceOther: {
+    alignSelf: 'flex-start',
+  },
+  replyReferenceLine: {
+    width: 4,
+    minHeight: 48,
+    borderRadius: 2,
+    backgroundColor: '#1E9BFF',
+    marginRight: spacing.md,
+  },
+  replyReferenceBody: {
+    flexGrow: 0,
+    flexShrink: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  replyReferenceSender: {
+    ...typography.body,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '400',
+    color: colors.text.primary,
+    alignSelf: 'flex-start',
+  },
+  replyReferenceSenderMe: {
+    color: colors.text.inverse,
+  },
+  replyReferenceText: {
+    ...typography.caption,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.text.secondary,
+    marginTop: 2,
+    flexShrink: 1,
+  },
+  replyReferenceTextMe: {
+    color: 'rgba(255,255,255,0.72)',
   },
 
   // ── Bubble Content ────────────────────────────────────────────────────

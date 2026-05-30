@@ -110,6 +110,24 @@ export interface BackendMessage {
     type: string;
     size: number;
   }>;
+  replyTo?: string | number | null;
+  replyToMessage?: {
+    id: string | number;
+    content?: string | null;
+    contentType?: string;
+    type?: string;
+    senderId?: string;
+    senderDisplayName?: string | null;
+    senderName?: string | null;
+    senderAvatarUrl?: string | null;
+    senderAvatar?: string | null;
+    attachments?: Array<{
+      url: string;
+      type?: string;
+      size?: number;
+    }> | null;
+    file_url?: string | null;
+  } | null;
   is_revoked?: boolean;
   status?: 'sending' | 'sent' | 'delivered' | 'read';
   createdAt?: string;

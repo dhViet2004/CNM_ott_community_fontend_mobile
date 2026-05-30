@@ -15,7 +15,7 @@ export interface Message {
   // Legacy field names (sender_name, sender_avatar) - từ socket/addMessage
   sender_name?: string;
   sender_avatar?: string | null;
-  type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'emoji';
+  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system';
   content: string;
   file_url?: string | null;
   file_name?: string | null;
@@ -27,6 +27,8 @@ export interface Message {
   isDeleted?: boolean;
   isRevoked?: boolean;
   is_revoked?: boolean;
+  replyTo?: string | number | null;
+  replyToMessage?: ReplyToMessage | null;
   // Read receipts: danh sách người đã đọc tin nhắn này
   readBy?: Array<{
     userId: string;
@@ -34,6 +36,24 @@ export interface Message {
     readerAvatar?: string | null;
     readAt?: string;
   }>;
+}
+
+export interface ReplyToMessage {
+  id: string | number;
+  content?: string | null;
+  contentType?: string;
+  type?: string;
+  senderId?: string;
+  senderDisplayName?: string | null;
+  senderName?: string | null;
+  senderAvatarUrl?: string | null;
+  senderAvatar?: string | null;
+  attachments?: Array<{
+    url: string;
+    type?: string;
+    size?: number;
+  }> | null;
+  file_url?: string | null;
 }
 
 export interface Conversation {
@@ -271,9 +291,11 @@ const chatSlice = createSlice({
         content: string;
         type: string;
         file_url?: string | null;
+        replyTo?: string | number | null;
+        replyToMessage?: ReplyToMessage | null;
       }>
     ) {
-      const { tempId, realId, conversationId, senderId, senderName, senderAvatar, content, type, file_url } = action.payload;
+      const { tempId, realId, conversationId, senderId, senderName, senderAvatar, content, type, file_url, replyTo, replyToMessage } = action.payload;
       delete state.pendingMessages[tempId];
 
       const messages = state.messages[conversationId];
@@ -291,6 +313,8 @@ const chatSlice = createSlice({
             content,
             type: type as Message['type'],
             file_url: file_url ?? null,
+            replyTo: replyTo ?? updated[idx].replyTo ?? null,
+            replyToMessage: replyToMessage ?? updated[idx].replyToMessage ?? null,
             status: 'sent',
           };
           state.messages[conversationId] = updated;

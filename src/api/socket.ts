@@ -167,6 +167,8 @@ export interface SocketMessage {
   roomId?: string;
   senderDisplayName?: string;
   senderAvatarUrl?: string;
+  replyTo?: string | number | null;
+  replyToMessage?: any;
 }
 
 // ─── Connect ─────────────────────────────────────────────────────────────────
@@ -280,13 +282,15 @@ export const connectSocket = (token: string) => {
       senderName: senderDisplayName || 'Unknown',
       sender_name: senderDisplayName || 'Unknown',
       sender_avatar: senderAvatar,
-      type: (message.contentType ?? 'text') as 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'emoji',
+      type: (message.contentType ?? 'text') as 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system',
       content: message.content ?? '',
       file_url: message.file_url ?? (message as any).attachments?.[0]?.url ?? null,
       file_name: message.file_name ?? null,
       file_size: message.file_size ?? null,
       timestamp: message.createdAt ?? (message as any).created_at ?? '',
       status: 'delivered',
+      replyTo: (message as any).replyTo ?? null,
+      replyToMessage: (message as any).replyToMessage ?? null,
     }));
   });
 

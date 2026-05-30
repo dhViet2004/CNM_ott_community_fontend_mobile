@@ -14,8 +14,10 @@ interface MessageItem {
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'file' | 'sticker' | 'emoji';
+  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'voice' | 'audio' | 'system';
   file_url?: string | null;
+  replyTo?: string | number | null;
+  replyToMessage?: any;
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
   isRevoked?: boolean;
@@ -84,6 +86,8 @@ export const useMessages = ({
         isDeleted: m.is_revoked || m.isDeleted,
         isRevoked: m.is_revoked || m.isRevoked,
         readBy: m.readBy,
+        replyTo: m.replyTo ?? null,
+        replyToMessage: m.replyToMessage ?? null,
       };
     });
   }, [rawMessages, currentUserId, conversationId]);
@@ -126,6 +130,8 @@ export const useMessages = ({
         createdAt: m.createdAt ?? m.created_at ?? new Date().toISOString(),
         status: 'sent' as const,
         is_revoked: m.contentType === 'revoked' || (m.isRevoked ?? false),
+        replyTo: m.replyTo ?? null,
+        replyToMessage: m.replyToMessage ?? null,
       }));
       dispatch(setMessages({ conversationId, messages: mapped }));
       console.log('[useMessages] Loaded', mapped.length, 'messages for', conversationId);
@@ -160,6 +166,8 @@ export const useMessages = ({
         file_size: null,
         timestamp: new Date().toISOString(),
         status: 'sending',
+        replyTo: (message as any).replyTo ?? null,
+        replyToMessage: (message as any).replyToMessage ?? null,
       }));
       
       return tempId;
