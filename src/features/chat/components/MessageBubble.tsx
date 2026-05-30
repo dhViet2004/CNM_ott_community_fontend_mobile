@@ -127,7 +127,7 @@ interface MessageBubbleProps {
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice' | 'audio' | 'system' | 'poll' | 'reminder' | 'reminder_due';
+  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice' | 'audio' | 'system' | 'poll' | 'reminder' | 'reminder_due' | 'note';
   file_url?: string | null;
   pollData?: PollData | null;
   currentUserId?: string | number | null;
@@ -389,6 +389,33 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       <View style={styles.systemMessageContainer}>
         <View style={styles.systemMessagePill}>
           <Text style={styles.systemMessageText}>{content}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (type === 'note') {
+    const actor = isMe ? 'Bạn' : senderName || 'Người dùng';
+    return (
+      <View style={styles.systemMessageContainer}>
+        <View style={[
+          styles.systemMessagePill, 
+          { 
+            backgroundColor: '#FFFFFF', 
+            borderWidth: StyleSheet.hairlineWidth, 
+            borderColor: '#E1E3E7',
+            paddingVertical: 6,
+            paddingHorizontal: 14,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.08,
+            shadowRadius: 2,
+            elevation: 1
+          }
+        ]}>
+          <Text style={[styles.systemMessageText, { color: '#555', fontWeight: '500' }]}>
+            📄  {actor} tạo ghi chú <Text style={{ fontWeight: 'bold', color: '#222' }}>{content}</Text>
+          </Text>
         </View>
       </View>
     );
