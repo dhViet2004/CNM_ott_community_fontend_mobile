@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { shallowEqual } from 'react-redux';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { setMessages, setLoadingMessages, addMessage } from '@store/slices/chatSlice';
+import type { PollData } from '@/types';
 import { messageApi } from '@api/endpoints';
 import { socketActions } from '@api/socket';
 
@@ -14,7 +15,8 @@ interface MessageItem {
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'voice' | 'audio' | 'system';
+  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'voice' | 'audio' | 'system' | 'poll';
+  pollData?: PollData | null;
   file_url?: string | null;
   replyTo?: string | number | null;
   replyToMessage?: any;
@@ -81,6 +83,7 @@ export const useMessages = ({
         }),
         isMe,
         type: (m.contentType ?? m.type ?? 'text') as MessageItem['type'],
+        pollData: m.pollData ?? null,
         file_url: m.file_url ?? m.attachments?.[0]?.url ?? null,
         status: m.status || 'sent',
         isDeleted: m.is_revoked || m.isDeleted,
@@ -121,6 +124,7 @@ export const useMessages = ({
         sender_avatar: m.senderAvatarUrl ?? m.sender_avatar ?? null,
         senderAvatarUrl: m.senderAvatarUrl ?? null,
         type: (m.contentType ?? m.type ?? 'text') as any,
+        pollData: m.pollData ?? null,
         content: m.content ?? '',
         // Lấy file_url từ attachments nếu không có field trực tiếp
         file_url: m.file_url ?? m.attachments?.[0]?.url ?? null,
@@ -164,6 +168,7 @@ export const useMessages = ({
         file_url: message.file_url ?? null,
         file_name: null,
         file_size: null,
+        pollData: message.pollData ?? null,
         timestamp: new Date().toISOString(),
         status: 'sending',
         replyTo: (message as any).replyTo ?? null,

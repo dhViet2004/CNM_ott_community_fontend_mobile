@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography } from '@theme';
@@ -6,6 +6,8 @@ import { Icons, IconSize } from '@components/common';
 import { FilePickerButton } from './FilePickerButton';
 import { VoiceRecorderButton } from './VoiceRecorderButton';
 import { ImagePickerButton } from './ImagePickerButton';
+import CreatePollModal from './CreatePollModal';
+import type { PollData } from '@/types';
 
 interface ChatInputProps {
   value: string;
@@ -51,6 +53,7 @@ interface ChatInputProps {
   } | null;
   onCancelReply?: () => void;
   onJumpToReply?: (messageId: string | number) => void;
+  onCreatePoll?: (payload: { content: string; pollData: PollData }) => Promise<void>;
 }
 
 const getReplyContent = (message?: ChatInputProps['replyingMessage']) => {
@@ -77,8 +80,33 @@ const ChatInput: React.FC<ChatInputProps> = ({
   replyingMessage,
   onCancelReply,
   onJumpToReply,
+  onCreatePoll,
 }) => {
   const canSend = value.trim().length > 0;
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [pollModalOpen, setPollModalOpen] = useState(false);
+
+  const handleToolPress = (label: string) => {
+    if (label === 'Bình chọn') {
+      setToolsOpen(false);
+      setPollModalOpen(true);
+    }
+  };
+
+  const toolItems = [
+    { label: 'Vị trí', icon: 'location', color: '#FF7777' },
+    { label: 'Tài liệu', icon: 'document-attach', color: '#3E4FE0' },
+    { label: 'Nhắc hẹn', icon: 'alarm', color: '#DD3F62' },
+    { label: 'Bình chọn', icon: 'bar-chart', color: '#16C879' },
+    { label: 'Chia tiền nhóm', icon: 'cash', color: '#20C66F' },
+    { label: 'Danh thiếp', icon: 'id-card', color: '#1497D5' },
+    { label: 'My Documents', icon: 'folder', color: '#3384F0' },
+    { label: 'Tin nhắn nhanh', icon: 'chatbubble', color: '#0768D8' },
+    { label: 'Gửi số tài khoản', icon: 'card', color: '#8B3EF3' },
+    { label: '@GIF', icon: 'image', color: '#39C877' },
+    { label: 'Vẽ hình', icon: 'brush', color: '#D82BC8' },
+    { label: 'Kiểu chữ', icon: 'text', color: '#D3A600' },
+  ];
 
   return (
     <View style={styles.container}>
@@ -147,7 +175,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
         <View style={styles.rightActions}>
           {!canSend ? (
             <View style={styles.actionIconsRow}>
-              <TouchableOpacity style={styles.actionIconBtn}>
+              <TouchableOpacity
+                style={styles.actionIconBtn}
+                onPress={() => setToolsOpen((prev) => !prev)}
+              >
                 <Ionicons name="ellipsis-horizontal" size={24} color={colors.text.secondary} />
               </TouchableOpacity>
               <VoiceRecorderButton
@@ -185,6 +216,30 @@ const ChatInput: React.FC<ChatInputProps> = ({
           )}
         </View>
       </View>
+      {toolsOpen && !canSend ? (
+        <View style={styles.toolsPanel}>
+          {toolItems.map((item) => (
+            <TouchableOpacity
+              key={item.label}
+              style={styles.toolItem}
+              activeOpacity={0.75}
+              onPress={() => handleToolPress(item.label)}
+            >
+              <View style={[styles.toolIcon, { backgroundColor: item.color }]}>
+                <Ionicons name={item.icon as any} size={28} color="#FFFFFF" />
+              </View>
+              <Text style={styles.toolLabel} numberOfLines={2}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+      {onCreatePoll ? (
+        <CreatePollModal
+          visible={pollModalOpen}
+          onClose={() => setPollModalOpen(false)}
+          onSubmit={onCreatePoll}
+        />
+      ) : null}
     </View>
   );
 };
@@ -302,6 +357,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 2,
+  },
+  toolsPanel: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border.light,
+    backgroundColor: colors.background.primary,
+  },
+  toolItem: {
+    width: '25%',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    paddingHorizontal: 2,
+  },
+  toolIcon: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 7,
+  },
+  toolLabel: {
+    ...typography.caption,
+    fontSize: 13,
+    lineHeight: 17,
+    color: colors.text.primary,
+    textAlign: 'center',
+    minHeight: 34,
   },
 });
 

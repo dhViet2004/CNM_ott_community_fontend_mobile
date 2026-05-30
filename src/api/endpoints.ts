@@ -403,8 +403,9 @@ export const messageApi = {
     conversationId: string,
     content: string,
     senderId: string,
-    contentType: 'text' | 'sticker' | 'emoji' | 'system' = 'text',
-    replyTo?: string | number | null
+    contentType: 'text' | 'sticker' | 'emoji' | 'system' | 'poll' = 'text',
+    replyTo?: string | number | null,
+    pollData?: import('@/types').PollData | null
   ) =>
     apiClient
       .post<BackendMessage>('/messages', {
@@ -413,6 +414,7 @@ export const messageApi = {
         content,
         contentType,
         replyTo: replyTo || null,
+        ...(contentType === 'poll' && pollData ? { pollData } : {}),
       })
       .then((r) => r.data),
 
