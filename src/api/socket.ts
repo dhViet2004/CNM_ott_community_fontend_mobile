@@ -33,6 +33,7 @@ import {
   setActiveCall,
   clearIncomingCall,
 } from '@store/slices/callSlice';
+import { updateUser } from '@store/slices/authSlice';
 
 const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL;
 
@@ -830,6 +831,27 @@ export const connectSocket = (token: string) => {
     store.dispatch(removeGroup(gIdStr));
     store.dispatch(removeConversationById(gIdStr));
     console.log('[Socket] Group deleted:', gIdStr);
+  });
+
+  // Khi hồ sơ cá nhân/avatar được cập nhật ở client khác (Web/Mobile), đồng bộ lại state
+  socket.on('profile_updated', (data: any) => {
+    console.log('[Socket] ⭐ profile_updated received:', JSON.stringify(data));
+    if (data) {
+      const mappedUser = {
+        userId: data.userId || data.id,
+        username: data.username,
+        display_name: data.display_name || data.fullName,
+        displayName: data.display_name || data.fullName,
+        avatar_url: data.avatar_url || data.avatarUrl,
+        avatarUrl: data.avatar_url || data.avatarUrl,
+        cover_url: data.cover_url || data.coverUrl,
+        coverUrl: data.cover_url || data.coverUrl,
+        gender: data.gender,
+        birthday: data.birthday,
+        phoneNumber: data.phoneNumber || data.phone,
+      };
+      store.dispatch(updateUser(mappedUser));
+    }
   });
 };
 

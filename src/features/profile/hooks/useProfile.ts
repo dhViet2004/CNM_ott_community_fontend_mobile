@@ -40,6 +40,7 @@ interface UseProfileReturn {
   unfriend: (friendshipId: string) => Promise<void>;
   updateMyProfile: (data: Partial<ProfileUser>) => Promise<void>;
   updateStatus: (status: string) => Promise<void>;
+  realFriends: any[];
 }
 
 const mapUserToProfile = (u: User): ProfileUser => ({
@@ -67,6 +68,7 @@ export const useProfile = (options: UseProfileOptions = {}): UseProfileReturn =>
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [localFriendStatus, setLocalFriendStatus] = useState<ProfileUser['friendStatus']>('none');
   const [localFriendshipId, setLocalFriendshipId] = useState<string | undefined>(undefined);
+  const [realFriends, setRealFriends] = useState<any[]>([]);
 
   const isMyProfile = useMemo(() => {
     if (!userId) return true;
@@ -105,6 +107,20 @@ export const useProfile = (options: UseProfileOptions = {}): UseProfileReturn =>
           setLocalFriendStatus('none');
         }
       }
+
+      // Luôn lấy danh sách bạn bè thực tế của người dùng
+      const list = await friendsApi.getFriends().catch(() => []);
+      const resolvedList = await Promise.all(
+        list.map(async (friend) => {
+          const resolvedAvatar = await resolveUrl(friend.avatar_url);
+          return {
+            id: friend.friend_id || friend.userId || String(Math.random()),
+            fullName: friend.display_name || friend.friend_display_name || 'Người dùng',
+            avatarUrl: resolvedAvatar || undefined,
+          };
+        })
+      );
+      setRealFriends(resolvedList);
     } catch (err: any) {
       setIsError(true);
       setErrorMessage(err?.response?.data?.message || 'Không tìm thấy người dùng');
@@ -214,6 +230,7 @@ export const useProfile = (options: UseProfileOptions = {}): UseProfileReturn =>
     unfriend,
     updateMyProfile: updateMyProfileHandler,
     updateStatus,
+    realFriends,
   };
 };
 

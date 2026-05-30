@@ -600,7 +600,7 @@ export const uploadApi = {
 
   getViewUrl: (fileUrl: string) =>
     apiClient
-      .get<{ view_url: string; expires_in: number }>('/uploads/view-url', {
+      .get<{ viewUrl?: string; view_url?: string; expires_in: number }>('/uploads/view-url', {
         params: { url: fileUrl },
       })
       .then((r) => r.data),
@@ -648,5 +648,84 @@ export const statsApi = {
         total_messages: number;
         active_users_today: number;
       }>('/stats/overview')
+      .then((r) => r.data),
+};
+
+// ─── Posts / Timeline ────────────────────────────────────────────────────────
+
+export interface PostMedia {
+  url: string;
+  type: 'image' | 'video';
+  name?: string;
+}
+
+export interface PostItem {
+  postId: string;
+  userId: string;
+  authorName: string;
+  authorAvatar: string | null;
+  content: string;
+  media: PostMedia[];
+  likes: string[];
+  likeCount: number;
+  commentCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommentItem {
+  commentId: string;
+  postId: string;
+  userId: string;
+  authorName: string;
+  authorAvatar: string | null;
+  content: string;
+  createdAt: string;
+}
+
+export const postsApi = {
+  createPost: (data: { content: string; media?: PostMedia[] }) =>
+    apiClient
+      .post<PostItem>('/posts', data)
+      .then((r) => r.data),
+
+  getFeedPosts: (limit = 20) =>
+    apiClient
+      .get<{ posts: PostItem[]; count: number }>('/posts/feed', { params: { limit } })
+      .then((r) => r.data),
+
+  getUserPosts: (userId: string, limit = 20) =>
+    apiClient
+      .get<{ posts: PostItem[]; count: number }>(`/posts/user/${userId}`, { params: { limit } })
+      .then((r) => r.data),
+
+  getPostById: (postId: string) =>
+    apiClient
+      .get<PostItem>(`/posts/${postId}`)
+      .then((r) => r.data),
+
+  toggleLike: (postId: string) =>
+    apiClient
+      .put<{ liked: boolean; likeCount: number; likes: string[] }>(`/posts/${postId}/like`)
+      .then((r) => r.data),
+
+  deletePost: (postId: string) =>
+    apiClient
+      .delete<{ deleted: boolean }>(`/posts/${postId}`)
+      .then((r) => r.data),
+
+  createComment: (postId: string, content: string) =>
+    apiClient
+      .post<CommentItem>(`/posts/${postId}/comments`, { content })
+      .then((r) => r.data),
+
+  getComments: (postId: string, limit = 50) =>
+    apiClient
+      .get<{ comments: CommentItem[]; count: number }>(`/posts/${postId}/comments`, { params: { limit } })
+      .then((r) => r.data),
+
+  deleteComment: (commentId: string) =>
+    apiClient
+      .delete<{ deleted: boolean }>(`/posts/comments/${commentId}`)
       .then((r) => r.data),
 };

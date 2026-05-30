@@ -32,6 +32,7 @@ import TransferOwnerScreen from '@features/groups/screens/TransferOwnerScreen';
 import ChatSettingsScreen from '@features/chat/screens/ChatSettingsScreen';
 import MessageSearchScreen from '@features/chat/screens/MessageSearchScreen';
 import ChangePasswordScreen from '@features/profile/screens/ChangePasswordScreen';
+import MediaGalleryScreen from '@features/chat/screens/MediaGalleryScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -252,6 +253,14 @@ const RootStackNavigator: React.FC = () => {
       <Stack.Screen
         name="ChangePassword"
         component={ChangePasswordScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="MediaGallery"
+        component={MediaGalleryScreen}
         options={{
           headerShown: false,
           animation: 'slide_from_right',

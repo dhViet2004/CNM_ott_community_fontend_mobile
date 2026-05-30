@@ -57,6 +57,7 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [isLoadingBg, setIsLoadingBg] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [viewerImage, setViewerImage] = useState<any | null>(null);
 
   // Get missing info from friends list
   const currentFriendshipId = friendshipId || friends?.find(f => 
@@ -94,7 +95,7 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
       const resolvedMedia = await Promise.all(
         filteredMedia.map(async (m: any) => {
           const attachment = m.attachments?.find((item: any) => item?.type === 'image' || item?.type === 'video') ?? m.attachments?.[0];
-          const rawUrl = attachment?.url || '';
+          const rawUrl = attachment?.url || m.file_url || '';
           const resolvedUrl = rawUrl ? await resolveUrl(rawUrl) : undefined;
           return {
             id: String(m.id),
@@ -116,7 +117,7 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
       const resolvedFiles = await Promise.all(
         filteredFiles.map(async (m: any) => {
           const attachment = m.attachments?.find((item: any) => item?.type === 'file' || item?.type === 'document') ?? m.attachments?.[0];
-          const rawUrl = attachment?.url || '';
+          const rawUrl = attachment?.url || m.file_url || '';
           const resolvedUrl = rawUrl ? await resolveUrl(rawUrl) : undefined;
           return {
             id: String(m.id),
@@ -340,14 +341,16 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
               justifyContent: 'space-between', 
               alignItems: 'center', 
               paddingVertical: spacing.md,
+              paddingHorizontal: spacing.lg,
               borderBottomWidth: 1,
               borderBottomColor: colors.border.light
             }}
             onPress={() => {
-              Alert.alert(
-                'Kho lưu trữ truyền thông',
-                `Đoạn chat này có ${mediaItems.length} ảnh/video và ${fileItems.length} tệp tin đã gửi.`
-              );
+              navigation.navigate('MediaGallery', { 
+                conversationId, 
+                title: title || 'Ảnh, file, link', 
+                initialTab: 'Ảnh' 
+              });
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
@@ -367,7 +370,7 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
           </TouchableOpacity>
 
           {mediaItems.length === 0 && fileItems.length === 0 ? (
-            <View style={{ paddingVertical: spacing.md }}>
+            <View style={{ paddingVertical: spacing.md, paddingHorizontal: spacing.lg }}>
               <Text style={{ color: colors.text.tertiary, fontStyle: 'italic', fontSize: 13 }}>
                 Chưa có hình ảnh hoặc file nào được chia sẻ trong trò chuyện này
               </Text>
@@ -376,7 +379,7 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingVertical: spacing.md, gap: spacing.xs }}
+              contentContainerStyle={{ paddingVertical: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.xs, alignItems: 'center' }}
             >
               {mediaItems.slice(0, 8).map((item) => (
                 <TouchableOpacity
@@ -393,12 +396,7 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
                     borderColor: colors.border.light,
                   }}
                   onPress={() => {
-                    if (item.url) {
-                      Alert.alert('Xem file', `Bạn muốn mở ${item.name}?`, [
-                        { text: 'Hủy', style: 'cancel' },
-                        { text: 'Mở link', onPress: () => Share.share({ message: item.url }) },
-                      ]);
-                    }
+                    setViewerImage(item);
                   }}
                 >
                   {item.url ? (
@@ -413,6 +411,29 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
                   )}
                 </TouchableOpacity>
               ))}
+
+              {mediaItems.length > 4 && (
+                <TouchableOpacity
+                  style={{
+                    width: 50,
+                    height: 80,
+                    borderRadius: spacing.borderRadius.md,
+                    backgroundColor: '#E4E6EB',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: spacing.xs,
+                  }}
+                  onPress={() => {
+                    navigation.navigate('MediaGallery', { 
+                      conversationId, 
+                      title: title || 'Ảnh, file, link', 
+                      initialTab: 'Ảnh' 
+                    });
+                  }}
+                >
+                  <Text style={{ fontSize: 24, color: '#555' }}>➔</Text>
+                </TouchableOpacity>
+              )}
 
               {fileItems.slice(0, 4).map((item) => (
                 <TouchableOpacity
@@ -429,9 +450,11 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
                     justifyContent: 'center',
                   }}
                   onPress={() => {
-                    if (item.url) {
-                      Share.share({ message: item.url });
-                    }
+                    navigation.navigate('MediaGallery', { 
+                      conversationId, 
+                      title: title || 'Ảnh, file, link', 
+                      initialTab: 'File' 
+                    });
                   }}
                 >
                   <View style={{ alignItems: 'center', justifyContent: 'center', padding: 4 }}>
@@ -581,6 +604,80 @@ const ChatSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
           });
         }}
       />
+
+      {/* ── Lightbox Image Viewer Modal ── */}
+      <Modal
+        visible={!!viewerImage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewerImage(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', alignItems: 'center', justifyContent: 'center' }}>
+          {/* Header trong Lightbox */}
+          <View
+            style={{
+              position: 'absolute',
+              top: insets.top || 20,
+              left: 0,
+              right: 0,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              paddingHorizontal: 20,
+              zIndex: 100,
+            }}
+          >
+            <TouchableOpacity onPress={() => setViewerImage(null)} style={{ padding: 8 }}>
+              <Text style={{ color: '#FFF', fontSize: 18, fontWeight: 'bold' }}>Đóng</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                if (!viewerImage) return;
+                Alert.alert('Tùy chọn', undefined, [
+                  {
+                    text: 'Xem tin nhắn gốc',
+                    onPress: () => {
+                      const msgId = viewerImage.id || viewerImage.messageId;
+                      setViewerImage(null);
+                      navigation.navigate('Chat', {
+                        conversationId,
+                        title: title || 'Trò chuyện',
+                        focusedMessageId: String(msgId),
+                      });
+                    },
+                  },
+                  {
+                    text: 'Tải xuống',
+                    onPress: () => {
+                      Alert.alert('Thành công', 'Đã lưu hình ảnh vào thư viện của bạn.');
+                    },
+                  },
+                  {
+                    text: 'Chuyển tiếp',
+                    onPress: () => {
+                      if (viewerImage.url) {
+                        Share.share({ message: viewerImage.url });
+                      }
+                    },
+                  },
+                  { text: 'Hủy', style: 'cancel' },
+                ]);
+              }}
+              style={{ padding: 8 }}
+            >
+              <Text style={{ color: '#FFF', fontSize: 24, fontWeight: 'bold' }}>•••</Text>
+            </TouchableOpacity>
+          </View>
+
+          {viewerImage?.url && (
+            <Image
+              source={{ uri: viewerImage.url }}
+              style={{ width: '100%', height: '80%' }}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
     </View>
   );
 };
