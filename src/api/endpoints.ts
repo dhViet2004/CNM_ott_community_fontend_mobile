@@ -680,6 +680,27 @@ export interface ReactionUser {
   avatarUrl: string | null;
 }
 
+export interface StoryItem {
+  storyId: string;
+  userId: string;
+  authorName: string;
+  authorAvatar: string | null;
+  type: 'image' | 'text';
+  text: string;
+  mediaUrl: string | null;
+  backgroundColor: string;
+  textX?: number;
+  textY?: number;
+  textScale?: number;
+  textRotation?: number;
+  isHighlighted: boolean;
+  highlightedAt?: string | null;
+  createdAt: string;
+  expiresAt: string;
+  likes: string[];
+  likeCount: number;
+}
+
 export interface CommentItem {
   commentId: string;
   postId: string;
@@ -716,6 +737,11 @@ export const postsApi = {
       .get<PostItem>(`/posts/${postId}`)
       .then((r) => r.data),
 
+  updatePost: (postId: string, content: string) =>
+    apiClient
+      .put<PostItem>(`/posts/${postId}`, { content })
+      .then((r) => r.data),
+
   toggleLike: (postId: string) =>
     apiClient
       .put<{ liked: boolean; likeCount: number; likes: string[]; likeUsers: ReactionUser[] }>(`/posts/${postId}/like`)
@@ -749,5 +775,53 @@ export const postsApi = {
   deleteComment: (commentId: string) =>
     apiClient
       .delete<{ deleted: boolean; deletedCommentIds?: string[] }>(`/posts/comments/${commentId}`)
+      .then((r) => r.data),
+};
+
+// ─── Stories ──────────────────────────────────────────────────────────────
+
+export const storiesApi = {
+  create: (data: {
+    type: 'image' | 'text';
+    text?: string;
+    mediaUrl?: string;
+    backgroundColor?: string;
+    textX?: number;
+    textY?: number;
+    textScale?: number;
+    textRotation?: number;
+  }) =>
+    apiClient
+      .post<StoryItem>('/stories', data)
+      .then((r) => r.data),
+
+  getFeed: () =>
+    apiClient
+      .get<{ stories: StoryItem[]; count: number }>('/stories/feed')
+      .then((r) => r.data),
+
+  getHighlights: (userId: string) =>
+    apiClient
+      .get<{ stories: StoryItem[]; count: number }>(`/stories/highlights/${encodeURIComponent(userId)}`)
+      .then((r) => r.data),
+
+  getArchive: () =>
+    apiClient
+      .get<{ stories: StoryItem[]; count: number }>('/stories/archive')
+      .then((r) => r.data),
+
+  toggleHighlight: (storyId: string) =>
+    apiClient
+      .put<StoryItem>(`/stories/${encodeURIComponent(storyId)}/highlight`)
+      .then((r) => r.data),
+
+  toggleLike: (storyId: string) =>
+    apiClient
+      .put<StoryItem & { liked: boolean }>(`/stories/${encodeURIComponent(storyId)}/like`)
+      .then((r) => r.data),
+
+  reply: (storyId: string, content: string) =>
+    apiClient
+      .post<BackendMessage>(`/stories/${encodeURIComponent(storyId)}/reply`, { content })
       .then((r) => r.data),
 };

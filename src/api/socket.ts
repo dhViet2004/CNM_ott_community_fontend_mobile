@@ -296,6 +296,7 @@ export const connectSocket = (token: string) => {
       status: 'delivered',
       replyTo: (message as any).replyTo ?? null,
       replyToMessage: (message as any).replyToMessage ?? null,
+      storyReply: (message as any).storyReply ?? null,
     }));
   });
 

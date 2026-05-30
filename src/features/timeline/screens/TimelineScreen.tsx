@@ -9,12 +9,14 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, typography } from '@theme';
 import { Avatar } from '@components/common';
-import { postsApi, uploadApi, friendsApi } from '@api/endpoints';
-import type { PostItem, CommentItem, PostMedia, ReactionUser } from '@api/endpoints';
+import { postsApi, uploadApi, friendsApi, storiesApi } from '@api/endpoints';
+import type { PostItem, CommentItem, PostMedia, ReactionUser, StoryItem } from '@api/endpoints';
 import { useAppSelector } from '@store/hooks';
 import { resolveUrl } from '@/utils/url';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { formatPostTime } from '@/utils/postTime';
+import CreateStoryModal from '@/features/stories/components/CreateStoryModal';
+import StoryViewerModal, { formatStoryAge } from '@/features/stories/components/StoryViewerModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BLUE = '#008AF3';
@@ -32,6 +34,7 @@ export const TimelineScreen: React.FC = () => {
   
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
+  const [stories, setStories] = useState<StoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
@@ -39,6 +42,9 @@ export const TimelineScreen: React.FC = () => {
   const [showCompose, setShowCompose] = useState(false);
   const [showPostManager, setShowPostManager] = useState(false);
   const [reactionUsers, setReactionUsers] = useState<ReactionUser[] | null>(null);
+  const [showStoryComposer, setShowStoryComposer] = useState(false);
+  const [activeStory, setActiveStory] = useState<StoryItem | null>(null);
+  const [, setStoryClock] = useState(Date.now());
   
   // Edit post
   const [editingPost, setEditingPost] = useState<PostItem | null>(null);
@@ -140,11 +146,29 @@ export const TimelineScreen: React.FC = () => {
     loadFeed().finally(() => setIsLoading(false));
   }, [loadFeed]);
 
+  const loadStories = useCallback(async () => {
+    try {
+      const result = await storiesApi.getFeed();
+      setStories(result.stories || []);
+    } catch {
+      setStories([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStories();
+  }, [loadStories]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setStoryClock(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await loadFeed();
+    await Promise.all([loadFeed(), loadStories()]);
     setIsRefreshing(false);
-  }, [loadFeed]);
+  }, [loadFeed, loadStories]);
 
   // Thả tim bài viết
   const handleLike = useCallback(async (postId: string) => {
@@ -208,6 +232,7 @@ export const TimelineScreen: React.FC = () => {
   const handleSaveEdit = async () => {
     if (!editingPost || !editingContent.trim()) return;
     try {
+      const updatedPost = await postsApi.updatePost(editingPost.postId, editingContent.trim());
       const saved = await AsyncStorage.getItem('app_timeline_posts');
       if (saved) {
         const parsed = JSON.parse(saved);
@@ -218,10 +243,11 @@ export const TimelineScreen: React.FC = () => {
           return p;
         });
         await AsyncStorage.setItem('app_timeline_posts', JSON.stringify(updated));
-        Alert.alert('Thành công', 'Đã cập nhật bài viết');
-        setEditingPost(null);
-        loadFeed();
       }
+      setPosts((current) => current.map((post) => post.postId === editingPost.postId ? { ...post, ...updatedPost } : post));
+      Alert.alert('Thành công', 'Đã cập nhật bài viết');
+      setEditingPost(null);
+      await loadFeed();
     } catch {
       Alert.alert('Lỗi', 'Không thể lưu bài viết');
     }
@@ -313,13 +339,6 @@ export const TimelineScreen: React.FC = () => {
   const myPosts = posts.filter(p => String(p.userId) === String(currentUser?.userId));
 
   const renderHeader = () => {
-    const stories = [
-      { id: 'create', name: 'Tạo mới', isCreate: true, avatar: currentUser?.avatar_url },
-      { id: '1', name: 'Phước Nguyện', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150' },
-      { id: '2', name: 'Phạm Dương', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' },
-      { id: '3', name: 'Quế Anh', avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150' },
-    ];
-
     return (
       <View style={headerStyles.container}>
         {/* Khung đăng nhanh */}
@@ -354,43 +373,39 @@ export const TimelineScreen: React.FC = () => {
         <View style={headerStyles.storySection}>
           <View style={headerStyles.storyHeader}>
             <View style={headerStyles.storyTitleContainer}>
-              <Text style={headerStyles.storyTitle}>Cập nhật trạng thái 24 giờ</Text>
-            </View>
-            <View style={headerStyles.storyCounter}>
-              <Ionicons name="flame" size={14} color="#FF9800" />
-              <Text style={headerStyles.storyCounterText}>Video Mới</Text>
-              <Ionicons name="chevron-down" size={12} color={colors.text.tertiary} />
+              <Text style={headerStyles.storyTitle}>Tin 24 giờ</Text>
             </View>
           </View>
 
           <FlatList
             horizontal
             showsHorizontalScrollIndicator={false}
-            data={stories}
-            keyExtractor={(item) => item.id}
+            data={[{ storyId: 'create' } as StoryItem, ...stories]}
+            keyExtractor={(item) => item.storyId}
             contentContainerStyle={headerStyles.storyList}
             renderItem={({ item }) => (
               <View style={headerStyles.storyCard}>
-                {item.isCreate ? (
-                  <View style={headerStyles.createStoryContainer}>
-                    <Image source={{ uri: item.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150' }} style={headerStyles.storyAvatar} />
+                {item.storyId === 'create' ? (
+                  <TouchableOpacity style={headerStyles.createStoryContainer} onPress={() => setShowStoryComposer(true)}>
+                    <Avatar uri={currentUser?.avatar_url || undefined} name={currentUser?.display_name || 'Tạo mới'} size="md" />
                     <View style={headerStyles.createStoryOverlay}>
                       <View style={headerStyles.createStoryCircle}>
-                        <Ionicons name="videocam" size={14} color="#FFF" />
+                        <Ionicons name="add" size={14} color="#FFF" />
                       </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 ) : (
-                  <View style={headerStyles.friendStoryContainer}>
-                    <Image source={{ uri: item.avatar || undefined }} style={headerStyles.storyAvatar} />
+                  <TouchableOpacity style={headerStyles.friendStoryContainer} onPress={() => setActiveStory(item)}>
+                    <Avatar uri={item.authorAvatar || undefined} name={item.authorName} size="md" />
                     <View style={headerStyles.friendStoryOverlay}>
                       <View style={headerStyles.friendStoryBadge}>
-                        <Image source={{ uri: item.avatar || undefined }} style={headerStyles.friendStoryBadgeAvatar} />
+                        <Avatar uri={item.authorAvatar || undefined} name={item.authorName} size="xxs" />
                       </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 )}
-                <Text style={headerStyles.storyName} numberOfLines={1}>{item.name}</Text>
+                <Text style={headerStyles.storyName} numberOfLines={1}>{item.storyId === 'create' ? 'Tạo mới' : item.authorName}</Text>
+                {item.storyId !== 'create' && <Text style={headerStyles.storyAge}>{formatStoryAge(item.createdAt)}</Text>}
               </View>
             )}
           />
@@ -451,6 +466,23 @@ export const TimelineScreen: React.FC = () => {
         currentUser={currentUser}
       />
       <ReactionListModal users={reactionUsers} onClose={() => setReactionUsers(null)} />
+      <CreateStoryModal
+        visible={showStoryComposer}
+        onClose={() => setShowStoryComposer(false)}
+        onCreated={(story) => {
+          setStories((current) => [story, ...current]);
+          setShowStoryComposer(false);
+        }}
+      />
+      <StoryViewerModal
+        story={activeStory}
+        currentUserId={currentUser?.userId}
+        onClose={() => setActiveStory(null)}
+        onHighlightChanged={(story) => {
+          setActiveStory(story);
+          setStories((current) => current.map((item) => item.storyId === story.storyId ? story : item));
+        }}
+      />
 
       {/* Modal chỉnh sửa bài viết */}
       <Modal visible={editingPost !== null} animationType="slide">
@@ -1204,16 +1236,6 @@ const headerStyles = StyleSheet.create({
     fontSize: 14,
     color: '#333'
   },
-  storyCounter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4
-  },
-  storyCounterText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FF9800'
-  },
   storyList: {
     paddingLeft: 16,
     paddingRight: 8,
@@ -1285,6 +1307,11 @@ const headerStyles = StyleSheet.create({
     marginTop: 6,
     fontWeight: '500',
     textAlign: 'center'
+  },
+  storyAge: {
+    marginTop: 2,
+    color: colors.text.tertiary,
+    fontSize: 10,
   }
 });
 

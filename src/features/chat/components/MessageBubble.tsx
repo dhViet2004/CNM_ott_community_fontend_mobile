@@ -132,6 +132,13 @@ interface MessageBubbleProps {
   pollData?: PollData | null;
   currentUserId?: string | number | null;
   replyToMessage?: ReplyToMessage | null;
+  storyReply?: {
+    storyId: string;
+    authorName: string;
+    type: 'image' | 'text';
+    text?: string;
+    mediaUrl?: string | null;
+  } | null;
   onJumpToMessage?: (messageId: string | number) => void;
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
@@ -367,6 +374,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   readBy,
   voiceDuration,
   replyToMessage,
+  storyReply,
   onJumpToMessage,
   pollData,
   currentUserId,
@@ -495,6 +503,18 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
           </Text>
         </View>
       </TouchableOpacity>
+    );
+  };
+
+  const renderStoryReply = () => {
+    if (!storyReply) return null;
+    return (
+      <View style={[styles.storyReply, isMe ? styles.storyReplyMe : styles.storyReplyOther]}>
+        <Text style={styles.storyReplyLabel}>Bạn đã trả lời tin của họ</Text>
+        <Text style={styles.storyReplyText} numberOfLines={2}>
+          {storyReply.text || (storyReply.type === 'image' ? '[Ảnh story]' : '[Story]')}
+        </Text>
+      </View>
     );
   };
 
@@ -731,6 +751,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
             isFocused && styles.focusedBubble,
           ]}
         >
+          {renderStoryReply()}
           {renderReplyReference()}
           {renderBubbleContent()}
           {renderFooter()}
@@ -753,6 +774,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     prev.file_url === next.file_url &&
     prev.pollData === next.pollData &&
     prev.replyToMessage?.id === next.replyToMessage?.id &&
+    prev.storyReply?.storyId === next.storyReply?.storyId &&
     prev.readBy?.length === next.readBy?.length &&
     prev.voiceDuration === next.voiceDuration
   );
@@ -1040,6 +1062,30 @@ const styles = StyleSheet.create({
   },
   replyReferenceTextMe: {
     color: 'rgba(255,255,255,0.72)',
+  },
+  storyReply: {
+    marginBottom: 7,
+    borderLeftWidth: 3,
+    borderLeftColor: '#A78BFA',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  storyReplyMe: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  storyReplyOther: {
+    backgroundColor: 'rgba(139,92,246,0.10)',
+  },
+  storyReplyLabel: {
+    color: '#8B5CF6',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  storyReplyText: {
+    marginTop: 3,
+    color: colors.text.secondary,
+    fontSize: 12,
   },
 
   // ── Bubble Content ────────────────────────────────────────────────────

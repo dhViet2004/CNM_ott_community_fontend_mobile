@@ -460,6 +460,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           isFocused={String(item.id) === focusedMessageId}
           readBy={item.readBy}
           replyToMessage={item.replyToMessage}
+          storyReply={item.storyReply}
           pollData={item.pollData}
           currentUserId={currentUserId}
           onJumpToMessage={(messageId) => handleNavigateToMessage(String(messageId))}

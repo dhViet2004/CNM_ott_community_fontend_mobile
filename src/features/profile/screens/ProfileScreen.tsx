@@ -16,6 +16,8 @@ import { useProfile } from '../hooks';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { uploadApi } from '@api/endpoints';
 import type { MainTabScreenProps } from '@navigation/types';
+import { useAppSelector } from '@store/hooks';
+import StoryHighlights from '@/features/stories/components/StoryHighlights';
 
 type Props = MainTabScreenProps<'ProfileTab'>;
 
@@ -24,6 +26,7 @@ const COVER_HEIGHT = 200;
 const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const scrollY = useRef(new Animated.Value(0)).current;
+  const currentUserId = useAppSelector((s) => s.auth.user?.userId);
 
   const {
     user,
@@ -215,6 +218,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           totalFriends={realFriends.length || user.totalFriends} 
           onSeeAll={() => navigation.navigate('Friends')} 
         />
+
+        <StoryHighlights userId={user.id} currentUserId={currentUserId} />
 
         {/* Profile Menu */}
         <ProfileMenu

@@ -30,6 +30,7 @@ export interface Message {
   is_revoked?: boolean;
   replyTo?: string | number | null;
   replyToMessage?: ReplyToMessage | null;
+  storyReply?: StoryReply | null;
   // Read receipts: danh sách người đã đọc tin nhắn này
   readBy?: Array<{
     userId: string;
@@ -37,6 +38,14 @@ export interface Message {
     readerAvatar?: string | null;
     readAt?: string;
   }>;
+}
+
+export interface StoryReply {
+  storyId: string;
+  authorName: string;
+  type: 'image' | 'text';
+  text?: string;
+  mediaUrl?: string | null;
 }
 
 export interface ReplyToMessage {
