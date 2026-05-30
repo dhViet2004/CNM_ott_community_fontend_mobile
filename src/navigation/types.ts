@@ -31,6 +31,8 @@ export type RootStackParamList = {
   ChatSettings: { conversationId: string; friendshipId?: string; friendId?: string; title: string; avatarUrl?: string | null; originalName?: string };
   MessageSearch: { conversationId: string; title: string };
   ChangePassword: undefined;
+  MediaGallery: { conversationId: string; title: string; initialTab?: string };
+  Friends: undefined;
 };
 
 export type MainTabParamList = {

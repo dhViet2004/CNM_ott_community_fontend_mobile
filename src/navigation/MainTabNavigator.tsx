@@ -10,6 +10,7 @@ import ChatScreen from '@features/chat/screens/ChatScreen';
 import ContactsScreen from '@features/contacts/screens/ContactsScreen';
 import ExploreScreen from '@features/explore/screens/ExploreScreen';
 import ProfileScreen from '@features/profile/screens/ProfileScreen';
+import TimelineScreen from '@features/timeline/screens/TimelineScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -83,22 +84,7 @@ const TabBarIcon: React.FC<TabBarIconProps> = ({ tab, focused, badgeCount = 0 })
   );
 };
 
-const TimelinePlaceholder: React.FC = () => {
-  const insets = useSafeAreaInsets();
-
-  return (
-    <View style={[timelineStyles.container, { paddingTop: insets.top }]}>
-      <View style={timelineStyles.header}>
-        <Text style={timelineStyles.headerTitle}>Tường nhà</Text>
-      </View>
-      <View style={timelineStyles.content}>
-        <Text style={timelineStyles.icon}>📋</Text>
-        <Text style={timelineStyles.title}>Tường nhà</Text>
-        <Text style={timelineStyles.subtitle}>Tính năng đang phát triển</Text>
-      </View>
-    </View>
-  );
-};
+// TimelinePlaceholder removed — using real TimelineScreen
 
 const MainTabNavigator: React.FC = () => {
   return (
@@ -131,7 +117,7 @@ const MainTabNavigator: React.FC = () => {
       />
       <Tab.Screen
         name="TimelineTab"
-        component={TimelinePlaceholder as any}
+        component={TimelineScreen as any}
         options={{
           tabBarIcon: ({ focused }) => (
             <TabBarIcon focused={focused} tab={TABS[3]} badgeCount={1} />
@@ -199,42 +185,6 @@ const styles = StyleSheet.create({
     ...typography.tabLabel,
     marginTop: 2,
     textAlign: 'center',
-  },
-});
-
-const timelineStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-  },
-  header: {
-    backgroundColor: TAB_BAR_BLUE,
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: spacing.md,
-    height: 56,
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    ...typography.h2,
-    color: colors.text.inverse,
-  },
-  content: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  icon: {
-    fontSize: 64,
-    marginBottom: spacing.lg,
-  },
-  title: {
-    ...typography.h2,
-    color: colors.text.primary,
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    ...typography.body,
-    color: colors.text.tertiary,
   },
 });
 
