@@ -20,6 +20,7 @@ interface MessageItem {
   file_url?: string | null;
   replyTo?: string | number | null;
   replyToMessage?: any;
+  storyReply?: any;
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
   isRevoked?: boolean;
@@ -91,6 +92,7 @@ export const useMessages = ({
         readBy: m.readBy,
         replyTo: m.replyTo ?? null,
         replyToMessage: m.replyToMessage ?? null,
+        storyReply: m.storyReply ?? null,
       };
     });
   }, [rawMessages, currentUserId, conversationId]);
@@ -136,6 +138,7 @@ export const useMessages = ({
         is_revoked: m.contentType === 'revoked' || (m.isRevoked ?? false),
         replyTo: m.replyTo ?? null,
         replyToMessage: m.replyToMessage ?? null,
+        storyReply: m.storyReply ?? null,
       }));
       dispatch(setMessages({ conversationId, messages: mapped }));
       console.log('[useMessages] Loaded', mapped.length, 'messages for', conversationId);
@@ -173,6 +176,7 @@ export const useMessages = ({
         status: 'sending',
         replyTo: (message as any).replyTo ?? null,
         replyToMessage: (message as any).replyToMessage ?? null,
+        storyReply: (message as any).storyReply ?? null,
       }));
       
       return tempId;

@@ -128,6 +128,13 @@ export interface BackendMessage {
     }> | null;
     file_url?: string | null;
   } | null;
+  storyReply?: {
+    storyId: string;
+    authorName: string;
+    type: 'image' | 'text';
+    text?: string;
+    mediaUrl?: string | null;
+  } | null;
   pollData?: PollData | null;
   reminderData?: {
     reminderId?: string;
