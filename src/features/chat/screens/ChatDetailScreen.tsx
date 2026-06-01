@@ -14,6 +14,7 @@ import {
   ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { shallowEqual } from 'react-redux';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -23,7 +24,7 @@ import { MessageBubble, TypingIndicator, ChatInput, PinnedHeader, MessageContext
 import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
 import { Icons, IconSize } from '@components/common';
 import { socketActions } from '@api/socket';
-import { messageApi, friendsApi } from '@api/endpoints';
+import { messageApi, friendsApi, botApi } from '@api/endpoints';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { confirmPendingMessage, failPendingMessage, setActiveConversation, setMessageFailed, setMessageRevoked, updateMessage, addMessage, deleteMessage, addDeletedForMeId } from '@store/slices/chatSlice';
 import type { ReplyToMessage } from '@store/slices/chatSlice';
@@ -36,6 +37,7 @@ const EMPTY_ARRAY: any[] = [];
 
 const HEADER_BLUE = '#008AF3';
 const CHAT_BG = '#F4F6F8';
+const BOT_PROMPT_REGEX = /^@(Trợ lý AI|BotAI|Bot)(?=\s|$|[,.!?:;-])[\s,:-]*(.+)$/iu;
 
 type SelectedMessage = {
   id: string | number;
@@ -165,6 +167,120 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const isNearBottomRef = useRef(true);
   const isInitializedRef = useRef(false);
   const prevMessagesLengthRef = useRef(0);
+
+  const extractBotPrompt = useCallback((text: string) => {
+    const trimmed = String(text || '').trim();
+    const match = trimmed.match(BOT_PROMPT_REGEX);
+    return match ? String(match[2] || '').trim() : '';
+  }, []);
+
+  const requestBotReply = useCallback(
+    async (prompt: string) => {
+      if (!currentUserId || !prompt) return;
+
+      try {
+        const result = await botApi.chat({
+          userId: String(currentUserId),
+          message: prompt,
+          conversationId,
+        });
+
+        const reminderMessage = result.toolCalls
+          ?.find((toolCall) => toolCall?.tool === 'createReminder' && toolCall?.ok && toolCall?.message)
+          ?.message;
+
+        if (reminderMessage) {
+          const reminderMessageId = String(reminderMessage.id ?? reminderMessage.messageId ?? '');
+          if (!reminderMessageId) return;
+
+          dispatch(addMessage({
+            id: reminderMessageId,
+            conversationId: reminderMessage.conversationId || conversationId,
+            senderId: String(reminderMessage.senderId || currentUserId),
+            senderName:
+              reminderMessage.senderDisplayName ||
+              reminderMessage.sender_name ||
+              currentUser?.display_name ||
+              currentUser?.username ||
+              'Bạn',
+            sender_name:
+              reminderMessage.senderDisplayName ||
+              reminderMessage.sender_name ||
+              currentUser?.display_name ||
+              currentUser?.username ||
+              'Bạn',
+            sender_avatar:
+              reminderMessage.senderAvatarUrl ??
+              reminderMessage.sender_avatar ??
+              currentUser?.avatar_url ??
+              null,
+            type: (reminderMessage.contentType ?? reminderMessage.type ?? 'reminder') as MessageItem['type'],
+            content: reminderMessage.content || '',
+            timestamp: reminderMessage.createdAt || reminderMessage.created_at || new Date().toISOString(),
+            createdAt: reminderMessage.createdAt || reminderMessage.created_at,
+            status: 'sent',
+          }));
+        }
+      } catch (err) {
+        console.error('[ChatDetail] BotAI request failed:', err);
+      }
+    },
+    [conversationId, currentUser, currentUserId, dispatch]
+  );
+
+  const handleSendLocation = useCallback(async () => {
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Quyền vị trí', 'Bạn cần cấp quyền vị trí để gửi vị trí hiện tại.');
+        return;
+      }
+
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const latitude = currentLocation.coords.latitude;
+      const longitude = currentLocation.coords.longitude;
+      const label = `📍 ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+
+      const result: any = await messageApi.sendLocation(
+        conversationId,
+        { lat: latitude, lng: longitude, label },
+        replyingMessage?.id ?? null,
+      );
+
+      dispatch(addMessage({
+        id: String(result.id ?? result.messageId ?? Date.now()),
+        conversationId: result.conversationId || conversationId,
+        senderId: String(result.senderId || currentUserId || ''),
+        senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+        sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+        sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+        type: (result.contentType || 'location') as any,
+        content: result.content || label,
+        file_url: null,
+        locationData: result.locationData ?? { lat: latitude, lng: longitude, label },
+        timestamp: result.createdAt || result.created_at || new Date().toISOString(),
+        createdAt: result.createdAt || result.created_at,
+        status: 'sent',
+        replyTo: result.replyTo ?? replyingMessage?.id ?? null,
+        replyToMessage: result.replyToMessage ?? replyingMessage ?? null,
+      }));
+
+      setReplyingMessage(null);
+
+      if (isNearBottomRef.current) {
+        setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+      }
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        'Không thể gửi vị trí hiện tại. Vui lòng thử lại.';
+      Alert.alert('Lỗi', message);
+    }
+  }, [conversationId, currentUser, currentUserId, dispatch, replyingMessage]);
 
   const { messages, isLoading, loadMessages, addOptimisticMessage } = useMessages({
     conversationId,
@@ -346,6 +462,8 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       });
       setReplyingMessage(null);
 
+      const botPrompt = extractBotPrompt(text);
+
       try {
         const result = await messageApi.sendMessage(conversationId, text, currentUserId || '', 'text', replySnapshot?.id ?? null);
         const realId = String(result.id ?? result.messageId ?? tempId);
@@ -367,13 +485,17 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         if (isNearBottomRef.current) {
           setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
         }
+
+        if (botPrompt) {
+          requestBotReply(botPrompt);
+        }
       } catch {
         dispatch(failPendingMessage(tempId));
         dispatch(setMessageFailed({ conversationId, messageId: tempId }));
         Alert.alert('Lỗi', 'Không thể gửi tin nhắn. Vui lòng thử lại.');
       }
     },
-    [conversationId, currentUserId, currentUser, dispatch, addOptimisticMessage, replyingMessage]
+    [conversationId, currentUserId, currentUser, dispatch, addOptimisticMessage, replyingMessage, extractBotPrompt, requestBotReply]
   );
 
   const handleCreatePoll = useCallback(
@@ -462,6 +584,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           replyToMessage={item.replyToMessage}
           storyReply={item.storyReply}
           pollData={item.pollData}
+          locationData={(item as any).locationData}
           currentUserId={currentUserId}
           onJumpToMessage={(messageId) => handleNavigateToMessage(String(messageId))}
           onLongPress={(msg) => {
@@ -713,6 +836,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             onCreatePoll={handleCreatePoll}
             onCreateReminder={() => navigation.navigate('CreateReminder', { conversationId, title })}
             onCreateNote={() => navigation.navigate('CreateNote', { conversationId, title })}
+            onSendLocation={handleSendLocation}
             replyingMessage={replyingMessage}
             onCancelReply={() => setReplyingMessage(null)}
             onJumpToReply={(messageId) => handleNavigateToMessage(String(messageId))}

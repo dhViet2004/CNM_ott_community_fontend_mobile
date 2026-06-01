@@ -11,6 +11,7 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
@@ -29,7 +30,7 @@ import {
 } from '@store/slices/chatSlice';
 import type { Message, ReplyToMessage } from '@store/slices/chatSlice';
 import { setGroupMembers } from '@store/slices/groupsSlice';
-import { messageApi, channelApi } from '@api/endpoints';
+import { messageApi, channelApi, botApi } from '@api/endpoints';
 import { socketActions } from '@api/socket';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
@@ -56,6 +57,7 @@ type SelectedMessage = {
 } | null;
 
 const ZALO_BLUE = '#008AF3';
+const BOT_PROMPT_REGEX = /^@(Trợ lý AI|BotAI|Bot)(?=\s|$|[,.!?:;-])[\s,:-]*(.+)$/iu;
 
 const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const { groupId, title } = route.params;
@@ -131,6 +133,120 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const flatListRef = useRef<FlatList>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  const extractBotPrompt = useCallback((text: string) => {
+    const trimmed = String(text || '').trim();
+    const match = trimmed.match(BOT_PROMPT_REGEX);
+    return match ? String(match[2] || '').trim() : '';
+  }, []);
+
+  const requestBotReply = useCallback(
+    async (prompt: string) => {
+      if (!currentUserId || !prompt) return;
+
+      try {
+        const result = await botApi.chat({
+          userId: String(currentUserId),
+          message: prompt,
+          conversationId,
+        });
+
+        const reminderMessage = result.toolCalls
+          ?.find((toolCall) => toolCall?.tool === 'createReminder' && toolCall?.ok && toolCall?.message)
+          ?.message;
+
+        if (reminderMessage) {
+          const reminderMessageId = String(reminderMessage.id ?? reminderMessage.messageId ?? '');
+          if (!reminderMessageId) return;
+
+          dispatch(addMessage({
+            id: reminderMessageId,
+            conversationId: reminderMessage.conversationId || conversationId,
+            senderId: String(reminderMessage.senderId || currentUserId),
+            senderName:
+              reminderMessage.senderDisplayName ||
+              reminderMessage.sender_name ||
+              currentUser?.display_name ||
+              currentUser?.username ||
+              'Bạn',
+            sender_name:
+              reminderMessage.senderDisplayName ||
+              reminderMessage.sender_name ||
+              currentUser?.display_name ||
+              currentUser?.username ||
+              'Bạn',
+            sender_avatar:
+              reminderMessage.senderAvatarUrl ??
+              reminderMessage.sender_avatar ??
+              currentUser?.avatar_url ??
+              null,
+            type: (reminderMessage.contentType ?? reminderMessage.type ?? 'reminder') as Message['type'],
+            content: reminderMessage.content || '',
+            timestamp: reminderMessage.createdAt || reminderMessage.created_at || new Date().toISOString(),
+            createdAt: reminderMessage.createdAt || reminderMessage.created_at,
+            status: 'sent',
+          }));
+        }
+      } catch (err) {
+        console.error('[GroupChat] BotAI request failed:', err);
+      }
+    },
+    [conversationId, currentUser, currentUserId, dispatch]
+  );
+
+  const handleSendLocation = useCallback(async () => {
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Quyền vị trí', 'Bạn cần cấp quyền vị trí để gửi vị trí hiện tại.');
+        return;
+      }
+
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const latitude = currentLocation.coords.latitude;
+      const longitude = currentLocation.coords.longitude;
+      const label = `📍 ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+
+      const result: any = await messageApi.sendLocation(
+        conversationId,
+        { lat: latitude, lng: longitude, label },
+        replyingMessage?.id ?? null,
+      );
+
+      dispatch(addMessage({
+        id: String(result.id ?? result.messageId ?? Date.now()),
+        conversationId: result.conversationId || conversationId,
+        senderId: String(result.senderId || currentUserId || ''),
+        senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+        sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+        sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+        type: (result.contentType || 'location') as any,
+        content: result.content || label,
+        file_url: null,
+        locationData: result.locationData ?? { lat: latitude, lng: longitude, label },
+        timestamp: result.createdAt || result.created_at || new Date().toISOString(),
+        createdAt: result.createdAt || result.created_at,
+        status: 'sent',
+        replyTo: result.replyTo ?? replyingMessage?.id ?? null,
+        replyToMessage: result.replyToMessage ?? replyingMessage ?? null,
+      }));
+
+      setReplyingMessage(null);
+
+      if (isNearBottomRef.current) {
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+      }
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        'Không thể gửi vị trí hiện tại. Vui lòng thử lại.';
+      Alert.alert('Lỗi', message);
+    }
+  }, [conversationId, currentUser, currentUserId, dispatch, replyingMessage]);
 
   const handleNavigateToMessage = useCallback((messageId: string) => {
     const index = messages.findIndex(m => String(m.id) === String(messageId));
@@ -221,6 +337,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           sender_avatar: senderAvatarUrl,
           content: m.content ?? '',
           pollData: m.pollData ?? null,
+          locationData: m.locationData ?? null,
           timestamp: m.createdAt ?? m.created_at ?? new Date().toISOString(),
           createdAt: m.createdAt ?? m.created_at,
           type: (m.contentType ?? m.type ?? 'text') as Message['type'],
@@ -315,6 +432,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
 
     const tempId = `temp_${Date.now()}`;
     const text = inputText.trim();
+    const botPrompt = extractBotPrompt(text);
     const replySnapshot = replyingMessage;
     setInputText('');
     setReplyingMessage(null);
@@ -362,6 +480,10 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           replyToMessage: result.replyToMessage ?? replySnapshot ?? null,
         })
       );
+
+      if (botPrompt) {
+        requestBotReply(botPrompt);
+      }
     } catch {
       dispatch(failPendingMessage(tempId));
     }
@@ -572,6 +694,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           isMe={isMe}
           type={messageType}
           file_url={item.file_url}
+          locationData={item.locationData}
           status={item.status}
           isDeleted={item.isDeleted}
           isRevoked={item.isRevoked}
@@ -735,6 +858,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
             onCreatePoll={handleCreatePoll}
             onCreateReminder={() => navigation.navigate('CreateReminder', { conversationId, title })}
             onCreateNote={() => navigation.navigate('CreateNote', { conversationId, title })}
+            onSendLocation={handleSendLocation}
             replyingMessage={replyingMessage}
             onCancelReply={() => setReplyingMessage(null)}
             onJumpToReply={(messageId) => handleNavigateToMessage(String(messageId))}

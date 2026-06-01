@@ -420,11 +420,24 @@ export const messageApi = {
 
   // POST /messages/file → { message, data }
   sendFileMessage: (conversationId: string, formData: FormData) =>
+      apiClient
+        .post<{ message: string; data: BackendMessage }>('/messages/file', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        .then((r) => r.data.data),
+
+  sendLocation: (
+    conversationId: string,
+    locationData: { lat: number; lng: number; label?: string },
+    replyTo?: string | number | null
+  ) =>
     apiClient
-      .post<{ message: string; data: BackendMessage }>('/messages/file', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      .post<BackendMessage>('/messages/location', {
+        conversationId,
+        locationData,
+        replyTo: replyTo || null,
       })
-      .then((r) => r.data.data),
+      .then((r) => r.data),
 
   // POST /messages/sticker → raw message
   sendSticker: (
@@ -627,13 +640,47 @@ export const callApi = {
 
 // Backend botController returns raw object (no wrapper)
 export const botApi = {
-  chat: (message: string, conversationId?: string) =>
-    apiClient
-      .post<{
-        reply: string;
-        conversation_id: string;
-        sources?: { title: string; content: string; score: number }[];
-      }>('/v1/bot/chat', { message, conversation_id: conversationId })
+  chat: (payload: {
+      userId: string;
+      message: string;
+      conversationId?: string;
+    }) =>
+      apiClient
+        .post<{
+          sender?: string;
+          content?: string;
+          reply: string;
+          status?: string;
+          conversationId?: string;
+          conversation_id?: string;
+          sources?: { title: string; content: string; score: number }[];
+          toolCalls?: Array<{
+            ok?: boolean;
+            tool?: string;
+            reminderId?: string;
+            remindAt?: string;
+            content?: string;
+            message?: {
+              id?: string | number;
+              messageId?: string | number;
+              conversationId?: string;
+              senderId?: string | number;
+              senderDisplayName?: string;
+              senderAvatarUrl?: string | null;
+              sender_name?: string;
+              sender_avatar?: string | null;
+              contentType?: string;
+              type?: string;
+              content?: string;
+              createdAt?: string;
+              created_at?: string;
+            };
+          }>;
+        }>('/v1/bot/chat', {
+          userId: payload.userId,
+          message: payload.message,
+          conversationId: payload.conversationId,
+        })
       .then((r) => r.data),
 };
 
