@@ -54,6 +54,7 @@ const getMessagePreview = (message?: any): string => {
   if (type === 'emoji') return message.content || '[Emoji]';
   if (type === 'reminder') return '[Nhắc hẹn]';
   if (type === 'reminder_due') return message.content || 'Đến giờ nhắc hẹn';
+  if (type === 'location') return '[Vị trí]';
 
   return message.content || '';
 };
@@ -212,7 +213,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const aiBotConversation: ChatConversation = {
     id: 'bot:ai',
     type: 'single',
-    name: 'AI Bot',
+    name: 'BotAI',
     lastMessage: 'Trợ lý thông minh, trả lời nhanh cho bạn',
     time: '',
     unreadCount: 0,

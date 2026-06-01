@@ -7,6 +7,7 @@ import {
   Image,
   Dimensions,
   Platform,
+  Linking,
 } from 'react-native';
 import ImageView from 'react-native-image-viewing';
 import { Video, ResizeMode } from 'expo-av';
@@ -127,10 +128,17 @@ interface MessageBubbleProps {
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice' | 'audio' | 'system' | 'poll' | 'reminder' | 'reminder_due' | 'note';
+  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice' | 'audio' | 'system' | 'poll' | 'reminder' | 'reminder_due' | 'note' | 'location';
   file_url?: string | null;
   pollData?: PollData | null;
   currentUserId?: string | number | null;
+  locationData?: {
+    lat: number;
+    lng: number;
+    label?: string | null;
+    isLive?: boolean;
+    liveUntil?: string | null;
+  } | null;
   replyToMessage?: ReplyToMessage | null;
   storyReply?: {
     storyId: string;
@@ -214,6 +222,83 @@ const formatReminderCardTime = (date: Date) => {
   const time = `${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
   if (sameDay) return `Hôm nay lúc ${time}`;
   return `${padDatePart(date.getDate())}/${padDatePart(date.getMonth() + 1)} lúc ${time}`;
+};
+
+const parseLocationFromContent = (content: string) => {
+  const match = String(content || '').match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  return {
+    lat: Number(match[1]),
+    lng: Number(match[2]),
+  };
+};
+
+const getStaticMapPreviewUrl = (lat: number, lng: number) =>
+  `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=15&size=600x300&markers=${lat},${lng},red-pushpin`;
+
+const LocationCard: React.FC<{
+  locationData?: {
+    lat: number;
+    lng: number;
+    label?: string | null;
+    isLive?: boolean;
+    liveUntil?: string | null;
+  } | null;
+  content: string;
+  isMe: boolean;
+  onLongPress?: () => void;
+}> = ({ locationData, content, isMe, onLongPress }) => {
+  const fallbackLocation = parseLocationFromContent(content);
+  const lat = locationData?.lat ?? fallbackLocation?.lat;
+  const lng = locationData?.lng ?? fallbackLocation?.lng;
+  const label = locationData?.label || content || 'Vị trí hiện tại';
+
+  if (typeof lat !== 'number' || typeof lng !== 'number') {
+    return null;
+  }
+
+  const mapUrl = getStaticMapPreviewUrl(lat, lng);
+
+  const handleOpenMap = async () => {
+    const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      // no-op
+    }
+  };
+
+  return (
+    <View style={[styles.locationWrapper, isMe ? styles.locationWrapperMe : styles.locationWrapperOther]}>
+      <TouchableOpacity
+        activeOpacity={0.88}
+        onLongPress={onLongPress}
+        onPress={handleOpenMap}
+        style={styles.locationCard}
+      >
+        <Image source={{ uri: mapUrl }} style={styles.locationPreview} resizeMode="cover" />
+        <View style={styles.locationOverlay}>
+          <View style={styles.locationPin}>
+            <Text style={styles.locationPinEmoji}>📍</Text>
+          </View>
+        </View>
+        <View style={styles.locationMeta}>
+          <Text style={styles.locationTitle} numberOfLines={1}>
+            Vị trí hiện tại
+          </Text>
+          <Text style={styles.locationLabel} numberOfLines={1}>
+            {label}
+          </Text>
+          <Text style={styles.locationCoords} numberOfLines={1}>
+            {lat.toFixed(6)}, {lng.toFixed(6)}
+          </Text>
+          <View style={styles.locationActionRow}>
+            <Text style={styles.locationActionText}>Mở bản đồ</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
 };
 
 const ReminderCard: React.FC<{
@@ -378,6 +463,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   onJumpToMessage,
   pollData,
   currentUserId,
+  locationData,
 }) => {
   const [isImageViewVisible, setIsImageViewVisible] = useState(false);
   const [replyReferenceBodyWidth, setReplyReferenceBodyWidth] = useState<number | undefined>();
@@ -457,6 +543,17 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
         isMe={isMe}
         senderName={senderName || defaultName}
         senderAvatar={senderAvatar}
+        onLongPress={handleLongPress}
+      />
+    );
+  }
+
+  if (type === 'location' || content?.startsWith('📍')) {
+    return (
+      <LocationCard
+        locationData={locationData}
+        content={content}
+        isMe={isMe}
         onLongPress={handleLongPress}
       />
     );
@@ -1361,6 +1458,77 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     color: '#90949D',
     fontWeight: '400',
+  },
+  locationWrapper: {
+    marginVertical: 6,
+    paddingHorizontal: spacing.md,
+  },
+  locationWrapperMe: {
+    alignItems: 'flex-end',
+  },
+  locationWrapperOther: {
+    alignItems: 'flex-start',
+  },
+  locationCard: {
+    width: Math.min(SCREEN_WIDTH * 0.72, 292),
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#DCE3EA',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  locationPreview: {
+    width: '100%',
+    height: 132,
+    backgroundColor: '#E8EEF4',
+  },
+  locationOverlay: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+  },
+  locationPin: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationPinEmoji: {
+    fontSize: 16,
+  },
+  locationMeta: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  locationTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#14213D',
+  },
+  locationLabel: {
+    fontSize: 13,
+    color: '#49566A',
+    marginTop: 4,
+  },
+  locationCoords: {
+    fontSize: 12,
+    color: '#7B8794',
+    marginTop: 4,
+  },
+  locationActionRow: {
+    marginTop: 10,
+  },
+  locationActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0B75F1',
   },
 
   // ── File Attachment ──────────────────────────────────────────────────

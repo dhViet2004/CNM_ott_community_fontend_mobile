@@ -24,6 +24,7 @@ type Props = RootStackScreenProps<'BotChat'>;
 
 const HEADER_BLUE = '#008AF3';
 const CHAT_BG = '#F4F6F8';
+const AI_GLOBAL_CONVERSATION_PREFIX = 'ai-global:';
 
 interface ChatMessage {
   id: string;
@@ -38,6 +39,9 @@ const BotChatScreen: React.FC<Props> = ({ navigation }) => {
   const inputRef = useRef<TextInput>(null);
 
   const currentUserId = useAppSelector((state) => state.auth?.user?.userId);
+  const aiConversationId = currentUserId
+    ? `${AI_GLOBAL_CONVERSATION_PREFIX}${currentUserId}`
+    : undefined;
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -98,6 +102,10 @@ const BotChatScreen: React.FC<Props> = ({ navigation }) => {
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text || isLoading) return;
+    if (!currentUserId) {
+      setError('Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.');
+      return;
+    }
 
     // Clear input and dismiss keyboard
     setInputText('');
@@ -117,13 +125,20 @@ const BotChatScreen: React.FC<Props> = ({ navigation }) => {
       setIsLoading(true);
 
       // Call bot API
-      const response = await botApi.chat(text);
+      const response = await botApi.chat({
+        userId: String(currentUserId),
+        message: text,
+        conversationId: aiConversationId,
+      });
 
       // Add bot response
       const botMessage: ChatMessage = {
         id: `${Date.now()}-bot`,
         role: 'assistant',
-        content: response.reply || 'Xin lỗi, tôi chưa có phản hồi.',
+        content:
+          response.reply ||
+          response.content ||
+          'Xin lỗi, tôi chưa có phản hồi.',
         timestamp: new Date(),
       };
       setMessages((prev) => [botMessage, ...prev]);
@@ -137,7 +152,7 @@ const BotChatScreen: React.FC<Props> = ({ navigation }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [inputText, isLoading]);
+  }, [aiConversationId, currentUserId, inputText, isLoading]);
 
   const formatTime = (date: Date): string => {
     return date.toLocaleTimeString('vi-VN', {
@@ -211,7 +226,7 @@ const BotChatScreen: React.FC<Props> = ({ navigation }) => {
           <Ionicons name="sparkles" size={32} color={colors.primary} />
         </View>
       </View>
-      <Text style={styles.emptyTitle}>AI Bot</Text>
+      <Text style={styles.emptyTitle}>BotAI</Text>
       <Text style={styles.emptySubtitle}>
         Bắt đầu cuộc trò chuyện với AI
       </Text>
@@ -240,7 +255,7 @@ const BotChatScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.headerCenter}>
             <View style={styles.headerTitleRow}>
               <Ionicons name="sparkles" size={18} color="#FFFFFF" />
-              <Text style={styles.headerTitle}> AI Bot</Text>
+              <Text style={styles.headerTitle}> BotAI</Text>
             </View>
           </View>
 

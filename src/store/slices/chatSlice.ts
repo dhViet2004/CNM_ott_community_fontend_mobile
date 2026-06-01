@@ -15,12 +15,19 @@ export interface Message {
   // Legacy field names (sender_name, sender_avatar) - từ socket/addMessage
   sender_name?: string;
   sender_avatar?: string | null;
-  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system' | 'poll' | 'reminder' | 'reminder_due' | 'note';
+  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system' | 'poll' | 'reminder' | 'reminder_due' | 'note' | 'location';
   content: string;
   pollData?: PollData | null;
   file_url?: string | null;
   file_name?: string | null;
   file_size?: number | null;
+  locationData?: {
+    lat: number;
+    lng: number;
+    label?: string | null;
+    isLive?: boolean;
+    liveUntil?: string | null;
+  } | null;
   // Backend field: createdAt, Legacy field: timestamp
   timestamp: string;
   createdAt?: string;

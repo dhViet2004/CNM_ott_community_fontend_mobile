@@ -15,9 +15,16 @@ interface MessageItem {
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'voice' | 'audio' | 'system' | 'poll' | 'reminder' | 'reminder_due';
+  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'voice' | 'audio' | 'system' | 'poll' | 'reminder' | 'reminder_due' | 'location';
   pollData?: PollData | null;
   file_url?: string | null;
+  locationData?: {
+    lat: number;
+    lng: number;
+    label?: string | null;
+    isLive?: boolean;
+    liveUntil?: string | null;
+  } | null;
   replyTo?: string | number | null;
   replyToMessage?: any;
   storyReply?: any;
@@ -86,6 +93,7 @@ export const useMessages = ({
         type: (m.contentType ?? m.type ?? 'text') as MessageItem['type'],
         pollData: m.pollData ?? null,
         file_url: m.file_url ?? m.attachments?.[0]?.url ?? null,
+        locationData: m.locationData ?? null,
         status: m.status || 'sent',
         isDeleted: m.is_revoked || m.isDeleted,
         isRevoked: m.is_revoked || m.isRevoked,
@@ -130,6 +138,7 @@ export const useMessages = ({
         content: m.content ?? '',
         // Lấy file_url từ attachments nếu không có field trực tiếp
         file_url: m.file_url ?? m.attachments?.[0]?.url ?? null,
+        locationData: m.locationData ?? null,
         file_name: m.file_name ?? null,
         file_size: m.file_size ?? null,
         timestamp: m.createdAt ?? m.created_at ?? new Date().toISOString(),
@@ -173,6 +182,7 @@ export const useMessages = ({
         file_size: null,
         pollData: message.pollData ?? null,
         timestamp: new Date().toISOString(),
+        locationData: (message as any).locationData ?? null,
         status: 'sending',
         replyTo: (message as any).replyTo ?? null,
         replyToMessage: (message as any).replyToMessage ?? null,

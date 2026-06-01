@@ -9,6 +9,9 @@ import { ImagePickerButton } from './ImagePickerButton';
 import CreatePollModal from './CreatePollModal';
 import type { PollData } from '@/types';
 
+const BOT_MENTION_LABEL = 'Trợ lý AI';
+const BOT_MENTION_INSERT = `@${BOT_MENTION_LABEL} `;
+
 interface ChatInputProps {
   value: string;
   onChangeText: (text: string) => void;
@@ -56,6 +59,7 @@ interface ChatInputProps {
   onCreatePoll?: (payload: { content: string; pollData: PollData }) => Promise<void>;
   onCreateReminder?: () => void;
   onCreateNote?: () => void;
+  onSendLocation?: () => void;
 }
 
 const getReplyContent = (message?: ChatInputProps['replyingMessage']) => {
@@ -85,12 +89,29 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onCreatePoll,
   onCreateReminder,
   onCreateNote,
+  onSendLocation,
 }) => {
   const canSend = value.trim().length > 0;
   const [toolsOpen, setToolsOpen] = useState(false);
   const [pollModalOpen, setPollModalOpen] = useState(false);
+  const mentionMatch = value.match(/(^|\s)@([^\s@]*)$/u);
+  const shouldShowBotMention = Boolean(mentionMatch);
+
+  const handleInsertBotMention = () => {
+    if (!mentionMatch) return;
+
+    const matchText = mentionMatch[0];
+    const replacementPrefix = matchText.startsWith(' ') ? ' ' : '';
+    const nextValue = `${value.slice(0, value.length - matchText.length)}${replacementPrefix}${BOT_MENTION_INSERT}`;
+    onChangeText(nextValue);
+  };
 
   const handleToolPress = (label: string) => {
+    if (label === 'Vị trí') {
+      setToolsOpen(false);
+      onSendLocation?.();
+      return;
+    }
     if (label === 'Bình chọn') {
       setToolsOpen(false);
       setPollModalOpen(true);
@@ -147,6 +168,23 @@ const ChatInput: React.FC<ChatInputProps> = ({
             <Text style={styles.replyText} numberOfLines={1}>
               {getReplyContent(replyingMessage)}
             </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      {shouldShowBotMention ? (
+        <View style={styles.mentionPopup}>
+          <TouchableOpacity
+            style={styles.mentionOption}
+            activeOpacity={0.8}
+            onPress={handleInsertBotMention}
+          >
+            <View style={styles.mentionAvatar}>
+              <Ionicons name="sparkles" size={16} color="#FFFFFF" />
+            </View>
+            <View style={styles.mentionMeta}>
+              <Text style={styles.mentionName}>{BOT_MENTION_LABEL}</Text>
+              <Text style={styles.mentionSubtext}>BotAI</Text>
+            </View>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -272,6 +310,47 @@ const styles = StyleSheet.create({
     borderTopColor: '#B2EBF2',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+  },
+  mentionPopup: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+    backgroundColor: colors.background.primary,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.light,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  mentionOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  mentionAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  mentionMeta: {
+    flex: 1,
+  },
+  mentionName: {
+    ...typography.body,
+    fontWeight: '700',
+    color: colors.text.primary,
+  },
+  mentionSubtext: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    marginTop: 1,
   },
   replyCancelBtn: {
     width: 30,
