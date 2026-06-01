@@ -1,218 +1,573 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
-  FlatList,
+  ScrollView,
   TextInput,
   TouchableOpacity,
   Text,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAppDispatch, useAppSelector } from '@store/hooks';
-import { addFriend } from '@store/slices/chatSlice';
-import { friendsApi, userApi } from '@api/endpoints';
+import { useAppSelector } from '@store/hooks';
+import { friendsApi, userApi, type QRInfoResponse } from '@api/endpoints';
 import { colors, spacing, typography } from '@theme';
-import { Avatar, Icons, IconSize } from '@components/common';
+import { Icons, IconSize } from '@components/common';
 import type { RootStackScreenProps } from '@navigation/types';
 
 type Props = RootStackScreenProps<'ContactsList'>;
 
+const QR_GRADIENT_BG = '#4A688A';
+
 const ContactsListScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const dispatch = useAppDispatch();
+  const authUser = useAppSelector((state) => state.auth.user);
   const friends = useAppSelector((state) => state.chat.friends);
-  const [searchQuery, setSearchQuery] = useState('');
+
+  const [countryCode, setCountryCode] = useState('+84');
+  const [phoneInput, setPhoneInput] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [qrInfo, setQrInfo] = useState<QRInfoResponse | null>(null);
+  const [isLoadingQR, setIsLoadingQR] = useState(false);
+  const [qrLoadFailed, setQrLoadFailed] = useState(false);
 
-  const handleSearch = useCallback(async (query: string) => {
-    setSearchQuery(query);
-    if (query.trim().length < 2) {
-      setSearchResults([]);
+  const userId = String(authUser?.userId ?? authUser?.id ?? '');
+  const displayName = authUser?.display_name ?? authUser?.username ?? 'Người dùng';
+
+  const loadMyQR = useCallback(async () => {
+    if (!userId) return;
+    setIsLoadingQR(true);
+    setQrLoadFailed(false);
+    try {
+      const info = await friendsApi.getQRInfo(userId);
+      setQrInfo(info);
+    } catch {
+      setQrInfo(null);
+      setQrLoadFailed(true);
+    } finally {
+      setIsLoadingQR(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    loadMyQR();
+  }, [loadMyQR]);
+
+  const handlePhoneSearch = useCallback(async () => {
+    // Chuẩn hóa: bỏ tất cả ký tự không phải số (giống web: digitsOnly)
+    const query = phoneInput.replace(/\D/g, '');
+    if (!query || query.length < 8) {
+      Alert.alert('Thông báo', 'Vui lòng nhập số điện thoại hợp lệ.');
       return;
     }
     setIsSearching(true);
     try {
-      const results = await userApi.searchUsers(query.trim());
-      const filtered = results.filter(
-        (u) => !friends.find((f) => (f.friend_id || f.userId) === u.userId)
+      // Gọi GET /users/ để lấy toàn bộ user, filter phía client (giống web)
+      const allUsers = await userApi.searchUsers('');
+      const myId = authUser?.id;
+      const found = allUsers.find((u: any) => {
+        if (myId && String(u.userId ?? u.id) === String(myId)) return false;
+        const phone = (u.phone_number || '').replace(/\D/g, '');
+        if (!phone) return false;
+        // Logic khớp giống web: endsWith, includes ở cả 2 chiều
+        return (
+          phone.endsWith(query) ||
+          query.endsWith(phone) ||
+          phone.includes(query) ||
+          query.includes(phone)
+        );
+      });
+      if (!found) {
+        Alert.alert('Kết quả', 'Không tìm thấy người dùng với số điện thoại này.');
+        return;
+      }
+      const isAlreadyFriend = friends.some(
+        (f) => (f.friend_id || f.userId) === (found.userId ?? found.id)
       );
-      setSearchResults(filtered);
+      if (isAlreadyFriend) {
+        Alert.alert('Thông báo', 'Người này đã là bạn của bạn.');
+        return;
+      }
+      setSearchResults([found]);
     } catch {
-      setSearchResults([]);
+      Alert.alert('Lỗi', 'Không thể tìm kiếm. Vui lòng thử lại.');
     } finally {
       setIsSearching(false);
     }
-  }, [friends]);
+  }, [phoneInput, friends, authUser]);
 
-  const handleSendRequest = useCallback(async (userId: string, name: string) => {
-    try {
-      await friendsApi.sendRequest(userId);
-      Alert.alert('Thành công', `Đã gửi lời mời kết bạn đến ${name}`);
-    } catch (err: any) {
-      Alert.alert(
-        'Lỗi',
-        err?.response?.data?.message || 'Không thể gửi lời mời'
-      );
-    }
-  }, []);
-
-  const renderUserItem = ({ item }: { item: any }) => (
-    <View style={styles.userItem}>
-      <TouchableOpacity
-        style={styles.userInfo}
-        onPress={() => navigation.navigate('UserProfile', { userId: item.userId })}
-        activeOpacity={0.7}
-      >
-        <Avatar
-          name={item.display_name || item.username}
-          uri={item.avatar_url || undefined}
-          size="md"
-        />
-        <View style={styles.userText}>
-          <Text style={styles.userName}>{item.display_name || item.username}</Text>
-          <Text style={styles.userUsername}>@{item.username}</Text>
-        </View>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.addBtn}
-        onPress={() => handleSendRequest(item.userId, item.display_name || item.username)}
-      >
-        <Text style={styles.addBtnText}>Kết bạn</Text>
-      </TouchableOpacity>
-    </View>
+  const handleSendRequest = useCallback(
+    async (targetUserId: string, name: string) => {
+      try {
+        await friendsApi.sendRequest(targetUserId);
+        Alert.alert('Thành công', `Đã gửi lời mời kết bạn đến ${name}`);
+        setSearchResults((prev) => prev.filter((u) => u.userId !== targetUserId));
+      } catch (err: any) {
+        Alert.alert(
+          'Lỗi',
+          err?.response?.data?.message || 'Không thể gửi lời mời kết bạn.'
+        );
+      }
+    },
+    []
   );
 
   return (
     <View style={styles.container}>
+      {/* ── Header ─────────────────────────────────────────────────── */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backBtn}
+          activeOpacity={0.7}
         >
-          <View style={styles.backIconContainer}>
-            {Icons.arrowBack(IconSize.lg)}
-          </View>
+          {Icons.arrowBack(IconSize.lg, colors.text.primary)}
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Thêm bạn</Text>
-        <View style={{ width: 36 }} />
+        <TouchableOpacity
+          onPress={() => navigation.navigate('QRCodeFriend')}
+          style={styles.backBtn}
+          activeOpacity={0.7}
+        >
+          {Icons.qrCodeScanner(IconSize.lg, colors.primary)}
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
-          <View style={styles.searchIconContainer}>
-            {Icons.search(IconSize.sm)}
-          </View>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Tìm theo tên hoặc số điện thoại"
-            placeholderTextColor={colors.text.placeholder}
-            value={searchQuery}
-            onChangeText={handleSearch}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => handleSearch('')}>
-              <View style={styles.clearIconContainer}>
-                {Icons.close(IconSize.sm)}
-              </View>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      <FlatList
-        data={searchResults}
-        keyExtractor={(item) => item.userId}
-        renderItem={renderUserItem}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconContainer}>
-              {Icons.search(64)}
-            </View>
-            <Text style={styles.emptyText}>
-              {isSearching
-                ? 'Đang tìm kiếm...'
-                : searchQuery.length > 0
-                ? 'Không tìm thấy người dùng'
-                : 'Nhập tên hoặc số điện thoại để tìm bạn'}
-            </Text>
-          </View>
-        }
+      <ScrollView
+        style={styles.scroll}
         contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
-      />
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* ── QR Card ───────────────────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.qrSection}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('QRCodeFriend')}
+        >
+          <View style={[styles.qrCard, { backgroundColor: QR_GRADIENT_BG }]}>
+            <Text style={styles.qrUserName}>{displayName}</Text>
+            <View style={styles.qrPlaceholder}>
+              {isLoadingQR ? (
+                <View style={styles.qrStateBox}>
+                  <ActivityIndicator size="large" color="#FFFFFF" />
+                </View>
+              ) : qrInfo?.qrData ? (
+                <View style={styles.qrCodeBox}>
+                  <QRCode value={qrInfo.qrData} size={132} quietZone={4} />
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.qrStateBox}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    loadMyQR();
+                  }}
+                  activeOpacity={0.75}
+                >
+                  {Icons.refresh(IconSize.xl, '#FFFFFF')}
+                  <Text style={styles.qrRetryText}>
+                    {qrLoadFailed ? 'Thử lại' : 'Tải mã QR'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <Text style={styles.qrHint}>Quét mã để thêm bạn Zalo với tôi</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* ── Phone Input Section ───────────────────────────────────── */}
+        <View style={styles.phoneSection}>
+          <Text style={styles.phoneSectionLabel}>Thêm bạn theo số điện thoại</Text>
+          <View style={styles.phoneInputRow}>
+            {/* Country code selector */}
+            <TouchableOpacity
+              style={styles.countryCodeBtn}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.countryCodeText}>{countryCode}</Text>
+              {Icons.chevronDown(IconSize.sm, colors.text.secondary)}
+            </TouchableOpacity>
+
+            {/* Phone number input */}
+            <TextInput
+              style={styles.phoneInput}
+              placeholder="Nhập số điện thoại"
+              placeholderTextColor={colors.text.placeholder}
+              value={phoneInput}
+              onChangeText={setPhoneInput}
+              keyboardType="phone-pad"
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
+
+            {/* Search arrow button */}
+            <TouchableOpacity
+              style={[
+                styles.phoneSearchBtn,
+                phoneInput.length > 0 && styles.phoneSearchBtnActive,
+              ]}
+              onPress={handlePhoneSearch}
+              activeOpacity={0.7}
+              disabled={isSearching}
+            >
+              {Icons.arrowForward(
+                IconSize.md,
+                phoneInput.length > 0 ? colors.text.inverse : colors.text.tertiary
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── Search Results ─────────────────────────────────────────── */}
+        {searchResults.length > 0 && (
+          <View style={styles.resultsSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Kết quả tìm kiếm</Text>
+            </View>
+            {searchResults.map((user, index) => (
+              <View key={String(user.userId || user.id || `search-${index}`)} style={styles.resultItem}>
+                <TouchableOpacity
+                  style={styles.resultInfo}
+                  onPress={() =>
+                    navigation.navigate('UserProfile', { userId: user.userId })
+                  }
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.resultAvatar}>
+                    <Text style={styles.resultAvatarText}>
+                      {(user.display_name || user.username || '?')[0].toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.resultText}>
+                    <Text style={styles.resultName}>
+                      {user.display_name || user.username}
+                    </Text>
+                    {user.username && (
+                      <Text style={styles.resultUsername}>@{user.username}</Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.resultAddBtn}
+                  onPress={() =>
+                    handleSendRequest(
+                      user.userId,
+                      user.display_name || user.username || ''
+                    )
+                  }
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.resultAddBtnText}>Kết bạn</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* ── Action List ────────────────────────────────────────────── */}
+        <View style={styles.optionsSection}>
+          {/* QR Scanner */}
+          <TouchableOpacity
+            style={styles.optionItem}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('QRCodeFriend')}
+          >
+            <View style={styles.optionLeft}>
+              <View style={[styles.optionIconBox, { backgroundColor: '#E8F4FD' }]}>
+                {Icons.qrCodeScanner(IconSize.md, colors.primary)}
+              </View>
+              <Text style={styles.optionText}>Quét mã QR</Text>
+            </View>
+            {Icons.chevronRight(IconSize.md, colors.text.tertiary)}
+          </TouchableOpacity>
+
+          <View style={styles.optionDivider} />
+
+          {/* People you may know */}
+          <TouchableOpacity
+            style={styles.optionItem}
+            activeOpacity={0.7}
+            onPress={() => Alert.alert('Thông báo', 'Tính năng gợi ý bạn bè đang được phát triển.')}
+          >
+            <View style={styles.optionLeft}>
+              <View style={[styles.optionIconBox, { backgroundColor: '#FFF3E0' }]}>
+                {Icons.personAdd(IconSize.md, '#E65100')}
+              </View>
+              <Text style={styles.optionText}>Bạn bè có thể quen</Text>
+            </View>
+            {Icons.chevronRight(IconSize.md, colors.text.tertiary)}
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Footer Hint ────────────────────────────────────────────── */}
+        <View style={styles.footerHint}>
+          <Text style={styles.footerHintText}>
+            Xem lời mời kết bạn đã gửi tại trang Danh bạ Zalo
+          </Text>
+        </View>
+      </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background.primary },
+  container: {
+    flex: 1,
+    backgroundColor: colors.background.secondary,
+  },
+
+  // ── Header ────────────────────────────────────────────────────────────────
   header: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.background.primary,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.screenPadding,
     paddingBottom: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.light,
   },
-  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  backIconContainer: {
+  backBtn: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backText: { fontSize: 22, color: colors.text.inverse, fontWeight: '300' },
-  headerTitle: { flex: 1, ...typography.h3, color: colors.text.inverse, textAlign: 'center' },
-  searchContainer: { padding: spacing.md, backgroundColor: colors.background.primary },
-  searchBar: {
+  headerTitle: {
+    flex: 1,
+    ...typography.h3,
+    color: colors.text.primary,
+    textAlign: 'center',
+  },
+
+  // ── Scroll ─────────────────────────────────────────────────────────────────
+  scroll: {
+    flex: 1,
+  },
+
+  // ── QR Card ────────────────────────────────────────────────────────────────
+  qrSection: {
+    padding: spacing.screenPadding,
+  },
+  qrCard: {
+    borderRadius: 24,
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  qrUserName: {
+    ...typography.subtitle,
+    fontWeight: '600',
+    color: colors.text.inverse,
+    marginBottom: spacing.lg,
+  },
+  qrPlaceholder: {
+    width: 160,
+    height: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  qrCodeBox: {
+    width: 148,
+    height: 148,
+    borderRadius: spacing.borderRadius.md,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+  },
+  qrStateBox: {
+    width: 148,
+    height: 148,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderRadius: spacing.borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  qrRetryText: {
+    ...typography.caption,
+    color: colors.text.inverse,
+    fontWeight: '700',
+  },
+  qrHint: {
+    ...typography.caption,
+    color: 'rgba(255,255,255,0.65)',
+    textAlign: 'center',
+  },
+
+  // ── Phone Section ──────────────────────────────────────────────────────────
+  phoneSection: {
+    backgroundColor: colors.background.primary,
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  phoneSectionLabel: {
+    ...typography.bodySmall,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
+    fontWeight: '500',
+  },
+  phoneInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background.secondary,
-    borderRadius: spacing.borderRadius.lg,
+    gap: spacing.sm,
+  },
+  countryCodeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
-    height: 42,
+    paddingVertical: spacing.sm,
+    borderRadius: spacing.borderRadius.md,
+    backgroundColor: colors.background.secondary,
+    gap: 4,
   },
-  searchIconContainer: {
-    marginRight: spacing.sm,
-    opacity: 0.6,
+  countryCodeText: {
+    ...typography.body,
+    color: colors.text.primary,
+    fontWeight: '500',
   },
-  searchIcon: { fontSize: 16, marginRight: spacing.sm },
-  searchInput: { flex: 1, ...typography.body, color: colors.text.primary, paddingVertical: 0 },
-  clearIconContainer: {
-    opacity: 0.6,
+  phoneInput: {
+    flex: 1,
+    height: 44,
+    backgroundColor: colors.background.secondary,
+    borderRadius: spacing.borderRadius.md,
+    paddingHorizontal: spacing.md,
+    ...typography.body,
+    color: colors.text.primary,
   },
-  clearIcon: { fontSize: 14, color: colors.text.tertiary },
-  userItem: {
+  phoneSearchBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.background.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phoneSearchBtnActive: {
+    backgroundColor: colors.primary,
+  },
+
+  // ── Search Results ──────────────────────────────────────────────────────────
+  resultsSection: {
+    marginTop: spacing.md,
+  },
+  sectionHeader: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.background.secondary,
+  },
+  sectionTitle: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  resultItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.screenPadding,
     paddingVertical: spacing.listItemPadding,
     backgroundColor: colors.background.primary,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.light,
   },
-  userInfo: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  userText: { marginLeft: spacing.md, flex: 1 },
-  userName: { ...typography.subtitle, color: colors.text.primary },
-  userUsername: { ...typography.caption, color: colors.text.tertiary },
-  addBtn: {
+  resultInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  resultAvatar: {
+    width: spacing.iconSize.avatar,
+    height: spacing.iconSize.avatar,
+    borderRadius: spacing.iconSize.avatar / 2,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resultAvatarText: {
+    ...typography.subtitle,
+    color: colors.text.inverse,
+    fontWeight: '700',
+  },
+  resultText: {
+    marginLeft: spacing.md,
+    flex: 1,
+  },
+  resultName: {
+    ...typography.subtitle,
+    color: colors.text.primary,
+  },
+  resultUsername: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    marginTop: 2,
+  },
+  resultAddBtn: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     backgroundColor: colors.primary,
     borderRadius: spacing.borderRadius.md,
   },
-  addBtnText: { ...typography.caption, color: colors.text.inverse, fontWeight: '600' },
-  separator: {
-    height: 0,
+  resultAddBtnText: {
+    ...typography.caption,
+    color: colors.text.inverse,
+    fontWeight: '600',
+  },
+
+  // ── Options ────────────────────────────────────────────────────────────────
+  optionsSection: {
+    marginTop: spacing.md,
+    backgroundColor: colors.background.primary,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.screenPadding,
+    paddingVertical: spacing.listItemPadding,
+    backgroundColor: colors.background.primary,
+  },
+  optionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  optionIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  optionText: {
+    ...typography.subtitle,
+    color: colors.text.primary,
+  },
+  optionDivider: {
+    height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border.light,
-    marginLeft: spacing.screenPadding + spacing.iconSize.avatar + spacing.md,
+    marginLeft: spacing.screenPadding + 36 + spacing.md,
   },
-  emptyContainer: { alignItems: 'center', paddingTop: 80 },
-  emptyIconContainer: {
-    marginBottom: spacing.lg,
-    opacity: 0.4,
+
+  // ── Footer Hint ────────────────────────────────────────────────────────────
+  footerHint: {
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
   },
-  emptyIcon: { fontSize: 48, marginBottom: spacing.lg },
-  emptyText: { ...typography.body, color: colors.text.tertiary, textAlign: 'center', paddingHorizontal: spacing.xl },
+  footerHintText: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
 });
 
 export default ContactsListScreen;

@@ -11,6 +11,7 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
@@ -18,6 +19,7 @@ import { store } from '@store/store';
 import {
   setMessages,
   addMessage,
+  setActiveConversation,
   setLoadingMessages,
   confirmPendingMessage,
   failPendingMessage,
@@ -25,10 +27,10 @@ import {
   updateMessage,
   deleteMessage,
   addDeletedForMeId,
-  Message,
 } from '@store/slices/chatSlice';
+import type { Message, ReplyToMessage } from '@store/slices/chatSlice';
 import { setGroupMembers } from '@store/slices/groupsSlice';
-import { messageApi, channelApi, callApi } from '@api/endpoints';
+import { messageApi, channelApi, callApi, botApi } from '@api/endpoints';
 import { socketActions } from '@api/socket';
 import { setGroupCallCredentials, setGroupStatus } from '@store/slices/groupCallSlice';
 import { colors, spacing, typography } from '@theme';
@@ -38,6 +40,7 @@ import PinnedHeader from '@features/chat/components/PinnedHeader';
 import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
 import { MessageContextMenu, ChatInput, ForwardMessageModal } from '@features/chat/components';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
+import type { PollData } from '@/types';
 import { getGroupMembers } from '../api';
 
 type Props = RootStackScreenProps<'GroupChat'>;
@@ -55,6 +58,7 @@ type SelectedMessage = {
 } | null;
 
 const ZALO_BLUE = '#008AF3';
+const BOT_PROMPT_REGEX = /^@(Trợ lý AI|BotAI|Bot)(?=\s|$|[,.!?:;-])[\s,:-]*(.+)$/iu;
 
 const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const { groupId, title } = route.params;
@@ -63,6 +67,13 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const conversationId = String(groupId);
   const pinnedMessages = useAppSelector((state) => state.chat.pinnedMessages[conversationId] || EMPTY_ARRAY);
+
+  useEffect(() => {
+    dispatch(setActiveConversation(conversationId));
+    return () => {
+      dispatch(setActiveConversation(null));
+    };
+  }, [conversationId, dispatch]);
 
   const handlePinMessage = useCallback((msg: Message) => {
     const pinData = {
@@ -103,23 +114,13 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     (state) => state.chat.messages[conversationId] ?? EMPTY_MESSAGES
   );
 
-  const handleNavigateToMessage = useCallback((messageId: string) => {
-    const index = messages.findIndex(m => String(m.id) === String(messageId));
-    if (index !== -1) {
-      navigation.setParams({ focusedMessageId: String(messageId) } as any);
-      flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
-
-      setTimeout(() => {
-        navigation.setParams({ focusedMessageId: undefined } as any);
-      }, 3000);
-    }
-  }, [messages, navigation]);
 
   const currentUserId = useAppSelector((state) => state.auth.user?.userId);
   const currentUser = useAppSelector((state) => state.auth.user);
   const isLoadingMessages = useAppSelector((state) => state.chat.isLoadingMessages);
 
   const [inputText, setInputText] = useState('');
+  const [replyingMessage, setReplyingMessage] = useState<ReplyToMessage | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [defaultChannelId, setDefaultChannelId] = useState<string | null>(null);
@@ -129,6 +130,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     messageId: string;
     content: string;
   } | null>(null);
+  const [isPinnedExpanded, setIsPinnedExpanded] = useState(false);
   const selectedMessageRef = useRef<SelectedMessage>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -233,6 +235,131 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       Alert.alert('Lỗi', err?.message || 'Không thể tham gia lại cuộc gọi');
     }
   }, [dispatch, navigation, title]);
+  const extractBotPrompt = useCallback((text: string) => {
+    const trimmed = String(text || '').trim();
+    const match = trimmed.match(BOT_PROMPT_REGEX);
+    return match ? String(match[2] || '').trim() : '';
+  }, []);
+
+  const requestBotReply = useCallback(
+    async (prompt: string) => {
+      if (!currentUserId || !prompt) return;
+
+      try {
+        const result = await botApi.chat({
+          userId: String(currentUserId),
+          message: prompt,
+          conversationId,
+        });
+
+        const reminderMessage = result.toolCalls
+          ?.find((toolCall) => toolCall?.tool === 'createReminder' && toolCall?.ok && toolCall?.message)
+          ?.message;
+
+        if (reminderMessage) {
+          const reminderMessageId = String(reminderMessage.id ?? reminderMessage.messageId ?? '');
+          if (!reminderMessageId) return;
+
+          dispatch(addMessage({
+            id: reminderMessageId,
+            conversationId: reminderMessage.conversationId || conversationId,
+            senderId: String(reminderMessage.senderId || currentUserId),
+            senderName:
+              reminderMessage.senderDisplayName ||
+              reminderMessage.sender_name ||
+              currentUser?.display_name ||
+              currentUser?.username ||
+              'Bạn',
+            sender_name:
+              reminderMessage.senderDisplayName ||
+              reminderMessage.sender_name ||
+              currentUser?.display_name ||
+              currentUser?.username ||
+              'Bạn',
+            sender_avatar:
+              reminderMessage.senderAvatarUrl ??
+              reminderMessage.sender_avatar ??
+              currentUser?.avatar_url ??
+              null,
+            type: (reminderMessage.contentType ?? reminderMessage.type ?? 'reminder') as Message['type'],
+            content: reminderMessage.content || '',
+            timestamp: reminderMessage.createdAt || reminderMessage.created_at || new Date().toISOString(),
+            createdAt: reminderMessage.createdAt || reminderMessage.created_at,
+            status: 'sent',
+          }));
+        }
+      } catch (err) {
+        console.error('[GroupChat] BotAI request failed:', err);
+      }
+    },
+    [conversationId, currentUser, currentUserId, dispatch]
+  );
+
+  const handleSendLocation = useCallback(async () => {
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Quyền vị trí', 'Bạn cần cấp quyền vị trí để gửi vị trí hiện tại.');
+        return;
+      }
+
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const latitude = currentLocation.coords.latitude;
+      const longitude = currentLocation.coords.longitude;
+      const label = `📍 ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+
+      const result: any = await messageApi.sendLocation(
+        conversationId,
+        { lat: latitude, lng: longitude, label },
+        replyingMessage?.id ?? null,
+      );
+
+      dispatch(addMessage({
+        id: String(result.id ?? result.messageId ?? Date.now()),
+        conversationId: result.conversationId || conversationId,
+        senderId: String(result.senderId || currentUserId || ''),
+        senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+        sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+        sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+        type: (result.contentType || 'location') as any,
+        content: result.content || label,
+        file_url: null,
+        locationData: result.locationData ?? { lat: latitude, lng: longitude, label },
+        timestamp: result.createdAt || result.created_at || new Date().toISOString(),
+        createdAt: result.createdAt || result.created_at,
+        status: 'sent',
+        replyTo: result.replyTo ?? replyingMessage?.id ?? null,
+        replyToMessage: result.replyToMessage ?? replyingMessage ?? null,
+      }));
+
+      setReplyingMessage(null);
+
+      if (isNearBottomRef.current) {
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+      }
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        'Không thể gửi vị trí hiện tại. Vui lòng thử lại.';
+      Alert.alert('Lỗi', message);
+    }
+  }, [conversationId, currentUser, currentUserId, dispatch, replyingMessage]);
+
+  const handleNavigateToMessage = useCallback((messageId: string) => {
+    const index = messages.findIndex(m => String(m.id) === String(messageId));
+    if (index !== -1) {
+      navigation.setParams({ focusedMessageId: String(messageId) } as any);
+      flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+
+      setTimeout(() => {
+        navigation.setParams({ focusedMessageId: undefined } as any);
+      }, 3000);
+    }
+  }, [messages, navigation]);
 
   // Keep ref in sync with state — so callbacks always read latest value
   useEffect(() => {
@@ -310,6 +437,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           sender_name: senderDisplayName,
           sender_avatar: senderAvatarUrl,
           content: m.content ?? '',
+          pollData: m.pollData ?? null,
+          locationData: m.locationData ?? null,
           timestamp: m.createdAt ?? m.created_at ?? new Date().toISOString(),
           createdAt: m.createdAt ?? m.created_at,
           type: (m.contentType ?? m.type ?? 'text') as Message['type'],
@@ -318,6 +447,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           isRevoked: m.contentType === 'revoked' || m.is_revoked || m.isRevoked || false,
           is_revoked: m.contentType === 'revoked' || m.is_revoked || m.isRevoked || false,
           isDeleted: m.isDeleted || false,
+          replyTo: m.replyTo ?? null,
+          replyToMessage: m.replyToMessage ?? null,
         };
       });
       dispatch(setMessages({ conversationId, messages: mapped as Message[] }));
@@ -402,7 +533,10 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
 
     const tempId = `temp_${Date.now()}`;
     const text = inputText.trim();
+    const botPrompt = extractBotPrompt(text);
+    const replySnapshot = replyingMessage;
     setInputText('');
+    setReplyingMessage(null);
     socketActions.sendStopTyping(conversationId);
     setIsTyping(false);
 
@@ -418,6 +552,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       timestamp: new Date().toISOString(),
       type: 'text',
       status: 'sending',
+      replyTo: replySnapshot?.id ?? null,
+      replyToMessage: replySnapshot,
     };
     dispatch(addMessage(optimisticMsg));
 
@@ -427,7 +563,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     }
 
     try {
-      const result = await messageApi.sendMessage(conversationId, text, currentUserId || '');
+      const result = await messageApi.sendMessage(conversationId, text, currentUserId || '', 'text', replySnapshot?.id ?? null);
       const realId = String(result.id ?? result.messageId ?? tempId);
 
       dispatch(
@@ -441,12 +577,66 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           content: result.content ?? '',
           type: (result.contentType ?? (result as any).type ?? 'text') as Message['type'],
           file_url: result.file_url ?? (result as any).attachments?.[0]?.url ?? null,
+          replyTo: result.replyTo ?? replySnapshot?.id ?? null,
+          replyToMessage: result.replyToMessage ?? replySnapshot ?? null,
         })
       );
+
+      if (botPrompt) {
+        requestBotReply(botPrompt);
+      }
     } catch {
       dispatch(failPendingMessage(tempId));
     }
   };
+
+  const handleCreatePoll = useCallback(
+    async (pollPayload: { content: string; pollData: PollData }) => {
+      try {
+        const result: any = await new Promise((resolve) => {
+          socketActions.sendMessage(
+            conversationId,
+            pollPayload.content,
+            'poll',
+            pollPayload.pollData,
+            resolve
+          );
+        });
+
+        if (result?.ok === false) {
+          throw new Error(result.error || 'Không thể tạo bình chọn');
+        }
+
+        const sentMessage = result?.message || result;
+
+        dispatch(addMessage({
+          id: String(sentMessage.id || sentMessage.messageId || Date.now()),
+          conversationId: sentMessage.conversationId || conversationId,
+          senderId: String(sentMessage.senderId || currentUserId),
+          senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+          sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+          sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+          type: 'poll',
+          content: sentMessage.content || pollPayload.content,
+          pollData: sentMessage.pollData || pollPayload.pollData,
+          file_url: null,
+          file_name: null,
+          file_size: null,
+          timestamp: sentMessage.createdAt || sentMessage.created_at || new Date().toISOString(),
+          status: 'sent',
+        }));
+
+        if (isNearBottomRef.current) {
+          setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+        }
+      } catch (err) {
+        console.error('[GroupChat] Error creating poll:', err);
+        Alert.alert('Lỗi', 'Không thể tạo bình chọn. Vui lòng thử lại.');
+        throw err;
+      }
+    },
+    [conversationId, currentUserId, currentUser, dispatch]
+  );
 
 
   // ─── Context Menu callbacks (hoisted to top level — Rules of Hooks) ──────────
@@ -487,6 +677,20 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const handleCopy = useCallback(() => {
     const msg = selectedMessageRef.current;
     if (msg) Alert.alert('Sao chép', msg.content);
+  }, []);
+
+  const handleReplyToMessage = useCallback(() => {
+    const msg = selectedMessageRef.current;
+    if (!msg) return;
+    setReplyingMessage({
+      id: msg.id,
+      content: msg.content || '',
+      contentType: msg.type,
+      senderId: msg.senderId,
+      senderDisplayName: msg.senderName || null,
+      senderAvatarUrl: msg.senderAvatar || null,
+    });
+    setSelectedMessage(null);
   }, []);
 
   const handlePin = useCallback(() => {
@@ -582,6 +786,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       return (
         <MessageBubble
           id={item.id}
+          conversationId={conversationId}
           senderId={item.senderId}
           senderName={senderName}
           senderAvatar={senderAvatar}
@@ -590,17 +795,22 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           isMe={isMe}
           type={messageType}
           file_url={item.file_url}
+          locationData={item.locationData}
           status={item.status}
           isDeleted={item.isDeleted}
           isRevoked={item.isRevoked}
           defaultName={title}
           isFocused={isFocused}
+          replyToMessage={item.replyToMessage}
+          pollData={item.pollData}
+          currentUserId={currentUserId}
+          onJumpToMessage={(messageId) => handleNavigateToMessage(String(messageId))}
           onLongPress={setSelectedMessage}
           readBy={item.readBy}
         />
       );
     },
-    [title, currentUserId, route.params]
+    [title, currentUserId, route.params, handleNavigateToMessage]
   );
 
   const keyExtractor = useCallback((item: Message) => String(item.id), []);
@@ -701,6 +911,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       >
         <PinnedHeader
           pinnedMessages={pinnedMessages}
+          isExpanded={isPinnedExpanded}
+          onToggle={setIsPinnedExpanded}
           onUnpin={handleUnpinMessage}
           onNavigateToMessage={handleNavigateToMessage}
         />
@@ -742,6 +954,13 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
             value={inputText}
             onChangeText={handleTextChange}
             onSend={handleSend}
+            onCreatePoll={handleCreatePoll}
+            onCreateReminder={() => navigation.navigate('CreateReminder', { conversationId, title })}
+            onCreateNote={() => navigation.navigate('CreateNote', { conversationId, title })}
+            onSendLocation={handleSendLocation}
+            replyingMessage={replyingMessage}
+            onCancelReply={() => setReplyingMessage(null)}
+            onJumpToReply={(messageId) => handleNavigateToMessage(String(messageId))}
             conversationId={conversationId}
             senderId={currentUserId ? String(currentUserId) : undefined}
             onUploadSuccess={async (url, name, size, msgData) => {
@@ -824,7 +1043,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         onClose={() => setSelectedMessage(null)}
         isOwn={selectedMessage?.isMe ?? false}
         isDeleting={deletingMessageId === String(selectedMessage?.id)}
-        onReply={() => Alert.alert('Trả lời', 'Tính năng đang phát triển')}
+        onReply={handleReplyToMessage}
         onForward={() => {
           const msg = selectedMessageRef.current;
           if (!msg) return;

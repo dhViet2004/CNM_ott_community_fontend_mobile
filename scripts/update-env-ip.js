@@ -24,7 +24,7 @@ function getDefaultGatewayIP() {
       const match = output.match(/Default Gateway[.\s]*:\s*([\d.]+)/i);
       return match ? match[1].trim() : null;
     }
-  } catch {}
+  } catch { }
   return null;
 }
 

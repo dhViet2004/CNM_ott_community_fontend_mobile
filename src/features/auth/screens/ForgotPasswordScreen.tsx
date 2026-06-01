@@ -168,7 +168,7 @@ const ForgotPasswordScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.formSection}>
             <Input
               label="Mật khẩu mới"
-              placeholder="Tối thiểu 6 ký tự"
+              placeholder="Tối thiểu 8 ký tự"
               value={newPassword}
               onChangeText={(text) => { setNewPassword(text); setError(''); }}
               secureTextEntry

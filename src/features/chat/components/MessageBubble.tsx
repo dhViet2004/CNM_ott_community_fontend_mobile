@@ -7,6 +7,7 @@ import {
   Image,
   Dimensions,
   Platform,
+  Linking,
 } from 'react-native';
 import ImageView from 'react-native-image-viewing';
 import { Video, ResizeMode } from 'expo-av';
@@ -14,6 +15,9 @@ import { colors, spacing, typography } from '@theme';
 import Avatar from '@components/common/Avatar';
 import { Icons } from '@components/common';
 import VoiceMessageBubble from './VoiceMessageBubble';
+import PollMessageBubble from './PollMessageBubble';
+import ReminderDetailCard from './ReminderDetailCard';
+import type { PollData } from '@/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const MAX_BUBBLE_WIDTH = SCREEN_WIDTH * 0.72;
@@ -117,14 +121,33 @@ export const CallHistoryBubble: React.FC<CallHistoryBubbleProps> = ({
 // ─── Main Message Bubble ──────────────────────────────────────────────────────
 interface MessageBubbleProps {
   id: string | number;
+  conversationId?: string;
   senderId: string;
   senderName?: string;
   senderAvatar?: string | null;
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice';
+  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'call' | 'voice' | 'audio' | 'system' | 'poll' | 'reminder' | 'reminder_due' | 'note' | 'location';
   file_url?: string | null;
+  pollData?: PollData | null;
+  currentUserId?: string | number | null;
+  locationData?: {
+    lat: number;
+    lng: number;
+    label?: string | null;
+    isLive?: boolean;
+    liveUntil?: string | null;
+  } | null;
+  replyToMessage?: ReplyToMessage | null;
+  storyReply?: {
+    storyId: string;
+    authorName: string;
+    type: 'image' | 'text';
+    text?: string;
+    mediaUrl?: string | null;
+  } | null;
+  onJumpToMessage?: (messageId: string | number) => void;
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
   isRevoked?: boolean;
@@ -151,6 +174,172 @@ interface MessageBubbleProps {
   }>;
   voiceDuration?: number;
 }
+
+type ReplyToMessage = {
+  id: string | number;
+  content?: string | null;
+  contentType?: string;
+  type?: string;
+  senderDisplayName?: string | null;
+  senderName?: string | null;
+  attachments?: Array<{ url: string; type?: string; size?: number }> | null;
+  file_url?: string | null;
+};
+
+const getReplyContent = (message: ReplyToMessage) => {
+  const type = message.contentType || message.type;
+  if (type === 'image' || message.file_url || message.attachments?.[0]?.url) return '[Ảnh/Tệp]';
+  if (type === 'sticker') return '[Sticker]';
+  if (type === 'emoji') return message.content || '[Emoji]';
+  if (type === 'voice' || type === 'audio') return '[Tin nhắn thoại]';
+  return message.content || '[Tin nhắn]';
+};
+
+const padDatePart = (value: number) => String(value).padStart(2, '0');
+
+const parseReminderContent = (content: string) => {
+  const lines = String(content || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const title = lines.find((line) => !line.startsWith('[') && !line.startsWith('Thời gian:') && !line.startsWith('Lặp lại:')) || 'Nhắc hẹn';
+  const timeLine = lines.find((line) => line.startsWith('Thời gian:'));
+  const timeText = timeLine?.replace('Thời gian:', '').trim();
+  const match = timeText?.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+  const date = match
+    ? new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]), Number(match[4]), Number(match[5]))
+    : new Date();
+
+  return { title, date };
+};
+
+const formatReminderCardTime = (date: Date) => {
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  const time = `${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
+  if (sameDay) return `Hôm nay lúc ${time}`;
+  return `${padDatePart(date.getDate())}/${padDatePart(date.getMonth() + 1)} lúc ${time}`;
+};
+
+const parseLocationFromContent = (content: string) => {
+  const match = String(content || '').match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  return {
+    lat: Number(match[1]),
+    lng: Number(match[2]),
+  };
+};
+
+const getStaticMapPreviewUrl = (lat: number, lng: number) =>
+  `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=15&size=600x300&markers=${lat},${lng},red-pushpin`;
+
+const LocationCard: React.FC<{
+  locationData?: {
+    lat: number;
+    lng: number;
+    label?: string | null;
+    isLive?: boolean;
+    liveUntil?: string | null;
+  } | null;
+  content: string;
+  isMe: boolean;
+  onLongPress?: () => void;
+}> = ({ locationData, content, isMe, onLongPress }) => {
+  const fallbackLocation = parseLocationFromContent(content);
+  const lat = locationData?.lat ?? fallbackLocation?.lat;
+  const lng = locationData?.lng ?? fallbackLocation?.lng;
+  const label = locationData?.label || content || 'Vị trí hiện tại';
+
+  if (typeof lat !== 'number' || typeof lng !== 'number') {
+    return null;
+  }
+
+  const mapUrl = getStaticMapPreviewUrl(lat, lng);
+
+  const handleOpenMap = async () => {
+    const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      // no-op
+    }
+  };
+
+  return (
+    <View style={[styles.locationWrapper, isMe ? styles.locationWrapperMe : styles.locationWrapperOther]}>
+      <TouchableOpacity
+        activeOpacity={0.88}
+        onLongPress={onLongPress}
+        onPress={handleOpenMap}
+        style={styles.locationCard}
+      >
+        <Image source={{ uri: mapUrl }} style={styles.locationPreview} resizeMode="cover" />
+        <View style={styles.locationOverlay}>
+          <View style={styles.locationPin}>
+            <Text style={styles.locationPinEmoji}>📍</Text>
+          </View>
+        </View>
+        <View style={styles.locationMeta}>
+          <Text style={styles.locationTitle} numberOfLines={1}>
+            Vị trí hiện tại
+          </Text>
+          <Text style={styles.locationLabel} numberOfLines={1}>
+            {label}
+          </Text>
+          <Text style={styles.locationCoords} numberOfLines={1}>
+            {lat.toFixed(6)}, {lng.toFixed(6)}
+          </Text>
+          <View style={styles.locationActionRow}>
+            <Text style={styles.locationActionText}>Mở bản đồ</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const ReminderCard: React.FC<{
+  content: string;
+  isMe: boolean;
+  senderName?: string;
+  senderAvatar?: string | null;
+}> = ({ content, isMe, senderName, senderAvatar }) => {
+  const reminder = parseReminderContent(content);
+  const actor = isMe ? 'Bạn' : senderName || 'Người dùng';
+
+  return (
+    <View style={styles.reminderContainer}>
+      <View style={styles.reminderCard}>
+        <View style={styles.reminderHeader}>
+          <Avatar
+            uri={senderAvatar ?? undefined}
+            name={actor}
+            size="xs"
+          />
+          <Text style={styles.reminderHeaderText} numberOfLines={1}>
+            {actor} đã tạo một nhắc hẹn
+          </Text>
+        </View>
+        <View style={styles.reminderDivider} />
+        <View style={styles.reminderBody}>
+          <View style={styles.reminderDateBlock}>
+            <Text style={styles.reminderMonth}>THG {reminder.date.getMonth() + 1}</Text>
+            <Text style={styles.reminderDay}>{reminder.date.getDate()}</Text>
+          </View>
+          <View style={styles.reminderInfo}>
+            <Text style={styles.reminderTitle} numberOfLines={1}>{reminder.title}</Text>
+            <Text style={styles.reminderTime} numberOfLines={1}>
+              {formatReminderCardTime(reminder.date)}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+};
 
 const CheckIcon: React.FC<{ filled?: boolean }> = ({ filled }) =>
   filled
@@ -248,6 +437,8 @@ const ReadByAvatars: React.FC<ReadByAvatarsProps> = ({ readers, isMe }) => {
 
 const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   id,
+  conversationId,
+  senderId,
   senderName,
   senderAvatar,
   content,
@@ -267,8 +458,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   timeDividerLabel,
   readBy,
   voiceDuration,
+  replyToMessage,
+  storyReply,
+  onJumpToMessage,
+  pollData,
+  currentUserId,
+  locationData,
 }) => {
   const [isImageViewVisible, setIsImageViewVisible] = useState(false);
+  const [replyReferenceBodyWidth, setReplyReferenceBodyWidth] = useState<number | undefined>();
 
   // Time divider inline component
   if (isTimeDivider) {
@@ -290,10 +488,131 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     );
   }
 
+  if (type === 'note') {
+    const actor = isMe ? 'Bạn' : senderName || 'Người dùng';
+    return (
+      <View style={styles.systemMessageContainer}>
+        <View style={[
+          styles.systemMessagePill, 
+          { 
+            backgroundColor: '#FFFFFF', 
+            borderWidth: StyleSheet.hairlineWidth, 
+            borderColor: '#E1E3E7',
+            paddingVertical: 6,
+            paddingHorizontal: 14,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.08,
+            shadowRadius: 2,
+            elevation: 1
+          }
+        ]}>
+          <Text style={[styles.systemMessageText, { color: '#555', fontWeight: '500' }]}>
+            📄  {actor} tạo ghi chú <Text style={{ fontWeight: 'bold', color: '#222' }}>{content}</Text>
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (type === 'poll' && pollData) {
+    return (
+      <PollMessageBubble
+        conversationId={conversationId || ''}
+        messageId={id}
+        question={content}
+        pollData={pollData}
+        currentUserId={currentUserId}
+        time={time}
+        isMe={isMe}
+        status={status}
+      />
+    );
+  }
+
   const handleLongPress = () => {
     if (onLongPress) {
-      onLongPress({ id, content, type, isMe, senderName, senderAvatar, senderId: String(id) });
+      onLongPress({ id, content, type, isMe, senderName, senderAvatar, senderId });
     }
+  };
+
+  if (type === 'reminder' || content?.startsWith('[Nhắc hẹn]')) {
+    return (
+      <ReminderDetailCard
+        content={content}
+        isMe={isMe}
+        senderName={senderName || defaultName}
+        senderAvatar={senderAvatar}
+        onLongPress={handleLongPress}
+      />
+    );
+  }
+
+  if (type === 'location' || content?.startsWith('📍')) {
+    return (
+      <LocationCard
+        locationData={locationData}
+        content={content}
+        isMe={isMe}
+        onLongPress={handleLongPress}
+      />
+    );
+  }
+
+  const renderReplyReference = () => {
+    if (!replyToMessage) return null;
+
+    const replySenderName = replyToMessage.senderDisplayName || replyToMessage.senderName || 'Người dùng';
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.replyReference,
+          isMe ? styles.replyReferenceMe : styles.replyReferenceOther,
+        ]}
+        activeOpacity={0.75}
+        onPress={() => onJumpToMessage?.(replyToMessage.id)}
+      >
+        <View style={styles.replyReferenceLine} />
+        <View
+          style={[
+            styles.replyReferenceBody,
+            replyReferenceBodyWidth ? { width: replyReferenceBodyWidth } : null,
+          ]}
+        >
+          <Text
+            style={[styles.replyReferenceSender, isMe && styles.replyReferenceSenderMe]}
+            numberOfLines={1}
+            onLayout={(event) => {
+              const nextWidth = Math.ceil(event.nativeEvent.layout.width);
+              if (nextWidth && nextWidth !== replyReferenceBodyWidth) {
+                setReplyReferenceBodyWidth(nextWidth);
+              }
+            }}
+          >
+            {replySenderName}
+          </Text>
+          <Text
+            style={[styles.replyReferenceText, isMe && styles.replyReferenceTextMe]}
+            numberOfLines={1}
+          >
+            {getReplyContent(replyToMessage)}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderStoryReply = () => {
+    if (!storyReply) return null;
+    return (
+      <View style={[styles.storyReply, isMe ? styles.storyReplyMe : styles.storyReplyOther]}>
+        <Text style={styles.storyReplyLabel}>Bạn đã trả lời tin của họ</Text>
+        <Text style={styles.storyReplyText} numberOfLines={2}>
+          {storyReply.text || (storyReply.type === 'image' ? '[Ảnh story]' : '[Story]')}
+        </Text>
+      </View>
+    );
   };
 
   // ── Call history bubble ──────────────────────────────────────────────────
@@ -464,7 +783,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     // Text
     return (
       <Text
-        style={[styles.messageText, isMe ? styles.textMe : styles.textOther]}
+        style={[
+          styles.messageText,
+          isMe ? styles.textMe : styles.textOther,
+        ]}
         numberOfLines={0}
       >
         {content}
@@ -474,7 +796,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
 
   const renderFooter = () => (
     <View style={[styles.bubbleFooter, isMe ? styles.bubbleFooterMe : styles.bubbleFooterOther]}>
-      <Text style={[styles.bubbleTime, isMe ? styles.timeMe : styles.timeOther]}>
+      <Text
+        style={[
+          styles.bubbleTime,
+          isMe ? styles.timeMe : styles.timeOther,
+        ]}
+      >
         {time}
       </Text>
       {isMe && status && (
@@ -521,6 +848,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
             isFocused && styles.focusedBubble,
           ]}
         >
+          {renderStoryReply()}
+          {renderReplyReference()}
           {renderBubbleContent()}
           {renderFooter()}
         </View>
@@ -540,6 +869,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
     prev.isRevoked === next.isRevoked &&
     prev.isFocused === next.isFocused &&
     prev.file_url === next.file_url &&
+    prev.pollData === next.pollData &&
+    prev.replyToMessage?.id === next.replyToMessage?.id &&
+    prev.storyReply?.storyId === next.storyReply?.storyId &&
     prev.readBy?.length === next.readBy?.length &&
     prev.voiceDuration === next.voiceDuration
   );
@@ -570,16 +902,17 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   systemMessagePill: {
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
     borderRadius: 16,
     paddingHorizontal: 16,
-    paddingVertical: 4,
+    paddingVertical: 5,
     maxWidth: '85%',
   },
   systemMessageText: {
     ...typography.caption,
     fontSize: 12,
-    color: '#666',
+    color: '#FFFFFF',
+    fontWeight: '600',
     textAlign: 'center',
   },
 
@@ -768,8 +1101,88 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
   },
   focusedBubble: {
-    borderWidth: 1.5,
-    borderColor: colors.primary,
+    borderWidth: 2.5,
+    borderColor: '#FFD700',
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.95,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  replyReference: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    alignSelf: 'flex-start',
+    paddingTop: 2,
+    paddingBottom: spacing.sm,
+    marginBottom: spacing.sm,
+    maxWidth: '100%',
+  },
+  replyReferenceMe: {
+    alignSelf: 'flex-start',
+  },
+  replyReferenceOther: {
+    alignSelf: 'flex-start',
+  },
+  replyReferenceLine: {
+    width: 4,
+    minHeight: 48,
+    borderRadius: 2,
+    backgroundColor: '#1E9BFF',
+    marginRight: spacing.md,
+  },
+  replyReferenceBody: {
+    flexGrow: 0,
+    flexShrink: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  replyReferenceSender: {
+    ...typography.body,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '400',
+    color: colors.text.primary,
+    alignSelf: 'flex-start',
+  },
+  replyReferenceSenderMe: {
+    color: colors.text.inverse,
+  },
+  replyReferenceText: {
+    ...typography.caption,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.text.secondary,
+    marginTop: 2,
+    flexShrink: 1,
+  },
+  replyReferenceTextMe: {
+    color: 'rgba(255,255,255,0.72)',
+  },
+  storyReply: {
+    marginBottom: 7,
+    borderLeftWidth: 3,
+    borderLeftColor: '#A78BFA',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  storyReplyMe: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  storyReplyOther: {
+    backgroundColor: 'rgba(139,92,246,0.10)',
+  },
+  storyReplyLabel: {
+    color: '#8B5CF6',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  storyReplyText: {
+    marginTop: 3,
+    color: colors.text.secondary,
+    fontSize: 12,
   },
 
   // ── Bubble Content ────────────────────────────────────────────────────
@@ -960,6 +1373,162 @@ const styles = StyleSheet.create({
   },
   revokedTextMe: {
     color: '#9CA3AF',
+  },
+
+  // ── Reminder Card ────────────────────────────────────────────────────
+  reminderContainer: {
+    width: '100%',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    marginVertical: spacing.sm,
+  },
+  reminderCard: {
+    width: SCREEN_WIDTH - 58,
+    minHeight: 150,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    paddingBottom: 22,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
+  },
+  reminderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reminderHeaderText: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 22,
+    lineHeight: 28,
+    color: '#1D1D1F',
+    fontWeight: '400',
+  },
+  reminderDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#DCDDE1',
+    marginTop: 18,
+    marginBottom: 24,
+  },
+  reminderBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reminderDateBlock: {
+    width: 92,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 24,
+  },
+  reminderMonth: {
+    fontSize: 24,
+    lineHeight: 30,
+    color: '#C51D48',
+    fontWeight: '500',
+  },
+  reminderDay: {
+    fontSize: 42,
+    lineHeight: 50,
+    color: '#141414',
+    fontWeight: '300',
+  },
+  reminderInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  reminderTitle: {
+    fontSize: 28,
+    lineHeight: 34,
+    color: '#17191C',
+    fontWeight: '800',
+    marginBottom: 12,
+  },
+  reminderTime: {
+    fontSize: 24,
+    lineHeight: 30,
+    color: '#90949D',
+    fontWeight: '400',
+  },
+  locationWrapper: {
+    marginVertical: 6,
+    paddingHorizontal: spacing.md,
+  },
+  locationWrapperMe: {
+    alignItems: 'flex-end',
+  },
+  locationWrapperOther: {
+    alignItems: 'flex-start',
+  },
+  locationCard: {
+    width: Math.min(SCREEN_WIDTH * 0.72, 292),
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#DCE3EA',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  locationPreview: {
+    width: '100%',
+    height: 132,
+    backgroundColor: '#E8EEF4',
+  },
+  locationOverlay: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+  },
+  locationPin: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationPinEmoji: {
+    fontSize: 16,
+  },
+  locationMeta: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  locationTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#14213D',
+  },
+  locationLabel: {
+    fontSize: 13,
+    color: '#49566A',
+    marginTop: 4,
+  },
+  locationCoords: {
+    fontSize: 12,
+    color: '#7B8794',
+    marginTop: 4,
+  },
+  locationActionRow: {
+    marginTop: 10,
+  },
+  locationActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0B75F1',
   },
 
   // ── File Attachment ──────────────────────────────────────────────────

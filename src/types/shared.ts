@@ -103,10 +103,43 @@ export interface BackendMessage {
     type: string;
     size: number;
   }>;
+  replyTo?: string | number | null;
+  replyToMessage?: {
+    id: string | number;
+    content?: string | null;
+    contentType?: string;
+    type?: string;
+    senderId?: string;
+    senderDisplayName?: string | null;
+    senderName?: string | null;
+    senderAvatarUrl?: string | null;
+    senderAvatar?: string | null;
+    attachments?: Array<{
+      url: string;
+      type?: string;
+      size?: number;
+    }> | null;
+    file_url?: string | null;
+  } | null;
+  pollData?: PollData | null;
   is_revoked?: boolean;
   status?: 'sending' | 'sent' | 'delivered' | 'read';
   createdAt?: string;
   created_at?: string;
+}
+
+export interface PollOption {
+  id: string;
+  text: string;
+  voterIds?: Array<string | number>;
+}
+
+export interface PollData {
+  pollOptions: PollOption[];
+  pollSettings?: {
+    multipleChoice?: boolean;
+    allowAddOption?: boolean;
+  };
 }
 
 export type { RootStackParamList, MainTabParamList, RootStackScreenProps, MainTabScreenProps } from '@navigation/types';

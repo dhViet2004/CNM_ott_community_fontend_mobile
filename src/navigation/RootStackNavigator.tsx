@@ -8,6 +8,8 @@ import type { RootStackParamList } from './types';
 
 import MainTabNavigator from './MainTabNavigator';
 import ChatDetailScreen from '@features/chat/screens/ChatDetailScreen';
+import CreateReminderScreen from '@features/chat/screens/CreateReminderScreen';
+import CreateNoteScreen from '@features/chat/screens/CreateNoteScreen';
 import BotChatScreen from '@features/chat/screens/BotChatScreen';
 import UserProfileScreen from '@features/profile/screens/UserProfileScreen';
 import EditProfileScreen from '@features/profile/screens/EditProfileScreen';
@@ -16,9 +18,12 @@ import LoginScreen from '@features/auth/screens/LoginScreen';
 import RegisterScreen from '@features/auth/screens/RegisterScreen';
 import ForgotPasswordScreen from '@features/auth/screens/ForgotPasswordScreen';
 import ContactsListScreen from '@features/contacts/screens/ContactsListScreen';
+import QRCodeFriendScreen from '@features/contacts/screens/QRCodeFriendScreen';
+import FriendRequestsScreen from '@features/contacts/screens/FriendRequestsScreen';
 import GroupsScreen from '@features/groups/screens/GroupsScreen';
 import CreateGroupScreen from '@features/groups/screens/CreateGroupScreen';
 import GroupDetailScreen from '@features/groups/screens/GroupDetailScreen';
+import GroupInviteLinkScreen from '@features/groups/screens/GroupInviteLinkScreen';
 import GroupChatScreen from '@features/groups/screens/GroupChatScreen';
 import AddMembersScreen from '@features/groups/screens/AddMembersScreen';
 import GroupSettingsScreen from '@features/groups/screens/GroupSettingsScreen';
@@ -29,6 +34,7 @@ import MessageSearchScreen from '@features/chat/screens/MessageSearchScreen';
 import ChangePasswordScreen from '@features/profile/screens/ChangePasswordScreen';
 import DirectCallScreen from '@features/call/screens/DirectCallScreen';
 import GroupCallScreen from '@features/call/screens/GroupCallScreen';
+import MediaGalleryScreen from '@features/chat/screens/MediaGalleryScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -81,6 +87,22 @@ const RootStackNavigator: React.FC = () => {
         }}
       />
       <Stack.Screen
+        name="CreateReminder"
+        component={CreateReminderScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_bottom',
+        }}
+      />
+      <Stack.Screen
+        name="CreateNote"
+        component={CreateNoteScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_bottom',
+        }}
+      />
+      <Stack.Screen
         name="BotChat"
         component={BotChatScreen}
         options={{
@@ -128,10 +150,23 @@ const RootStackNavigator: React.FC = () => {
         name="ContactsList"
         component={ContactsListScreen}
         options={{
-          headerShown: true,
-          title: 'Danh bạ',
-          headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: colors.text.inverse,
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="QRCodeFriend"
+        component={QRCodeFriendScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="FriendRequests"
+        component={FriendRequestsScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
         }}
       />
 
@@ -159,6 +194,14 @@ const RootStackNavigator: React.FC = () => {
         component={GroupDetailScreen}
         options={{
           headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="GroupInviteLink"
+        component={GroupInviteLinkScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
         }}
       />
       <Stack.Screen
@@ -217,7 +260,6 @@ const RootStackNavigator: React.FC = () => {
           animation: 'slide_from_right',
         }}
       />
-
       {/* Call */}
       <Stack.Screen
         name="DirectCall"
@@ -235,6 +277,14 @@ const RootStackNavigator: React.FC = () => {
           headerShown: false,
           animation: 'fade',
           gestureEnabled: false,
+        }}
+      />
+      <Stack.Screen
+        name="MediaGallery"
+        component={MediaGalleryScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
         }}
       />
     </Stack.Navigator>

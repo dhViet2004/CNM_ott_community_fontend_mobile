@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { shallowEqual } from 'react-redux';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { setMessages, setLoadingMessages, addMessage } from '@store/slices/chatSlice';
+import type { PollData } from '@/types';
 import { messageApi } from '@api/endpoints';
 import { socketActions } from '@api/socket';
 
@@ -14,8 +15,19 @@ interface MessageItem {
   content: string;
   time: string;
   isMe: boolean;
-  type: 'text' | 'image' | 'file' | 'sticker' | 'emoji';
+  type: 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'voice' | 'audio' | 'system' | 'poll' | 'reminder' | 'reminder_due' | 'location';
+  pollData?: PollData | null;
   file_url?: string | null;
+  locationData?: {
+    lat: number;
+    lng: number;
+    label?: string | null;
+    isLive?: boolean;
+    liveUntil?: string | null;
+  } | null;
+  replyTo?: string | number | null;
+  replyToMessage?: any;
+  storyReply?: any;
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   isDeleted?: boolean;
   isRevoked?: boolean;
@@ -79,11 +91,16 @@ export const useMessages = ({
         }),
         isMe,
         type: (m.contentType ?? m.type ?? 'text') as MessageItem['type'],
+        pollData: m.pollData ?? null,
         file_url: m.file_url ?? m.attachments?.[0]?.url ?? null,
+        locationData: m.locationData ?? null,
         status: m.status || 'sent',
         isDeleted: m.is_revoked || m.isDeleted,
         isRevoked: m.is_revoked || m.isRevoked,
         readBy: m.readBy,
+        replyTo: m.replyTo ?? null,
+        replyToMessage: m.replyToMessage ?? null,
+        storyReply: m.storyReply ?? null,
       };
     });
   }, [rawMessages, currentUserId, conversationId]);
@@ -117,15 +134,20 @@ export const useMessages = ({
         sender_avatar: m.senderAvatarUrl ?? m.sender_avatar ?? null,
         senderAvatarUrl: m.senderAvatarUrl ?? null,
         type: (m.contentType ?? m.type ?? 'text') as any,
+        pollData: m.pollData ?? null,
         content: m.content ?? '',
         // Lấy file_url từ attachments nếu không có field trực tiếp
         file_url: m.file_url ?? m.attachments?.[0]?.url ?? null,
+        locationData: m.locationData ?? null,
         file_name: m.file_name ?? null,
         file_size: m.file_size ?? null,
         timestamp: m.createdAt ?? m.created_at ?? new Date().toISOString(),
         createdAt: m.createdAt ?? m.created_at ?? new Date().toISOString(),
         status: 'sent' as const,
         is_revoked: m.contentType === 'revoked' || (m.isRevoked ?? false),
+        replyTo: m.replyTo ?? null,
+        replyToMessage: m.replyToMessage ?? null,
+        storyReply: m.storyReply ?? null,
       }));
       dispatch(setMessages({ conversationId, messages: mapped }));
       console.log('[useMessages] Loaded', mapped.length, 'messages for', conversationId);
@@ -158,8 +180,13 @@ export const useMessages = ({
         file_url: message.file_url ?? null,
         file_name: null,
         file_size: null,
+        pollData: message.pollData ?? null,
         timestamp: new Date().toISOString(),
+        locationData: (message as any).locationData ?? null,
         status: 'sending',
+        replyTo: (message as any).replyTo ?? null,
+        replyToMessage: (message as any).replyToMessage ?? null,
+        storyReply: (message as any).storyReply ?? null,
       }));
       
       return tempId;

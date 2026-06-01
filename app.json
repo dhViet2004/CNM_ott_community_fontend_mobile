@@ -43,7 +43,14 @@
         "android.permission.ACCESS_NETWORK_STATE"
       ]
     },
-    "plugins": [],
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Cho phép $(PRODUCT_NAME) sử dụng camera để quét mã QR kết bạn."
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     },

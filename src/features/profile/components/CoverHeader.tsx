@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Image,
@@ -6,15 +6,17 @@ import {
   Animated,
   TouchableOpacity,
   Text,
-  ScrollView,
   Dimensions,
+  Modal,
+  Alert,
+  Share,
 } from 'react-native';
 import { colors, spacing, shadows } from '@theme';
 import { Avatar } from '@components/common';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COVER_HEIGHT = 200;
-const AVATAR_SIZE = 96;
+const AVATAR_SIZE = 80;
 
 export interface CoverHeaderUser {
   id?: string;
@@ -39,6 +41,8 @@ const CoverHeader: React.FC<CoverHeaderProps> = ({
   onChangeCoverPress,
   onChangeAvatarPress,
 }) => {
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+
   const getParallaxStyle = () => {
     if (!scrollY) return {};
     return {
@@ -80,6 +84,58 @@ const CoverHeader: React.FC<CoverHeaderProps> = ({
       }
     : {};
 
+  const handleCoverPress = () => {
+    if (isMyProfile) {
+      Alert.alert('Ảnh bìa', undefined, [
+        {
+          text: 'Xem ảnh bìa',
+          onPress: () => {
+            if (user.coverUrl) {
+              setViewerUrl(user.coverUrl);
+            } else {
+              Alert.alert('Thông báo', 'Bạn chưa cài đặt ảnh bìa');
+            }
+          },
+        },
+        {
+          text: 'Thay đổi ảnh bìa',
+          onPress: onChangeCoverPress,
+        },
+        { text: 'Hủy', style: 'cancel' },
+      ]);
+    } else {
+      if (user.coverUrl) {
+        setViewerUrl(user.coverUrl);
+      }
+    }
+  };
+
+  const handleAvatarPress = () => {
+    if (isMyProfile) {
+      Alert.alert('Ảnh đại diện', undefined, [
+        {
+          text: 'Xem ảnh đại diện',
+          onPress: () => {
+            if (user.avatarUrl) {
+              setViewerUrl(user.avatarUrl);
+            } else {
+              Alert.alert('Thông báo', 'Bạn chưa cài đặt ảnh đại diện');
+            }
+          },
+        },
+        {
+          text: 'Thay đổi ảnh đại diện',
+          onPress: onChangeAvatarPress,
+        },
+        { text: 'Hủy', style: 'cancel' },
+      ]);
+    } else {
+      if (user.avatarUrl) {
+        setViewerUrl(user.avatarUrl);
+      }
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Ảnh bìa với Parallax */}
@@ -89,22 +145,28 @@ const CoverHeader: React.FC<CoverHeaderProps> = ({
           getParallaxStyle(),
         ]}
       >
-        {user.coverUrl ? (
-          <Image
-            source={{ uri: user.coverUrl }}
-            style={styles.coverImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={[styles.coverPlaceholder, { backgroundColor: colors.primary }]}>
-            <Text style={styles.coverPlaceholderText}>
-              {user.fullName.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        )}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={handleCoverPress}
+          style={StyleSheet.absoluteFill}
+        >
+          {user.coverUrl ? (
+            <Image
+              source={{ uri: user.coverUrl }}
+              style={styles.coverImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.coverPlaceholder, { backgroundColor: colors.primary }]}>
+              <Text style={styles.coverPlaceholderText}>
+                {user.fullName.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
         {/* Gradient overlay */}
-        <View style={styles.coverOverlay} />
+        <View style={styles.coverOverlay} pointerEvents="none" />
 
         {/* Nút đổi ảnh bìa */}
         {isMyProfile && (
@@ -124,16 +186,18 @@ const CoverHeader: React.FC<CoverHeaderProps> = ({
       <View style={styles.avatarSection}>
         <Animated.View style={[styles.avatarWrapper, avatarOverlayStyle]}>
           <View style={[styles.avatarContainer, shadows.md]}>
-            <Avatar
-              uri={user.avatarUrl}
-              name={user.fullName}
-              size="xl"
-              showOnlineIndicator={!isMyProfile}
-              online={user.isOnline}
-            />
+            <TouchableOpacity activeOpacity={0.9} onPress={handleAvatarPress}>
+              <Avatar
+                uri={user.avatarUrl}
+                name={user.fullName}
+                size="xl"
+                showOnlineIndicator={!isMyProfile}
+                online={user.isOnline}
+              />
+            </TouchableOpacity>
 
             {/* Viền trắng avatar */}
-            <View style={styles.avatarBorder} />
+            <View style={styles.avatarBorder} pointerEvents="none" />
 
             {/* Nút đổi avatar */}
             {isMyProfile && (
@@ -155,6 +219,44 @@ const CoverHeader: React.FC<CoverHeaderProps> = ({
           </View>
         )}
       </View>
+
+      {/* ── Full-Screen Lightbox Image Viewer Modal ── */}
+      <Modal
+        visible={!!viewerUrl}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewerUrl(null)}
+      >
+        <View style={styles.lightboxContainer}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setViewerUrl(null)} />
+          {/* Header */}
+          <View style={styles.lightboxHeader}>
+            <TouchableOpacity onPress={() => setViewerUrl(null)} style={styles.lightboxButton}>
+              <Text style={styles.lightboxCloseText}>Đóng</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                if (viewerUrl) {
+                  Share.share({ message: viewerUrl });
+                }
+              }}
+              style={styles.lightboxButton}
+            >
+              <Text style={styles.lightboxShareText}>Chia sẻ</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Image */}
+          {viewerUrl && (
+            <Image
+              source={{ uri: viewerUrl }}
+              style={styles.lightboxImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -232,6 +334,7 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: colors.background.primary,
     top: -2,
+    left: -2,
   },
   avatarCameraButton: {
     position: 'absolute',
@@ -260,6 +363,39 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: colors.badge.online,
+  },
+  lightboxContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lightboxHeader: {
+    position: 'absolute',
+    top: 40,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    zIndex: 100,
+  },
+  lightboxButton: {
+    padding: 8,
+  },
+  lightboxCloseText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  lightboxShareText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  lightboxImage: {
+    width: '100%',
+    height: '80%',
   },
 });
 

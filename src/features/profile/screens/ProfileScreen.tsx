@@ -16,6 +16,8 @@ import { useProfile } from '../hooks';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { uploadApi } from '@api/endpoints';
 import type { MainTabScreenProps } from '@navigation/types';
+import { useAppSelector } from '@store/hooks';
+import StoryHighlights from '@/features/stories/components/StoryHighlights';
 
 type Props = MainTabScreenProps<'ProfileTab'>;
 
@@ -24,6 +26,7 @@ const COVER_HEIGHT = 200;
 const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const scrollY = useRef(new Animated.Value(0)).current;
+  const currentUserId = useAppSelector((s) => s.auth.user?.userId);
 
   const {
     user,
@@ -39,6 +42,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     unfriend,
     updateMyProfile,
     updateStatus,
+    realFriends,
   } = useProfile();
 
   const { logout } = useAuth();
@@ -124,17 +128,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     extrapolate: 'clamp',
   });
 
-  const initialHeaderOpacity = scrollY.interpolate({
-    inputRange: [0, COVER_HEIGHT * 0.5],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
 
-  const headerTitleScale = scrollY.interpolate({
-    inputRange: [0, COVER_HEIGHT],
-    outputRange: [0.7, 1],
-    extrapolate: 'clamp',
-  });
 
   if (!user) {
     return (
@@ -153,38 +147,6 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primary} translucent />
-
-      {/* Header khi scroll */}
-      <Animated.View
-        style={[
-          styles.stickyHeader,
-          { paddingTop: insets.top, opacity: headerOpacity },
-        ]}
-        pointerEvents="box-none"
-      >
-        <View style={styles.stickyHeaderBg}>
-          <Animated.Text
-            style={[
-              styles.stickyHeaderTitle,
-              { transform: [{ scale: headerTitleScale }] },
-            ]}
-          >
-            {user.fullName}
-          </Animated.Text>
-        </View>
-      </Animated.View>
-
-      {/* Header ban đầu */}
-      <Animated.View
-        style={[
-          styles.initialHeader,
-          { paddingTop: insets.top, opacity: initialHeaderOpacity },
-        ]}
-      >
-        <View style={styles.initialHeaderBg}>
-          <Text style={styles.initialHeaderTitle}>Cá nhân</Text>
-        </View>
-      </Animated.View>
 
       {/* Scroll content */}
       <Animated.ScrollView
@@ -238,10 +200,26 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         />
 
         {/* Media Section */}
-        <ProfileMedia totalPhotos={user.totalPhotos} />
+        <ProfileMedia 
+          photos={[user.coverUrl, user.avatarUrl].filter(Boolean) as string[]} 
+          totalPhotos={[user.coverUrl, user.avatarUrl].filter(Boolean).length} 
+          onSeeAll={() => {
+            navigation.navigate('MediaGallery', {
+              conversationId: user.id,
+              title: user.fullName,
+              initialTab: 'Ảnh',
+            });
+          }}
+        />
 
         {/* Friend Section */}
-        <FriendSection totalFriends={user.totalFriends} onSeeAll={() => navigation.navigate('Friends')} />
+        <FriendSection 
+          friends={realFriends} 
+          totalFriends={realFriends.length || user.totalFriends} 
+          onSeeAll={() => navigation.navigate('Friends')} 
+        />
+
+        <StoryHighlights userId={user.id} currentUserId={currentUserId} />
 
         {/* Profile Menu */}
         <ProfileMenu
@@ -251,13 +229,32 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           onQRCode={() => {}}
           onCloud={() => {}}
           onPrivacySettings={() => {}}
-          onSecurity={() => {}}
+          onSecurity={handleSettings}
           onSettings={handleSettings}
           onTimeline={() => {}}
           onPhotos={() => {}}
           onLogout={handleLogout}
         />
       </Animated.ScrollView>
+
+      {/* Header khi scroll */}
+      <Animated.View
+        style={[
+          styles.stickyHeader,
+          { paddingTop: insets.top, opacity: headerOpacity },
+        ]}
+        pointerEvents="box-none"
+      >
+        <View style={styles.stickyHeaderBg}>
+          <Animated.Text
+            style={[
+              styles.stickyHeaderTitle,
+            ]}
+          >
+            Cá nhân
+          </Animated.Text>
+        </View>
+      </Animated.View>
     </View>
   );
 };
@@ -304,24 +301,6 @@ const styles = StyleSheet.create({
     ...typography.h3,
     color: colors.text.inverse,
     fontWeight: '600',
-  },
-  initialHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 99,
-  },
-  initialHeaderBg: {
-    height: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.screenPadding,
-  },
-  initialHeaderTitle: {
-    ...typography.h2,
-    color: colors.text.inverse,
-    fontWeight: '700',
   },
   header: {
     backgroundColor: colors.primary,

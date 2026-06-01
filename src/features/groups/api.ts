@@ -99,6 +99,16 @@ export interface InviteInfo {
   expiresAt?: string;
 }
 
+export interface GroupInvitePreview {
+  groupId: string | number;
+  name: string;
+  description?: string;
+  avatarUrl?: string | null;
+  memberCount?: number;
+  inviteCode?: string;
+  isApprovalRequired?: boolean;
+}
+
 // ─── API Functions ────────────────────────────────────────────────────────
 
 /**
@@ -135,6 +145,16 @@ export async function fetchGroupById(
   return response.data;
 }
 
+export async function fetchGroupByInviteCode(
+  inviteCode: string
+): Promise<GroupInvitePreview> {
+  const encodedCode = encodeURIComponent(inviteCode);
+  const response = await apiClient.get<GroupInvitePreview>(
+    `/groups/invite/${encodedCode}`
+  );
+  return response.data;
+}
+
 /**
  * Lấy danh sách nhóm của tôi
  * GET /groups/user/:userId
@@ -162,11 +182,11 @@ export async function fetchMyGroups(): Promise<Group[]> {
  */
 export async function joinGroupByCode(
   inviteCode: string
-): Promise<{ message: string; group?: Group }> {
+): Promise<{ message: string; group?: Group; groupId?: string | number; status?: 'JOINED' | 'PENDING' }> {
   const encodedCode = encodeURIComponent(inviteCode);
   const userId = await getUserIdFromStorage();
 
-  const response = await apiClient.post<{ message: string; group?: Group }>(
+  const response = await apiClient.post<{ message: string; group?: Group; groupId?: string | number; status?: 'JOINED' | 'PENDING' }>(
     `/groups/join/${encodedCode}`,
     { userId }
   );

@@ -10,6 +10,7 @@ import {
   Switch,
   ActivityIndicator,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { setSelectedGroup } from '@store/slices/groupsSlice';
@@ -28,6 +29,8 @@ import {
   handleJoinRequest,
   fetchPendingRequests,
   getUserIdFromStorage,
+  fetchGroupInvite,
+  type InviteInfo,
 } from '../api';
 
 type Props = RootStackScreenProps<'GroupSettings'>;
@@ -52,6 +55,8 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -93,6 +98,17 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
       setIsOwner(currentRole === 'OWNER');
       setIsAdmin(currentRole === 'OWNER' || currentRole === 'DEPUTY');
       dispatch(setSelectedGroup(group as any));
+
+      setInviteLoading(true);
+      try {
+        const invite = await fetchGroupInvite(groupId);
+        setInviteInfo(invite);
+      } catch (inviteErr) {
+        console.error('[GroupSettings] fetchGroupInvite error:', inviteErr);
+        setInviteInfo(null);
+      } finally {
+        setInviteLoading(false);
+      }
     } catch (err) {
       console.error('Failed to load group settings:', err);
       Alert.alert('Lỗi', 'Không thể tải cài đặt nhóm');
@@ -383,6 +399,30 @@ const GroupSettingsScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         </View>
 
+        {/* Group Invite QR */}
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Mã QR nhóm</Text>
+          <View style={styles.qrInviteBox}>
+            {inviteLoading ? (
+              <ActivityIndicator size="large" color={colors.primary} />
+            ) : inviteInfo?.inviteLink ? (
+              <>
+                <View style={styles.qrBox}>
+                  <QRCode value={inviteInfo.inviteLink} size={210} quietZone={8} />
+                </View>
+                <Text style={styles.inviteCode}>Mã mời: {inviteInfo.inviteCode}</Text>
+                <Text style={styles.qrHint}>
+                  Thành viên khác quét mã này để gửi yêu cầu hoặc tham gia nhóm.
+                </Text>
+              </>
+            ) : (
+              <TouchableOpacity style={styles.secondaryAction} onPress={loadSettings}>
+                <Text style={styles.secondaryActionText}>Tải lại mã QR</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
         {/* Privacy Settings */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Quyền riêng tư</Text>
@@ -640,6 +680,42 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 80,
     textAlignVertical: 'top',
+  },
+  qrInviteBox: {
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  qrBox: {
+    padding: spacing.md,
+    borderRadius: spacing.borderRadius.md,
+    backgroundColor: '#FFFFFF',
+    marginBottom: spacing.md,
+  },
+  inviteCode: {
+    ...typography.bodySmall,
+    color: colors.text.primary,
+    fontWeight: '700',
+    marginBottom: spacing.xs,
+  },
+  qrHint: {
+    ...typography.bodySmall,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  secondaryAction: {
+    minHeight: 40,
+    paddingHorizontal: spacing.lg,
+    borderRadius: spacing.borderRadius.md,
+    backgroundColor: colors.background.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryActionText: {
+    ...typography.bodySmall,
+    color: colors.primary,
+    fontWeight: '700',
   },
   toggleRow: {
     flexDirection: 'row',

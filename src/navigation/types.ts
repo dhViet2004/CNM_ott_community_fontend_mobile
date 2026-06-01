@@ -4,21 +4,26 @@ import type { CompositeScreenProps } from '@react-navigation/native';
 
 export type RootStackParamList = {
   MainTabs: undefined;
-  Chat: { conversationId: string; title: string; userId?: string; originalName?: string };
+  Chat: { conversationId: string; title: string; userId?: string; originalName?: string; focusedMessageId?: string };
+  CreateReminder: { conversationId: string; title?: string };
+  CreateNote: { conversationId: string; title?: string };
   BotChat: undefined;
-  GroupChat: { groupId: string; title: string };
+  GroupChat: { groupId: string; title: string; focusedMessageId?: string };
   UserProfile: { userId: string };
   Login: undefined;
   Register: undefined;
   EditProfile: undefined;
   Settings: undefined;
   ContactsList: undefined;
+  QRCodeFriend: { initialTab?: 'my-qr' | 'scan-qr' } | undefined;
   AddContact: undefined;
+  FriendRequests: undefined;
   ForgotPassword: undefined;
   Groups: undefined;
   CreateGroup: undefined;
   JoinGroup: undefined;
   GroupDetail: { groupId: string };
+  GroupInviteLink: { groupId: string };
   AddMembers: { groupId: string };
   GroupSettings: { groupId: string };
   ManageMembers: { groupId: string };
@@ -46,6 +51,8 @@ export type RootStackParamList = {
     groupName: string;
     mode?: 'normal' | 'rejoin';
   };
+  MediaGallery: { conversationId: string; title: string; initialTab?: string };
+  Friends: undefined;
 };
 
 export type MainTabParamList = {

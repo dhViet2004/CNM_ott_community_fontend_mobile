@@ -11,8 +11,10 @@ import {
   StatusBar,
   TouchableOpacity,
   Alert,
+  ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { shallowEqual } from 'react-redux';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -21,19 +23,22 @@ import { useTypingIndicator } from '@features/chat/hooks/useTypingIndicator';
 import { MessageBubble, TypingIndicator, ChatInput, PinnedHeader, MessageContextMenu, ForwardMessageModal } from '@features/chat/components';
 import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
 import { Icons, IconSize } from '@components/common';
-import { socketActions } from '@api/socket';
-import { messageApi, friendsApi, callApi } from '@api/endpoints';
+import { getSocket, socketActions } from '@api/socket';
+import { messageApi, friendsApi, callApi, botApi } from '@api/endpoints';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
-import { confirmPendingMessage, failPendingMessage, setMessageFailed, setMessageRevoked, updateMessage, addMessage, deleteMessage, addDeletedForMeId } from '@store/slices/chatSlice';
+import { confirmPendingMessage, failPendingMessage, setActiveConversation, setMessageFailed, setMessageRevoked, updateMessage, addMessage, deleteMessage, addDeletedForMeId } from '@store/slices/chatSlice';
+import type { ReplyToMessage } from '@store/slices/chatSlice';
 import { setAgoraCredentials, setIsCaller, setCallStatus } from '@store/slices/callSlice';
 import { colors, spacing } from '@theme';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
+import type { PollData } from '@/types';
 
 type Props = RootStackScreenProps<'Chat'>;
 const EMPTY_ARRAY: any[] = [];
 
 const HEADER_BLUE = '#008AF3';
 const CHAT_BG = '#F4F6F8';
+const BOT_PROMPT_REGEX = /^@(Trợ lý AI|BotAI|Bot)(?=\s|$|[,.!?:;-])[\s,:-]*(.+)$/iu;
 
 type SelectedMessage = {
   id: string | number;
@@ -79,6 +84,22 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       setIsPinnedExpanded(false);
     }
   };
+
+  const handleBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('MainTabs');
+  }, [navigation]);
+
+  useEffect(() => {
+    dispatch(setActiveConversation(conversationId));
+    return () => {
+      dispatch(setActiveConversation(null));
+    };
+  }, [conversationId, dispatch]);
 
   // Bottom padding — account for home indicator on iOS
   // When keyboard is visible, we don't need the bottom inset
@@ -153,7 +174,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         }
       };
 
-      const socket = require('@api/socket').socket;
+      const socket = getSocket();
       socket?.on('chat_background_updated', listener);
 
       return () => {
@@ -192,9 +213,124 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [inputText, setInputText] = useState('');
+  const [replyingMessage, setReplyingMessage] = useState<ReplyToMessage | null>(null);
   const isNearBottomRef = useRef(true);
   const isInitializedRef = useRef(false);
   const prevMessagesLengthRef = useRef(0);
+
+  const extractBotPrompt = useCallback((text: string) => {
+    const trimmed = String(text || '').trim();
+    const match = trimmed.match(BOT_PROMPT_REGEX);
+    return match ? String(match[2] || '').trim() : '';
+  }, []);
+
+  const requestBotReply = useCallback(
+    async (prompt: string) => {
+      if (!currentUserId || !prompt) return;
+
+      try {
+        const result = await botApi.chat({
+          userId: String(currentUserId),
+          message: prompt,
+          conversationId,
+        });
+
+        const reminderMessage = result.toolCalls
+          ?.find((toolCall) => toolCall?.tool === 'createReminder' && toolCall?.ok && toolCall?.message)
+          ?.message;
+
+        if (reminderMessage) {
+          const reminderMessageId = String(reminderMessage.id ?? reminderMessage.messageId ?? '');
+          if (!reminderMessageId) return;
+
+          dispatch(addMessage({
+            id: reminderMessageId,
+            conversationId: reminderMessage.conversationId || conversationId,
+            senderId: String(reminderMessage.senderId || currentUserId),
+            senderName:
+              reminderMessage.senderDisplayName ||
+              reminderMessage.sender_name ||
+              currentUser?.display_name ||
+              currentUser?.username ||
+              'Bạn',
+            sender_name:
+              reminderMessage.senderDisplayName ||
+              reminderMessage.sender_name ||
+              currentUser?.display_name ||
+              currentUser?.username ||
+              'Bạn',
+            sender_avatar:
+              reminderMessage.senderAvatarUrl ??
+              reminderMessage.sender_avatar ??
+              currentUser?.avatar_url ??
+              null,
+            type: (reminderMessage.contentType ?? reminderMessage.type ?? 'reminder') as MessageItem['type'],
+            content: reminderMessage.content || '',
+            timestamp: reminderMessage.createdAt || reminderMessage.created_at || new Date().toISOString(),
+            createdAt: reminderMessage.createdAt || reminderMessage.created_at,
+            status: 'sent',
+          }));
+        }
+      } catch (err) {
+        console.error('[ChatDetail] BotAI request failed:', err);
+      }
+    },
+    [conversationId, currentUser, currentUserId, dispatch]
+  );
+
+  const handleSendLocation = useCallback(async () => {
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Quyền vị trí', 'Bạn cần cấp quyền vị trí để gửi vị trí hiện tại.');
+        return;
+      }
+
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const latitude = currentLocation.coords.latitude;
+      const longitude = currentLocation.coords.longitude;
+      const label = `📍 ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+
+      const result: any = await messageApi.sendLocation(
+        conversationId,
+        { lat: latitude, lng: longitude, label },
+        replyingMessage?.id ?? null,
+      );
+
+      dispatch(addMessage({
+        id: String(result.id ?? result.messageId ?? Date.now()),
+        conversationId: result.conversationId || conversationId,
+        senderId: String(result.senderId || currentUserId || ''),
+        senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+        sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+        sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+        type: (result.contentType || 'location') as any,
+        content: result.content || label,
+        file_url: null,
+        locationData: result.locationData ?? { lat: latitude, lng: longitude, label },
+        timestamp: result.createdAt || result.created_at || new Date().toISOString(),
+        createdAt: result.createdAt || result.created_at,
+        status: 'sent',
+        replyTo: result.replyTo ?? replyingMessage?.id ?? null,
+        replyToMessage: result.replyToMessage ?? replyingMessage ?? null,
+      }));
+
+      setReplyingMessage(null);
+
+      if (isNearBottomRef.current) {
+        setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+      }
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        'Không thể gửi vị trí hiện tại. Vui lòng thử lại.';
+      Alert.alert('Lỗi', message);
+    }
+  }, [conversationId, currentUser, currentUserId, dispatch, replyingMessage]);
 
   const { messages, isLoading, loadMessages, addOptimisticMessage } = useMessages({
     conversationId,
@@ -342,6 +478,18 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [messages]);
 
+  const handleReplyToMessage = useCallback((msg: NonNullable<SelectedMessage>) => {
+    setReplyingMessage({
+      id: msg.id,
+      content: msg.content || '',
+      contentType: msg.type,
+      senderId: msg.senderId,
+      senderDisplayName: msg.senderName || null,
+      senderAvatarUrl: msg.senderAvatar || null,
+    });
+    setSelectedMessage(null);
+  }, []);
+
   const handleSend = useCallback(
     async (text: string) => {
       if (!text.trim()) return;
@@ -350,6 +498,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       Keyboard.dismiss();
       socketActions.sendStopTyping(conversationId);
 
+      const replySnapshot = replyingMessage;
       const tempId = addOptimisticMessage({
         conversationId,
         senderId: currentUserId || '',
@@ -358,10 +507,15 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         content: text,
         type: 'text',
         file_url: null,
+        replyTo: replySnapshot?.id ?? null,
+        replyToMessage: replySnapshot,
       });
+      setReplyingMessage(null);
+
+      const botPrompt = extractBotPrompt(text);
 
       try {
-        const result = await messageApi.sendMessage(conversationId, text, currentUserId || '');
+        const result = await messageApi.sendMessage(conversationId, text, currentUserId || '', 'text', replySnapshot?.id ?? null);
         const realId = String(result.id ?? result.messageId ?? tempId);
 
         dispatch(confirmPendingMessage({
@@ -374,10 +528,16 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           content: result.content ?? text,
           type: (result.contentType ?? result.type ?? 'text') as MessageItem['type'],
           file_url: result.file_url ?? result.attachments?.[0]?.url ?? null,
+          replyTo: result.replyTo ?? replySnapshot?.id ?? null,
+          replyToMessage: result.replyToMessage ?? replySnapshot ?? null,
         }));
 
         if (isNearBottomRef.current) {
           setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50);
+        }
+
+        if (botPrompt) {
+          requestBotReply(botPrompt);
         }
       } catch {
         dispatch(failPendingMessage(tempId));
@@ -385,7 +545,55 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         Alert.alert('Lỗi', 'Không thể gửi tin nhắn. Vui lòng thử lại.');
       }
     },
-    [conversationId, currentUserId, currentUser, dispatch, addOptimisticMessage]
+    [conversationId, currentUserId, currentUser, dispatch, addOptimisticMessage, replyingMessage, extractBotPrompt, requestBotReply]
+  );
+
+  const handleCreatePoll = useCallback(
+    async (pollPayload: { content: string; pollData: PollData }) => {
+      try {
+        const result: any = await new Promise((resolve) => {
+          socketActions.sendMessage(
+            conversationId,
+            pollPayload.content,
+            'poll',
+            pollPayload.pollData,
+            resolve
+          );
+        });
+
+        if (result?.ok === false) {
+          throw new Error(result.error || 'Không thể tạo bình chọn');
+        }
+
+        const sentMessage = result?.message || result;
+
+        dispatch(addMessage({
+          id: String(sentMessage.id || sentMessage.messageId || Date.now()),
+          conversationId: sentMessage.conversationId || conversationId,
+          senderId: String(sentMessage.senderId || currentUserId),
+          senderName: currentUser?.display_name || currentUser?.username || 'Bạn',
+          sender_name: currentUser?.display_name || currentUser?.username || 'Bạn',
+          sender_avatar: currentUser?.avatar_url || (currentUser as any)?.avatar || null,
+          type: 'poll',
+          content: sentMessage.content || pollPayload.content,
+          pollData: sentMessage.pollData || pollPayload.pollData,
+          file_url: null,
+          file_name: null,
+          file_size: null,
+          timestamp: sentMessage.createdAt || sentMessage.created_at || new Date().toISOString(),
+          status: 'sent',
+        }));
+
+        if (isNearBottomRef.current) {
+          setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
+        }
+      } catch (err) {
+        console.error('[ChatDetail] Error creating poll:', err);
+        Alert.alert('Lỗi', 'Không thể tạo bình chọn. Vui lòng thử lại.');
+        throw err;
+      }
+    },
+    [conversationId, currentUserId, currentUser, dispatch]
   );
 
   const onTextChange = useCallback(
@@ -399,29 +607,43 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   );
 
   const renderMessage = useCallback(
-    ({ item }: { item: MessageItem }) => (
-      <MessageBubble
-        id={item.id}
-        senderId={item.senderId}
-        senderName={item.senderName}
-        senderAvatar={item.senderAvatar}
-        content={item.content}
-        time={item.time}
-        isMe={item.isMe}
-        type={item.type}
-        file_url={item.file_url}
-        status={item.status}
-        isDeleted={item.isDeleted}
-        isRevoked={item.isRevoked}
-        defaultName={title}
-        isFocused={String(item.id) === focusedMessageId}
-        readBy={item.readBy}
-        onLongPress={(msg) => {
-          setSelectedMessage(msg);
-        }}
-      />
-    ),
-    [title, focusedMessageId]
+    ({ item }: { item: MessageItem }) => {
+      const senderName =
+        !item.isMe && (!item.senderName || item.senderName === 'Unknown')
+          ? title
+          : item.senderName;
+
+      return (
+        <MessageBubble
+          id={item.id}
+          conversationId={item.conversationId}
+          senderId={item.senderId}
+          senderName={senderName}
+          senderAvatar={item.senderAvatar}
+          content={item.content}
+          time={item.time}
+          isMe={item.isMe}
+          type={item.type}
+          file_url={item.file_url}
+          status={item.status}
+          isDeleted={item.isDeleted}
+          isRevoked={item.isRevoked}
+          defaultName={title}
+          isFocused={String(item.id) === focusedMessageId}
+          readBy={item.readBy}
+          replyToMessage={item.replyToMessage}
+          storyReply={item.storyReply}
+          pollData={item.pollData}
+          locationData={(item as any).locationData}
+          currentUserId={currentUserId}
+          onJumpToMessage={(messageId) => handleNavigateToMessage(String(messageId))}
+          onLongPress={(msg) => {
+            setSelectedMessage(msg);
+          }}
+        />
+      );
+    },
+    [title, focusedMessageId, handleNavigateToMessage, currentUserId]
   );
 
   const keyExtractor = useCallback((item: MessageItem) => String(item.id), []);
@@ -438,6 +660,31 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [messages.length]);
 
+  // Helper to resolve relative background URLs
+  const getFullBgUrl = (url: string | null) => {
+    if (!url) return null;
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    if (url.startsWith('/')) {
+      const webUrl = process.env.EXPO_PUBLIC_WEB_URL;
+      if (webUrl) {
+        return `${webUrl.replace(/\/$/, '')}${url}`;
+      }
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+      if (apiUrl) {
+        try {
+          const urlObj = new URL(apiUrl);
+          // Replace port with 3000 (Next.js frontend port)
+          const frontendHost = `${urlObj.protocol}//${urlObj.hostname}:3000`;
+          return `${frontendHost}${url}`;
+        } catch {}
+      }
+      return `http://localhost:3000${url}`;
+    }
+    return url;
+  };
+
   // ── Zalo-style Header ─────────────────────────────────────────────────────
   const renderHeader = () => (
     <SafeAreaView edges={['top']} style={styles.headerSafeArea}>
@@ -446,7 +693,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       <View style={styles.headerBar}>
         {/* Left: Back chevron */}
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={handleBack}
           style={styles.headerBackBtn}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
@@ -511,63 +758,123 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}
       >
-        <View style={styles.chatContent}>
-          <PinnedHeader
-            pinnedMessages={pinnedMessages}
-            currentUserId={currentUserId}
-            isExpanded={isPinnedExpanded}
-            onToggle={setIsPinnedExpanded}
-            onUnpin={handleUnpinMessage}
-            onNavigateToMessage={handleNavigateToMessage}
-          />
-          <View style={{ flex: 1 }} onTouchStart={handleChatTouch}>
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              keyExtractor={keyExtractor}
-              renderItem={renderMessage}
-              inverted
-              contentContainerStyle={[
-                styles.messagesList,
-                { paddingBottom: bottomPadding + spacing.md },
-              ]}
-              onContentSizeChange={handleContentSizeChange}
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-              keyboardDismissMode="on-drag"
-              keyboardShouldPersistTaps="handled"
-              ListEmptyComponent={
-                <View key="list-empty">
-                  {isLoading ? (
-                    <View style={styles.stateContainer}>
-                      <Text style={styles.stateText}>Đang tải tin nhắn...</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.stateContainer}>
-                      <Text style={styles.stateText}>Chưa có tin nhắn nào</Text>
-                      <Text style={styles.stateSubtext}>Gửi lời chào đầu tiên!</Text>
-                    </View>
-                  )}
-                </View>
-              }
-              refreshControl={
-                <RefreshControl
-                  refreshing={isRefreshing}
-                  onRefresh={handleRefresh}
-                  tintColor={colors.primary}
-                  colors={[colors.primary]}
-                />
-              }
+        {chatBgUrl ? (
+          <ImageBackground source={{ uri: getFullBgUrl(chatBgUrl) || '' }} style={styles.chatContent} resizeMode="cover">
+            <PinnedHeader
+              pinnedMessages={pinnedMessages}
+              currentUserId={currentUserId}
+              isExpanded={isPinnedExpanded}
+              onToggle={setIsPinnedExpanded}
+              onUnpin={handleUnpinMessage}
+              onNavigateToMessage={handleNavigateToMessage}
             />
-          </View>
-
-          {/* Typing indicator — placed outside FlatList to appear above input (not at top of list) */}
-          {typingLabel ? (
-            <View style={styles.typingWrapper}>
-              <TypingIndicator label={typingLabel} />
+            <View style={{ flex: 1 }} onTouchStart={handleChatTouch}>
+              <FlatList
+                ref={flatListRef}
+                data={messages}
+                keyExtractor={keyExtractor}
+                renderItem={renderMessage}
+                inverted
+                contentContainerStyle={[
+                  styles.messagesList,
+                  { paddingBottom: bottomPadding + spacing.md },
+                ]}
+                onContentSizeChange={handleContentSizeChange}
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
+                keyboardDismissMode="on-drag"
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={
+                  <View key="list-empty">
+                    {isLoading ? (
+                      <View style={styles.stateContainer}>
+                        <Text style={styles.stateText}>Đang tải tin nhắn...</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.stateContainer}>
+                        <Text style={styles.stateText}>Chưa có tin nhắn nào</Text>
+                        <Text style={styles.stateSubtext}>Gửi lời chào đầu tiên!</Text>
+                      </View>
+                    )}
+                  </View>
+                }
+                refreshControl={
+                  <RefreshControl
+                    refreshing={isRefreshing}
+                    onRefresh={handleRefresh}
+                    tintColor={colors.primary}
+                    colors={[colors.primary]}
+                  />
+                }
+              />
             </View>
-          ) : null}
-        </View>
+
+            {/* Typing indicator — placed outside FlatList to appear above input (not at top of list) */}
+            {typingLabel ? (
+              <View style={styles.typingWrapper}>
+                <TypingIndicator label={typingLabel} />
+              </View>
+            ) : null}
+          </ImageBackground>
+        ) : (
+          <View style={styles.chatContent}>
+            <PinnedHeader
+              pinnedMessages={pinnedMessages}
+              currentUserId={currentUserId}
+              isExpanded={isPinnedExpanded}
+              onToggle={setIsPinnedExpanded}
+              onUnpin={handleUnpinMessage}
+              onNavigateToMessage={handleNavigateToMessage}
+            />
+            <View style={{ flex: 1 }} onTouchStart={handleChatTouch}>
+              <FlatList
+                ref={flatListRef}
+                data={messages}
+                keyExtractor={keyExtractor}
+                renderItem={renderMessage}
+                inverted
+                contentContainerStyle={[
+                  styles.messagesList,
+                  { paddingBottom: bottomPadding + spacing.md },
+                ]}
+                onContentSizeChange={handleContentSizeChange}
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
+                keyboardDismissMode="on-drag"
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={
+                  <View key="list-empty">
+                    {isLoading ? (
+                      <View style={styles.stateContainer}>
+                        <Text style={styles.stateText}>Đang tải tin nhắn...</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.stateContainer}>
+                        <Text style={styles.stateText}>Chưa có tin nhắn nào</Text>
+                        <Text style={styles.stateSubtext}>Gửi lời chào đầu tiên!</Text>
+                      </View>
+                    )}
+                  </View>
+                }
+                refreshControl={
+                  <RefreshControl
+                    refreshing={isRefreshing}
+                    onRefresh={handleRefresh}
+                    tintColor={colors.primary}
+                    colors={[colors.primary]}
+                  />
+                }
+              />
+            </View>
+
+            {/* Typing indicator — placed outside FlatList to appear above input (not at top of list) */}
+            {typingLabel ? (
+              <View style={styles.typingWrapper}>
+                <TypingIndicator label={typingLabel} />
+              </View>
+            ) : null}
+          </View>
+        )}
 
         {/* Footer / Chat Input */}
         <View style={[styles.inputWrapper, { paddingBottom: bottomPadding }]}>
@@ -576,6 +883,13 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             onChangeText={onTextChange}
             onFocus={() => markAsReadRef.current()}
             onSend={handleSend}
+            onCreatePoll={handleCreatePoll}
+            onCreateReminder={() => navigation.navigate('CreateReminder', { conversationId, title })}
+            onCreateNote={() => navigation.navigate('CreateNote', { conversationId, title })}
+            onSendLocation={handleSendLocation}
+            replyingMessage={replyingMessage}
+            onCancelReply={() => setReplyingMessage(null)}
+            onJumpToReply={(messageId) => handleNavigateToMessage(String(messageId))}
             conversationId={conversationId}
             senderId={currentUserId || undefined}
             receiverId={route.params.userId}
@@ -672,7 +986,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         isOwn={selectedMessage?.isMe ?? false}
         isDeleting={deletingMessageId === String(selectedMessage?.id)}
         onReply={() => {
-          Alert.alert('Trả lời', 'Tính năng đang phát triển');
+          if (selectedMessage) handleReplyToMessage(selectedMessage);
         }}
         onForward={() => {
           if (!selectedMessage) return;

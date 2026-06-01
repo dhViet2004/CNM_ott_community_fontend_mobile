@@ -6,6 +6,7 @@ import { Avatar, Button } from '@components/common';
 import { useProfile } from '../hooks';
 import type { RootStackScreenProps } from '@navigation/types';
 import { useAppSelector } from '@store/hooks';
+import StoryHighlights from '@/features/stories/components/StoryHighlights';
 
 type Props = RootStackScreenProps<'UserProfile'>;
 
@@ -134,6 +135,8 @@ const UserProfileScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           )}
         </View>
+
+        <StoryHighlights userId={userId} currentUserId={currentUserId} />
       </ScrollView>
     </View>
   );

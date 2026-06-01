@@ -35,6 +35,7 @@ export interface FriendItem {
   friend_display_name?: string;
   friend_username?: string;
   friend_avatar_url?: string | null;
+  friend_original_name?: string;
 }
 
 // Backend getPendingRequests returns: { id: friendshipId, sender_id, ... }
@@ -109,10 +110,56 @@ export interface BackendMessage {
     type: string;
     size: number;
   }>;
+  replyTo?: string | number | null;
+  replyToMessage?: {
+    id: string | number;
+    content?: string | null;
+    contentType?: string;
+    type?: string;
+    senderId?: string;
+    senderDisplayName?: string | null;
+    senderName?: string | null;
+    senderAvatarUrl?: string | null;
+    senderAvatar?: string | null;
+    attachments?: Array<{
+      url: string;
+      type?: string;
+      size?: number;
+    }> | null;
+    file_url?: string | null;
+  } | null;
+  storyReply?: {
+    storyId: string;
+    authorName: string;
+    type: 'image' | 'text';
+    text?: string;
+    mediaUrl?: string | null;
+  } | null;
+  pollData?: PollData | null;
+  reminderData?: {
+    reminderId?: string;
+    remindAt?: string;
+    repeat?: string;
+    status?: string;
+  } | null;
   is_revoked?: boolean;
   status?: 'sending' | 'sent' | 'delivered' | 'read';
   createdAt?: string;
   created_at?: string;
+}
+
+export interface PollOption {
+  id: string;
+  text: string;
+  voterIds?: Array<string | number>;
+}
+
+export interface PollData {
+  pollOptions: PollOption[];
+  pollSettings?: {
+    multipleChoice?: boolean;
+    allowAddOption?: boolean;
+  };
 }
 
 export type { RootStackParamList, MainTabParamList, RootStackScreenProps, MainTabScreenProps } from '@navigation/types';

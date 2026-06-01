@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import type { FriendItem } from '@/types';
+import type { FriendItem, PollData } from '@/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -15,11 +15,19 @@ export interface Message {
   // Legacy field names (sender_name, sender_avatar) - từ socket/addMessage
   sender_name?: string;
   sender_avatar?: string | null;
-  type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'emoji';
+  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system' | 'poll' | 'reminder' | 'reminder_due' | 'note' | 'location';
   content: string;
+  pollData?: PollData | null;
   file_url?: string | null;
   file_name?: string | null;
   file_size?: number | null;
+  locationData?: {
+    lat: number;
+    lng: number;
+    label?: string | null;
+    isLive?: boolean;
+    liveUntil?: string | null;
+  } | null;
   // Backend field: createdAt, Legacy field: timestamp
   timestamp: string;
   createdAt?: string;
@@ -27,6 +35,9 @@ export interface Message {
   isDeleted?: boolean;
   isRevoked?: boolean;
   is_revoked?: boolean;
+  replyTo?: string | number | null;
+  replyToMessage?: ReplyToMessage | null;
+  storyReply?: StoryReply | null;
   // Read receipts: danh sách người đã đọc tin nhắn này
   readBy?: Array<{
     userId: string;
@@ -34,6 +45,32 @@ export interface Message {
     readerAvatar?: string | null;
     readAt?: string;
   }>;
+}
+
+export interface StoryReply {
+  storyId: string;
+  authorName: string;
+  type: 'image' | 'text';
+  text?: string;
+  mediaUrl?: string | null;
+}
+
+export interface ReplyToMessage {
+  id: string | number;
+  content?: string | null;
+  contentType?: string;
+  type?: string;
+  senderId?: string;
+  senderDisplayName?: string | null;
+  senderName?: string | null;
+  senderAvatarUrl?: string | null;
+  senderAvatar?: string | null;
+  attachments?: Array<{
+    url: string;
+    type?: string;
+    size?: number;
+  }> | null;
+  file_url?: string | null;
 }
 
 export interface Conversation {
@@ -66,6 +103,7 @@ interface ChatState {
   // Messages
   messages: Record<string, Message[]>;
   pendingMessages: Record<string, 'sending' | 'sent' | 'failed'>;
+  unreadCounts: Record<string, number>;
 
   // Friends (DM partners)
   friends: FriendItem[];
@@ -108,6 +146,7 @@ const initialState: ChatState = {
   activeConversationId: null,
   messages: {},
   pendingMessages: {},
+  unreadCounts: {},
   friends: [],
   selectedFriendId: null,
   myGroups: [],
@@ -195,6 +234,9 @@ const chatSlice = createSlice({
 
     setActiveConversation(state, action: PayloadAction<string | null>) {
       state.activeConversationId = action.payload;
+      if (action.payload) {
+        state.unreadCounts[action.payload] = 0;
+      }
     },
 
     // ─── Messages ───────────────────────────────────────────────────────────
@@ -228,6 +270,12 @@ const chatSlice = createSlice({
       );
       if (!exists) {
         state.messages[convId] = [...state.messages[convId], action.payload];
+        if (
+          action.payload.status === 'delivered' &&
+          state.activeConversationId !== convId
+        ) {
+          state.unreadCounts[convId] = (state.unreadCounts[convId] || 0) + 1;
+        }
       }
 
       // Update conversation last message
@@ -260,9 +308,12 @@ const chatSlice = createSlice({
         content: string;
         type: string;
         file_url?: string | null;
+        replyTo?: string | number | null;
+        replyToMessage?: ReplyToMessage | null;
+        pollData?: PollData | null;
       }>
     ) {
-      const { tempId, realId, conversationId, senderId, senderName, senderAvatar, content, type, file_url } = action.payload;
+      const { tempId, realId, conversationId, senderId, senderName, senderAvatar, content, type, file_url, replyTo, replyToMessage, pollData } = action.payload;
       delete state.pendingMessages[tempId];
 
       const messages = state.messages[conversationId];
@@ -280,6 +331,9 @@ const chatSlice = createSlice({
             content,
             type: type as Message['type'],
             file_url: file_url ?? null,
+            replyTo: replyTo ?? updated[idx].replyTo ?? null,
+            replyToMessage: replyToMessage ?? updated[idx].replyToMessage ?? null,
+            pollData: pollData ?? updated[idx].pollData ?? null,
             status: 'sent',
           };
           state.messages[conversationId] = updated;

@@ -12,7 +12,9 @@ import {
   addReaderToMessage,
   addNewConversation,
   removeConversationById,
+  updateMessage,
 } from '@store/slices/chatSlice';
+import type { PollData } from '@/types';
 import {
   removeGroup,
   addGroup,
@@ -36,13 +38,106 @@ import {
   clearGroupIncomingCall,
   setGroupStatus,
 } from '@store/slices/groupCallSlice';
+import { updateUser } from '@store/slices/authSlice';
 
 const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL;
 
 let socket: Socket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
+let unsubscribeRoomSync: (() => void) | null = null;
 const MAX_RECONNECT_ATTEMPTS = 5;
+const joinedRooms = new Set<string>();
+const emittedJoinedRooms = new Set<string>();
+
+const normalizeRoomId = (roomId?: string | number | null): string =>
+  String(roomId ?? '').trim();
+
+const buildDmRoomId = (
+  userId?: string | number | null,
+  friendId?: string | number | null
+): string | null => {
+  const a = normalizeRoomId(userId);
+  const b = normalizeRoomId(friendId);
+  if (!a || !b) return null;
+
+  const aNum = Number(a);
+  const bNum = Number(b);
+  if (Number.isFinite(aNum) && Number.isFinite(bNum)) {
+    return `dm:${[aNum, bNum].sort((x, y) => x - y).join(':')}`;
+  }
+
+  return `dm:${[a, b].sort().join(':')}`;
+};
+
+const registerRoom = (roomId?: string | number | null): string => {
+  const normalized = normalizeRoomId(roomId);
+  if (normalized) joinedRooms.add(normalized);
+  return normalized;
+};
+
+const emitJoinRoom = (roomId?: string | number | null) => {
+  const normalized = registerRoom(roomId);
+  if (normalized && socket?.connected && !emittedJoinedRooms.has(normalized)) {
+    socket.emit('join_room', { roomId: normalized });
+    emittedJoinedRooms.add(normalized);
+  }
+};
+
+const emitLeaveRoom = (roomId?: string | number | null) => {
+  const normalized = normalizeRoomId(roomId);
+  if (!normalized) return;
+  joinedRooms.delete(normalized);
+  emittedJoinedRooms.delete(normalized);
+  if (socket?.connected) {
+    socket.emit('leave_room', { roomId: normalized });
+  }
+};
+
+const syncKnownConversationRooms = () => {
+  const state = store.getState();
+  const currentUserId = state.auth?.user?.userId;
+  const activeConversationId = state.chat?.activeConversationId;
+
+  if (activeConversationId) {
+    registerRoom(activeConversationId);
+  }
+
+  (state.chat?.conversations || []).forEach((conversation: any) => {
+    if (conversation?.id && !String(conversation.id).startsWith('bot:')) {
+      registerRoom(conversation.id);
+    }
+  });
+
+  (state.chat?.friends || []).forEach((friend: any) => {
+    const friendId = friend.friend_id || friend.userId || friend.id;
+    const roomId = buildDmRoomId(currentUserId, friendId);
+    if (roomId) registerRoom(roomId);
+  });
+
+  (state.groups?.myGroups || []).forEach((group: any) => {
+    const groupId = group.groupId || group.id;
+    if (groupId) registerRoom(groupId);
+  });
+};
+
+const joinKnownRooms = () => {
+  syncKnownConversationRooms();
+  if (!socket?.connected) return;
+
+  joinedRooms.forEach((roomId) => {
+    emitJoinRoom(roomId);
+  });
+};
+
+const ensureRoomSyncSubscription = () => {
+  if (unsubscribeRoomSync) return;
+
+  unsubscribeRoomSync = store.subscribe(() => {
+    if (!socket?.connected) return;
+    joinKnownRooms();
+  });
+};
 
 // Track registered event names so we can clean up before re-registering
 const REGISTERED_EVENTS = [
@@ -57,8 +152,8 @@ const REGISTERED_EVENTS = [
   'group-call:participant-joined', 'group-call:participant-left',
   'user_joined', 'user_left', 'room_joined', 'message_read',
   'live_location_started', 'live_location_updated', 'live_location_stopped',
-  'message_pinned_updated',
-  // Group management socket events
+  'message_pinned_updated', 'poll_updated',
+  // Nhiệm vụ 2: Group management socket events
   'group:members_added', 'group:member_removed', 'group:member_left',
   'group:you_were_removed', 'group:you_were_added', 'group:deleted',
 ];
@@ -83,14 +178,21 @@ export interface SocketMessage {
   roomId?: string;
   senderDisplayName?: string;
   senderAvatarUrl?: string;
+  replyTo?: string | number | null;
+  replyToMessage?: any;
+  pollData?: PollData | null;
 }
 
 // ─── Connect ─────────────────────────────────────────────────────────────────
 
 export const connectSocket = (token: string) => {
   if (socket?.connected) {
+    joinKnownRooms();
+    return socket;
+  }
+
+  if (socket) {
     removeAllListeners();
-  } else if (socket) {
     socket.disconnect();
   }
 
@@ -102,10 +204,13 @@ export const connectSocket = (token: string) => {
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
   });
+  ensureRoomSyncSubscription();
 
   socket.on('connect', () => {
     console.log('[Socket] Connected:', socket?.id);
     reconnectAttempts = 0;
+    emittedJoinedRooms.clear();
+    joinKnownRooms();
   });
 
   socket.on('disconnect', (reason) => {
@@ -151,7 +256,14 @@ export const connectSocket = (token: string) => {
       return;
     }
 
-    const convId = message.conversationId || (message as any).roomId;
+    const rawConvId = message.conversationId || (message as any).roomId;
+    const activeConversationId = store.getState().chat?.activeConversationId;
+    const dmConvId =
+      currentUserId && senderId
+        ? `dm:${[String(currentUserId), senderId].sort().join(':')}`
+        : '';
+    const convId =
+      activeConversationId === dmConvId ? dmConvId : rawConvId;
     console.log('[Socket] Adding message to conversation:', convId);
 
     // Get senderDisplayName - prefer from message, then try group members
@@ -159,13 +271,18 @@ export const connectSocket = (token: string) => {
     let senderAvatar = message.sender_avatar ?? message.senderAvatarUrl ?? null;
 
     // If no senderDisplayName, try to get from group members in store
-    if (!senderDisplayName) {
-      const groupMembers = store.getState().groups?.groupMembers?.[convId] || [];
+    if (!senderDisplayName || String(senderDisplayName).trim().toLowerCase() === 'unknown') {
+      const conversationKey = String(convId || '');
+      const strippedGroupKey = conversationKey.replace(/^group:/, '');
+      const groupMembers =
+        store.getState().groups?.groupMembers?.[conversationKey] ||
+        store.getState().groups?.groupMembers?.[strippedGroupKey] ||
+        [];
       const senderMember = groupMembers.find((m: any) => 
         String(m.userId) === String(senderId) || String(m.id) === String(senderId)
       );
       if (senderMember) {
-        senderDisplayName = senderMember.display_name || senderMember.username;
+        senderDisplayName = senderMember.display_name || (senderMember as any).displayName || senderMember.username;
         senderAvatar = senderMember.avatar_url ?? senderAvatar;
       }
     }
@@ -177,13 +294,18 @@ export const connectSocket = (token: string) => {
       senderName: senderDisplayName || 'Unknown',
       sender_name: senderDisplayName || 'Unknown',
       sender_avatar: senderAvatar,
-      type: (message.contentType ?? 'text') as 'text' | 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'emoji',
+      type: (message.contentType ?? 'text') as 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system' | 'poll' | 'reminder' | 'reminder_due' | 'location',
       content: message.content ?? '',
+      pollData: message.pollData ?? null,
       file_url: message.file_url ?? (message as any).attachments?.[0]?.url ?? null,
+      locationData: (message as any).locationData ?? null,
       file_name: message.file_name ?? null,
       file_size: message.file_size ?? null,
       timestamp: message.createdAt ?? (message as any).created_at ?? '',
       status: 'delivered',
+      replyTo: (message as any).replyTo ?? null,
+      replyToMessage: (message as any).replyToMessage ?? null,
+      storyReply: (message as any).storyReply ?? null,
     }));
   });
 
@@ -524,6 +646,16 @@ export const connectSocket = (token: string) => {
     });
   });
 
+  socket.on('poll_updated', (data: { roomId?: string; conversationId?: string; messageId: string; pollData: PollData }) => {
+    const conversationId = data.roomId || data.conversationId;
+    if (!conversationId || !data.messageId) return;
+    store.dispatch(updateMessage({
+      conversationId,
+      messageId: String(data.messageId),
+      updates: { pollData: data.pollData },
+    }));
+  });
+
   socket.on('chat_background_updated', (data: { friendshipId: string; bgUrl: string | null; updatedBy: string }) => {
     console.log('[Socket] Chat background updated for friendship:', data.friendshipId);
   });
@@ -596,6 +728,7 @@ export const connectSocket = (token: string) => {
 
     const currentUserId = store.getState().auth?.user?.userId;
     const gDetails = data.groupDetails;
+    emitJoinRoom(gDetails.groupId);
 
     // Thêm nhóm mới vào danh sách chat
     const conversationId = String(gDetails.groupId);
@@ -656,6 +789,7 @@ export const connectSocket = (token: string) => {
 
     // Nếu user hiện tại là người bị kick → xóa khỏi myGroups và conversations
     if (currentUserId && String(data.removedMember) === String(currentUserId)) {
+      emitLeaveRoom(gIdStr);
       store.dispatch(removeGroup(gIdStr));
       store.dispatch(removeConversationById(gIdStr));
       console.log('[Socket] Current user was kicked, removing from store');
@@ -681,6 +815,7 @@ export const connectSocket = (token: string) => {
 
     // Nếu user hiện tại tự rời → xóa khỏi myGroups và conversations
     if (currentUserId && String(data.leftMember) === String(currentUserId)) {
+      emitLeaveRoom(gIdStr);
       store.dispatch(removeGroup(gIdStr));
       store.dispatch(removeConversationById(gIdStr));
       console.log('[Socket] Current user left the group, removing from store');
@@ -700,6 +835,7 @@ export const connectSocket = (token: string) => {
     if (!data.groupId) return;
 
     const gIdStr = String(data.groupId);
+    emitLeaveRoom(gIdStr);
     store.dispatch(removeGroup(gIdStr));
     store.dispatch(removeConversationById(gIdStr));
     console.log('[Socket] User was removed from group:', gIdStr);
@@ -723,6 +859,7 @@ export const connectSocket = (token: string) => {
 
     const groupId = String(data.groupData.groupId || data.groupData.id || '');
     if (!groupId) return;
+    emitJoinRoom(groupId);
 
     const conversationId = groupId;
     const existingConv = store.getState().chat?.conversations?.find(
@@ -779,9 +916,31 @@ export const connectSocket = (token: string) => {
     if (!data.groupId) return;
 
     const gIdStr = String(data.groupId);
+    emitLeaveRoom(gIdStr);
     store.dispatch(removeGroup(gIdStr));
     store.dispatch(removeConversationById(gIdStr));
     console.log('[Socket] Group deleted:', gIdStr);
+  });
+
+  // Khi hồ sơ cá nhân/avatar được cập nhật ở client khác (Web/Mobile), đồng bộ lại state
+  socket.on('profile_updated', (data: any) => {
+    console.log('[Socket] ⭐ profile_updated received:', JSON.stringify(data));
+    if (data) {
+      const mappedUser = {
+        userId: data.userId || data.id,
+        username: data.username,
+        display_name: data.display_name || data.fullName,
+        displayName: data.display_name || data.fullName,
+        avatar_url: data.avatar_url || data.avatarUrl,
+        avatarUrl: data.avatar_url || data.avatarUrl,
+        cover_url: data.cover_url || data.coverUrl,
+        coverUrl: data.cover_url || data.coverUrl,
+        gender: data.gender,
+        birthday: data.birthday,
+        phoneNumber: data.phoneNumber || data.phone,
+      };
+      store.dispatch(updateUser(mappedUser));
+    }
   });
 };
 
@@ -809,6 +968,11 @@ export const disconnectSocket = () => {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  if (unsubscribeRoomSync) {
+    unsubscribeRoomSync();
+    unsubscribeRoomSync = null;
+  }
+  emittedJoinedRooms.clear();
   socket?.disconnect();
   socket = null;
 };
@@ -822,11 +986,17 @@ export const getSocket = () => socket;
 export const socketActions = {
   // Join/Leave conversation rooms
   joinConversation: (conversationId: string) => {
-    socket?.emit('join_room', { roomId: conversationId });
+    emitJoinRoom(conversationId);
   },
 
   leaveConversation: (conversationId: string) => {
-    socket?.emit('leave_room', { roomId: conversationId });
+    // Keep chat rooms joined for app-wide realtime. Use forceLeaveConversation
+    // only when the user is no longer a participant.
+    registerRoom(conversationId);
+  },
+
+  forceLeaveConversation: (conversationId: string) => {
+    emitLeaveRoom(conversationId);
   },
 
   // Typing indicators - backend uses typing_start/typing_stop
@@ -839,8 +1009,20 @@ export const socketActions = {
   },
 
   // Send message via socket - backend uses send_message
-  sendMessage: (conversationId: string, content: string, type: string = 'text') => {
-    socket?.emit('send_message', { roomId: conversationId, content, contentType: type });
+  sendMessage: (conversationId: string, content: string, type: string = 'text', pollData?: PollData, callback?: (res: any) => void) => {
+    if (!socket) {
+      callback?.({ ok: false, error: 'Socket chưa kết nối' });
+      return;
+    }
+    socket?.emit('send_message', { roomId: conversationId, content, contentType: type, ...(pollData ? { pollData } : {}) }, callback);
+  },
+
+  votePoll: (conversationId: string, messageId: string | number, optionId: string, callback?: (res: any) => void) => {
+    if (!socket) {
+      callback?.({ ok: false, error: 'Socket chưa kết nối' });
+      return;
+    }
+    socket?.emit('vote_poll', { roomId: conversationId, messageId, optionId }, callback);
   },
 
   // Call actions (backend-compatible event names)

@@ -159,6 +159,28 @@ export interface PendingRequest {
   sender_avatar_url?: string | null;
 }
 
+export interface QRInfoResponse {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  qrData: string;
+}
+
+export interface SendFriendRequestByQRResponse {
+  message: string;
+  data?: {
+    receiver?: {
+      id?: string;
+      userId?: string;
+      displayName?: string;
+      display_name?: string;
+      username?: string;
+      avatarUrl?: string | null;
+      avatar_url?: string | null;
+    };
+  };
+}
+
 export const friendsApi = {
   getFriends: () =>
     apiClient
@@ -199,6 +221,13 @@ export const friendsApi = {
       .put<{ message: string }>('/friends/reject', { requestId })
       .then((r) => r.data),
 
+  unfriend: (friendshipId: string) =>
+    apiClient
+      .delete<{ message: string; data?: { friendshipId: string; status: string } }>(
+        `/friends/${encodeURIComponent(friendshipId)}`
+      )
+      .then((r) => r.data),
+
   getPendingRequests: () =>
     apiClient
       .get<{ message: string; data: any[]; count: number }>(
@@ -206,13 +235,28 @@ export const friendsApi = {
       )
       .then((r) => r.data.data.map((p) => ({
         ...p,
-        // Backend returns sender_display_name, sender_username, sender_avatar_url
+        // Backend returns id = friendshipId (see friendService.getPendingRequests)
+        // Map id → requestId để acceptRequest/rejectRequest dùng đúng field
+        requestId: p.id || p.friendshipId,
+        friendshipId: p.id || p.friendshipId,
+        // sender fields (enriched from userService)
         display_name: p.sender_display_name || p.display_name || '',
         username: p.sender_username || p.username || '',
         avatar_url: p.sender_avatar_url ?? p.avatar_url ?? null,
-        userId: p.sender_id || p.userId,
+        // Người nhận request = current user
+        userId: p.receiver_id || p.userId,
         requested_at: p.created_at,
       }))),
+
+  getQRInfo: (userId: string) =>
+    apiClient
+      .get<QRInfoResponse>(`/friends/qr-info/${encodeURIComponent(userId)}`)
+      .then((r) => r.data),
+
+  sendRequestByQR: (qrData: string) =>
+    apiClient
+      .post<SendFriendRequestByQRResponse>('/friends/request-by-qr', { qrData })
+      .then((r) => r.data),
 
   updateNickname: (payload: { friendshipId: string; nickname: string | null }) =>
     apiClient
@@ -359,7 +403,9 @@ export const messageApi = {
     conversationId: string,
     content: string,
     senderId: string,
-    contentType: 'text' | 'sticker' | 'emoji' | 'system' = 'text'
+    contentType: 'text' | 'sticker' | 'emoji' | 'system' | 'poll' = 'text',
+    replyTo?: string | number | null,
+    pollData?: import('@/types').PollData | null
   ) =>
     apiClient
       .post<BackendMessage>('/messages', {
@@ -367,16 +413,31 @@ export const messageApi = {
         senderId,
         content,
         contentType,
+        replyTo: replyTo || null,
+        ...(contentType === 'poll' && pollData ? { pollData } : {}),
       })
       .then((r) => r.data),
 
   // POST /messages/file → { message, data }
   sendFileMessage: (conversationId: string, formData: FormData) =>
+      apiClient
+        .post<{ message: string; data: BackendMessage }>('/messages/file', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        .then((r) => r.data.data),
+
+  sendLocation: (
+    conversationId: string,
+    locationData: { lat: number; lng: number; label?: string },
+    replyTo?: string | number | null
+  ) =>
     apiClient
-      .post<{ message: string; data: BackendMessage }>('/messages/file', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      .post<BackendMessage>('/messages/location', {
+        conversationId,
+        locationData,
+        replyTo: replyTo || null,
       })
-      .then((r) => r.data.data),
+      .then((r) => r.data),
 
   // POST /messages/sticker → raw message
   sendSticker: (
@@ -459,6 +520,62 @@ export const messageApi = {
 
 // ─── Uploads ─────────────────────────────────────────────────────────────────
 
+export interface CreateReminderPayload {
+  conversationId: string;
+  content: string;
+  remindAt: string;
+  repeat?: 'none' | 'daily' | 'weekly' | 'monthly';
+}
+
+export interface ReminderItem {
+  reminderId: string;
+  conversationId: string;
+  content: string;
+  remindAt: string;
+  repeat: 'none' | 'daily' | 'weekly' | 'monthly';
+  status: string;
+}
+
+export interface CreateReminderResult {
+  message: BackendMessage;
+  reminder: ReminderItem;
+}
+
+type CreateReminderResponse =
+  | { data: CreateReminderResult }
+  | CreateReminderResult;
+
+export const reminderApi = {
+  createReminder: (payload: CreateReminderPayload) =>
+    apiClient
+      .post<CreateReminderResponse>('/reminders', payload)
+      .then((r): CreateReminderResult => ('data' in r.data ? r.data.data : r.data)),
+};
+
+export interface CreateNotePayload {
+  conversationId: string;
+  content: string;
+  pinToTop: boolean;
+}
+
+export interface CreateNoteResult {
+  note: BackendMessage;
+  message: BackendMessage;
+  pinnedMessages?: any[] | null;
+  pinError?: string | null;
+}
+
+type CreateNoteResponse =
+  | { data: CreateNoteResult }
+  | CreateNoteResult;
+
+export const notesApi = {
+  createNote: (payload: CreateNotePayload) =>
+    apiClient
+      .post<CreateNoteResponse>('/notes', payload)
+      .then((r): CreateNoteResult => ('data' in r.data ? r.data.data : r.data)),
+};
+
 export const uploadApi = {
   getPresignedUrl: (
     fileName: string,
@@ -496,8 +613,8 @@ export const uploadApi = {
 
   getViewUrl: (fileUrl: string) =>
     apiClient
-      .post<{ view_url: string; expires_in: number }>('/uploads/view-url', {
-        file_url: fileUrl,
+      .get<{ viewUrl?: string; view_url?: string; expires_in: number }>('/uploads/view-url', {
+        params: { url: fileUrl },
       })
       .then((r) => r.data),
 };
@@ -617,13 +734,47 @@ export const callApi = {
 
 // Backend botController returns raw object (no wrapper)
 export const botApi = {
-  chat: (message: string, conversationId?: string) =>
-    apiClient
-      .post<{
-        reply: string;
-        conversation_id: string;
-        sources?: { title: string; content: string; score: number }[];
-      }>('/v1/bot/chat', { message, conversation_id: conversationId })
+  chat: (payload: {
+      userId: string;
+      message: string;
+      conversationId?: string;
+    }) =>
+      apiClient
+        .post<{
+          sender?: string;
+          content?: string;
+          reply: string;
+          status?: string;
+          conversationId?: string;
+          conversation_id?: string;
+          sources?: { title: string; content: string; score: number }[];
+          toolCalls?: Array<{
+            ok?: boolean;
+            tool?: string;
+            reminderId?: string;
+            remindAt?: string;
+            content?: string;
+            message?: {
+              id?: string | number;
+              messageId?: string | number;
+              conversationId?: string;
+              senderId?: string | number;
+              senderDisplayName?: string;
+              senderAvatarUrl?: string | null;
+              sender_name?: string;
+              sender_avatar?: string | null;
+              contentType?: string;
+              type?: string;
+              content?: string;
+              createdAt?: string;
+              created_at?: string;
+            };
+          }>;
+        }>('/v1/bot/chat', {
+          userId: payload.userId,
+          message: payload.message,
+          conversationId: payload.conversationId,
+        })
       .then((r) => r.data),
 };
 
@@ -638,5 +789,180 @@ export const statsApi = {
         total_messages: number;
         active_users_today: number;
       }>('/stats/overview')
+      .then((r) => r.data),
+};
+
+// ─── Posts / Timeline ────────────────────────────────────────────────────────
+
+export interface PostMedia {
+  url: string;
+  type: 'image' | 'video';
+  name?: string;
+}
+
+export interface PostItem {
+  postId: string;
+  userId: string;
+  authorName: string;
+  authorAvatar: string | null;
+  content: string;
+  media: PostMedia[];
+  likes: string[];
+  likeUsers?: ReactionUser[];
+  likeCount: number;
+  commentCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReactionUser {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface StoryItem {
+  storyId: string;
+  userId: string;
+  authorName: string;
+  authorAvatar: string | null;
+  type: 'image' | 'text';
+  text: string;
+  mediaUrl: string | null;
+  backgroundColor: string;
+  textX?: number;
+  textY?: number;
+  textScale?: number;
+  textRotation?: number;
+  isHighlighted: boolean;
+  highlightedAt?: string | null;
+  createdAt: string;
+  expiresAt: string;
+  likes: string[];
+  likeCount: number;
+}
+
+export interface CommentItem {
+  commentId: string;
+  postId: string;
+  userId: string;
+  authorName: string;
+  authorAvatar: string | null;
+  content: string;
+  parentCommentId?: string | null;
+  rootCommentId?: string;
+  likes: string[];
+  likeCount: number;
+  likeUsers?: ReactionUser[];
+  createdAt: string;
+}
+
+export const postsApi = {
+  createPost: (data: { content: string; media?: PostMedia[] }) =>
+    apiClient
+      .post<PostItem>('/posts', data)
+      .then((r) => r.data),
+
+  getFeedPosts: (limit = 20) =>
+    apiClient
+      .get<{ posts: PostItem[]; count: number }>('/posts/feed', { params: { limit } })
+      .then((r) => r.data),
+
+  getUserPosts: (userId: string, limit = 20) =>
+    apiClient
+      .get<{ posts: PostItem[]; count: number }>(`/posts/user/${userId}`, { params: { limit } })
+      .then((r) => r.data),
+
+  getPostById: (postId: string) =>
+    apiClient
+      .get<PostItem>(`/posts/${postId}`)
+      .then((r) => r.data),
+
+  updatePost: (postId: string, content: string) =>
+    apiClient
+      .put<PostItem>(`/posts/${postId}`, { content })
+      .then((r) => r.data),
+
+  toggleLike: (postId: string) =>
+    apiClient
+      .put<{ liked: boolean; likeCount: number; likes: string[]; likeUsers: ReactionUser[] }>(`/posts/${postId}/like`)
+      .then((r) => r.data),
+
+  deletePost: (postId: string) =>
+    apiClient
+      .delete<{ deleted: boolean }>(`/posts/${postId}`)
+      .then((r) => r.data),
+
+  createComment: (postId: string, content: string, parentCommentId?: string | null) =>
+    apiClient
+      .post<CommentItem>(`/posts/${postId}/comments`, { content, parentCommentId })
+      .then((r) => r.data),
+
+  toggleCommentLike: (commentId: string) =>
+    apiClient
+      .put<{ liked: boolean; likeCount: number; likes: string[]; likeUsers: ReactionUser[] }>(`/posts/comments/${commentId}/like`)
+      .then((r) => r.data),
+
+  updateComment: (commentId: string, content: string) =>
+    apiClient
+      .put<CommentItem>(`/posts/comments/${commentId}`, { content })
+      .then((r) => r.data),
+
+  getComments: (postId: string, limit = 50) =>
+    apiClient
+      .get<{ comments: CommentItem[]; count: number }>(`/posts/${postId}/comments`, { params: { limit } })
+      .then((r) => r.data),
+
+  deleteComment: (commentId: string) =>
+    apiClient
+      .delete<{ deleted: boolean; deletedCommentIds?: string[] }>(`/posts/comments/${commentId}`)
+      .then((r) => r.data),
+};
+
+// ─── Stories ──────────────────────────────────────────────────────────────
+
+export const storiesApi = {
+  create: (data: {
+    type: 'image' | 'text';
+    text?: string;
+    mediaUrl?: string;
+    backgroundColor?: string;
+    textX?: number;
+    textY?: number;
+    textScale?: number;
+    textRotation?: number;
+  }) =>
+    apiClient
+      .post<StoryItem>('/stories', data)
+      .then((r) => r.data),
+
+  getFeed: () =>
+    apiClient
+      .get<{ stories: StoryItem[]; count: number }>('/stories/feed')
+      .then((r) => r.data),
+
+  getHighlights: (userId: string) =>
+    apiClient
+      .get<{ stories: StoryItem[]; count: number }>(`/stories/highlights/${encodeURIComponent(userId)}`)
+      .then((r) => r.data),
+
+  getArchive: () =>
+    apiClient
+      .get<{ stories: StoryItem[]; count: number }>('/stories/archive')
+      .then((r) => r.data),
+
+  toggleHighlight: (storyId: string) =>
+    apiClient
+      .put<StoryItem>(`/stories/${encodeURIComponent(storyId)}/highlight`)
+      .then((r) => r.data),
+
+  toggleLike: (storyId: string) =>
+    apiClient
+      .put<StoryItem & { liked: boolean }>(`/stories/${encodeURIComponent(storyId)}/like`)
+      .then((r) => r.data),
+
+  reply: (storyId: string, content: string) =>
+    apiClient
+      .post<BackendMessage>(`/stories/${encodeURIComponent(storyId)}/reply`, { content })
       .then((r) => r.data),
 };
