@@ -27,6 +27,8 @@ import TransferOwnerScreen from '@features/groups/screens/TransferOwnerScreen';
 import ChatSettingsScreen from '@features/chat/screens/ChatSettingsScreen';
 import MessageSearchScreen from '@features/chat/screens/MessageSearchScreen';
 import ChangePasswordScreen from '@features/profile/screens/ChangePasswordScreen';
+import DirectCallScreen from '@features/call/screens/DirectCallScreen';
+import GroupCallScreen from '@features/call/screens/GroupCallScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -213,6 +215,26 @@ const RootStackNavigator: React.FC = () => {
         options={{
           headerShown: false,
           animation: 'slide_from_right',
+        }}
+      />
+
+      {/* Call */}
+      <Stack.Screen
+        name="DirectCall"
+        component={DirectCallScreen}
+        options={{
+          headerShown: false,
+          animation: 'fade',
+          gestureEnabled: false,
+        }}
+      />
+      <Stack.Screen
+        name="GroupCall"
+        component={GroupCallScreen}
+        options={{
+          headerShown: false,
+          animation: 'fade',
+          gestureEnabled: false,
         }}
       />
     </Stack.Navigator>

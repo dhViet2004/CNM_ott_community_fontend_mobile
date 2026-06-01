@@ -13,14 +13,18 @@
       "resizeMode": "contain",
       "backgroundColor": "#0068FF"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.zaloclone.app",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
-        }
+        },
+        "NSCameraUsageDescription": "Zalo Clone cần truy cập camera để thực hiện cuộc gọi video",
+        "NSMicrophoneUsageDescription": "Zalo Clone cần truy cập micro để thực hiện cuộc gọi thoại và video"
       }
     },
     "android": {
@@ -28,11 +32,25 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0068FF"
       },
-      "package": "com.zaloclone.app"
+      "package": "com.zaloclone.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
+      ]
     },
     "plugins": [],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "0523cd94-32c8-4252-b7a6-13dd7ac3d8b0"
+      }
     }
   }
 }

@@ -22,9 +22,10 @@ import { MessageBubble, TypingIndicator, ChatInput, PinnedHeader, MessageContext
 import MessageSearchPanel from '@features/chat/components/MessageSearchPanel';
 import { Icons, IconSize } from '@components/common';
 import { socketActions } from '@api/socket';
-import { messageApi, friendsApi } from '@api/endpoints';
+import { messageApi, friendsApi, callApi } from '@api/endpoints';
 import { useAppSelector, useAppDispatch } from '@store/hooks';
 import { confirmPendingMessage, failPendingMessage, setMessageFailed, setMessageRevoked, updateMessage, addMessage, deleteMessage, addDeletedForMeId } from '@store/slices/chatSlice';
+import { setAgoraCredentials, setIsCaller, setCallStatus } from '@store/slices/callSlice';
 import { colors, spacing } from '@theme';
 import type { RootStackScreenProps, RootStackParamList } from '@navigation/types';
 
@@ -86,6 +87,55 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     : Platform.OS === 'ios'
     ? insets.bottom
     : Math.max(insets.bottom, spacing.md);
+
+  const handleStartCall = useCallback(async (callType: 'audio' | 'video') => {
+    const receiverId = route.params.userId || '';
+    console.log('[mobile:startCall]', {
+      conversationId,
+      receiverId,
+      callType,
+      currentUserId,
+    });
+
+    try {
+      const result = await callApi.startCall(conversationId, callType);
+      const { call, token } = result;
+
+      console.log('[mobile:startCall] success', {
+        callId: call.callId,
+        recipientIds: result.recipientIds,
+        channelName: token.channelName,
+        uid: token.uid,
+      });
+
+      dispatch(setAgoraCredentials({
+        token: token.token,
+        appId: token.appId,
+        channelName: token.channelName,
+        uid: token.uid,
+        callId: call.callId,
+        conversationId,
+        callType,
+        callMode: 'direct',
+      }));
+      dispatch(setIsCaller(true));
+      dispatch(setCallStatus('calling'));
+
+      navigation.navigate('DirectCall', {
+        callId: call.callId,
+        channelName: token.channelName,
+        token: token.token,
+        uid: token.uid,
+        callType,
+        conversationId,
+        remoteName: title,
+      });
+    } catch (err: any) {
+      console.error('[mobile:startCall] error', err?.response?.data || err?.message);
+      const msg = err?.response?.data?.message || err?.message || 'Không thể bắt đầu cuộc gọi';
+      Alert.alert('Lỗi', msg);
+    }
+  }, [conversationId, title, dispatch, navigation, route.params.userId, currentUserId]);
 
   // Load chat background
   useEffect(() => {
@@ -418,14 +468,14 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             <Ionicons name="search" size={22} color="#FFFFFF" />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => Alert.alert('Thông báo', 'Tính năng gọi thoại đang phát triển')}
+            onPress={() => handleStartCall('audio')}
             style={styles.headerIconBtn}
             hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
           >
             <Ionicons name="call" size={22} color="#FFFFFF" />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => Alert.alert('Thông báo', 'Tính năng gọi video đang phát triển')}
+            onPress={() => handleStartCall('video')}
             style={styles.headerIconBtn}
             hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
           >

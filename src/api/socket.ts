@@ -31,6 +31,11 @@ import {
   setActiveCall,
   clearIncomingCall,
 } from '@store/slices/callSlice';
+import {
+  setGroupIncomingCall,
+  clearGroupIncomingCall,
+  setGroupStatus,
+} from '@store/slices/groupCallSlice';
 
 const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL;
 
@@ -46,11 +51,14 @@ const REGISTERED_EVENTS = [
   'user_typing', 'user_stopped_typing',
   'online_users', 'user_online', 'user_offline',
   'new_friend_request', 'friend_request_accepted',
-  'incoming-call', 'call-accepted', 'call-ended', 'call-timeout', 'group-call-request',
+  'direct-call:incoming', 'direct-call:accepted', 'direct-call:rejected', 'direct-call:ended',
+  'call:missed', 'call:busy', 'call:error', 'call:ringing', 'call:state-updated',
+  'group-call:incoming', 'group-call:accepted', 'group-call:ended',
+  'group-call:participant-joined', 'group-call:participant-left',
   'user_joined', 'user_left', 'room_joined', 'message_read',
   'live_location_started', 'live_location_updated', 'live_location_stopped',
   'message_pinned_updated',
-  // Nhiệm vụ 2: Group management socket events
+  // Group management socket events
   'group:members_added', 'group:member_removed', 'group:member_left',
   'group:you_were_removed', 'group:you_were_added', 'group:deleted',
 ];
@@ -277,60 +285,139 @@ export const connectSocket = (token: string) => {
     }));
   });
 
-  // ─── Call Events ──────────────────────────────────────────────────────────
+  // ─── Call Events (backend-compatible) ──────────────────────────────────────
 
-  // Backend emits "incoming-call" (with hyphen) for incoming call requests
-  socket.on('incoming-call', (data: {
-    roomId: string;
+  // Direct call incoming
+  socket.on('direct-call:incoming', (data: {
+    callId: string;
     callerId: string;
     callerName?: string;
     caller_name?: string;
-    type: 'video' | 'voice';
+    callerAvatar?: string | null;
+    callType: 'audio' | 'video';
+    channelName: string;
+    conversationId: string;
+    token?: string;
+    uid?: number;
   }) => {
     store.dispatch(setIncomingCall({
-      roomId: data.roomId,
+      callId: data.callId,
       callerId: data.callerId,
-      caller_name: data.callerName || data.caller_name || '',
-      type: data.type,
+      callerName: data.callerName || data.caller_name || '',
+      callerAvatar: data.callerAvatar ?? null,
+      callType: data.callType,
+      callMode: 'direct',
+      channelName: data.channelName,
+      conversationId: data.conversationId,
+      token: data.token,
+      uid: data.uid,
     }));
     store.dispatch(setCallStatus('ringing'));
   });
 
-  // Backend emits "call-accepted" (with hyphen) when call is accepted
-  socket.on('call-accepted', ({ roomId }: { roomId: string }) => {
+  // Direct call accepted — caller receives this when callee accepts
+  socket.on('direct-call:accepted', (data: {
+    callId: string;
+    token?: { appId: string; token: string; uid: number; channelName: string };
+  }) => {
     store.dispatch(setCallStatus('connected'));
   });
 
-  // Backend emits "call-ended" (with hyphen) when call ends
-  socket.on('call-ended', () => {
+  // Direct call rejected
+  socket.on('direct-call:rejected', () => {
     store.dispatch(setCallStatus('ended'));
     store.dispatch(clearIncomingCall());
     store.dispatch(setActiveCall(null));
   });
 
-  // Backend emits "call-timeout" when call times out
-  socket.on('call-timeout', ({ roomId, reason }: { roomId: string; reason: string }) => {
+  // Direct call ended
+  socket.on('direct-call:ended', () => {
     store.dispatch(setCallStatus('ended'));
     store.dispatch(clearIncomingCall());
     store.dispatch(setActiveCall(null));
   });
 
-  // Backend emits "group-call-request" for group calls
-  socket.on('group-call-request', (data: {
-    groupId: string;
-    roomId: string;
+  // Call missed (timeout)
+  socket.on('call:missed', () => {
+    store.dispatch(setCallStatus('ended'));
+    store.dispatch(clearIncomingCall());
+    store.dispatch(setActiveCall(null));
+  });
+
+  // Call busy
+  socket.on('call:busy', () => {
+    store.dispatch(setCallStatus('ended'));
+    store.dispatch(clearIncomingCall());
+    store.dispatch(setActiveCall(null));
+  });
+
+  // Call error
+  socket.on('call:error', (data: { message?: string }) => {
+    console.warn('[Socket] call:error:', data?.message);
+    store.dispatch(setCallStatus('ended'));
+    store.dispatch(clearIncomingCall());
+    store.dispatch(setActiveCall(null));
+  });
+
+  // Group call incoming
+  socket.on('group-call:incoming', (data: {
+    callId: string;
+    sessionId?: string;
     callerId: string;
     callerName?: string;
     caller_name?: string;
-    isGroupCall: boolean;
+    callerAvatar?: string | null;
+    callType: 'audio' | 'video';
+    channelName: string;
+    conversationId: string;
+    token?: string;
+    uid?: number;
   }) => {
-    store.dispatch(setIncomingCall({
-      roomId: data.roomId,
+    store.dispatch(setGroupIncomingCall({
+      callId: data.sessionId ?? data.callId,
       callerId: data.callerId,
-      caller_name: data.callerName || data.caller_name || '',
-      type: 'video',
+      callerName: data.callerName || data.caller_name || '',
+      callerAvatar: data.callerAvatar ?? null,
+      // Group call is video-only in current product flow. Web also treats it as a single type.
+      callType: 'video',
+      callMode: 'group',
+      channelName: data.channelName,
+      conversationId: data.conversationId,
+      token: data.token,
+      uid: data.uid,
     }));
-    store.dispatch(setCallStatus('ringing'));
+    store.dispatch(setGroupStatus('ringing'));
+  });
+
+  // Group call accepted
+  socket.on('group-call:accepted', (data: {
+    callId: string;
+    token?: { appId: string; token: string; uid: number; channelName: string };
+  }) => {
+    // NO dispatch — initiator is already active, invitee handles via modal
+    console.log('[Socket] group-call:accepted:', data.callId);
+  });
+
+  // Group call ended
+  socket.on('group-call:ended', () => {
+    store.dispatch(setGroupStatus('ended'));
+    store.dispatch(clearGroupIncomingCall());
+  });
+
+  // Group call participant joined
+  socket.on('group-call:participant-joined', (data: {
+    callId: string;
+    userId: string;
+  }) => {
+    console.log('[Socket] group-call:participant-joined:', data.userId);
+  });
+
+  // Group call participant left
+  socket.on('group-call:participant-left', (data: {
+    callId: string;
+    userId: string;
+  }) => {
+    console.log('[Socket] group-call:participant-left:', data.userId);
   });
 
   // ─── Message Read Receipt Events ─────────────────────────────────────────
@@ -756,37 +843,75 @@ export const socketActions = {
     socket?.emit('send_message', { roomId: conversationId, content, contentType: type });
   },
 
-  // Call actions - backend uses call-request, call-accept, call-reject, end-call
-  initiateCall: (roomId: string, callerId: string, receiverId: string, type: 'video' | 'voice' = 'video') => {
-    socket?.emit('call-request', { roomId, callerId, receiverId, type });
+  // Call actions (backend-compatible event names)
+  startCall: (conversationId: string, callType: 'audio' | 'video') => {
+    socket?.emit('call:start', { conversationId, callType });
     store.dispatch(setCallStatus('calling'));
   },
 
-  initiateGroupCall: (roomId: string, groupId: string, callerName: string) => {
-    socket?.emit('group-call-request', { roomId, groupId, callerName });
-    store.dispatch(setCallStatus('calling'));
+  startGroupCall: (conversationId: string, callType: 'audio' | 'video', memberUserIds: string[]) => {
+    socket?.emit('group-call:start', { conversationId, callType, memberUserIds });
+    store.dispatch(setGroupStatus('joining'));
   },
 
-  acceptCall: (roomId: string, callerId: string) => {
-    socket?.emit('call-accept', { roomId, callerId });
+  acceptCall: (callId: string) => {
+    socket?.emit('call:accept', { callId });
     store.dispatch(setCallStatus('connected'));
   },
 
-  rejectCall: (roomId: string) => {
-    socket?.emit('call-reject', { roomId });
+  rejectCall: (callId: string) => {
+    socket?.emit('call:reject', { callId });
     store.dispatch(clearIncomingCall());
     store.dispatch(setCallStatus('ended'));
   },
 
-  cancelCall: (roomId: string) => {
-    socket?.emit('call-cancel', { roomId });
+  cancelCall: (callId: string) => {
+    socket?.emit('call:cancel', { callId });
     store.dispatch(setCallStatus('ended'));
   },
 
-  endCall: (roomId: string) => {
-    socket?.emit('end-call', { roomId });
+  endCall: (callId: string) => {
+    socket?.emit('call:end', { callId });
     store.dispatch(setCallStatus('ended'));
     store.dispatch(setActiveCall(null));
+  },
+
+  acceptGroupCall: (callId: string) => {
+    // NO dispatch — modal sets credentials → joining, screen sets active on Agora join
+    socket?.emit('group-call:accept', { callId });
+  },
+
+  /** Late-join / rejoin — emits call:join with ACK, returns credentials */
+  joinGroupCall: (callId: string): Promise<{ ok: boolean; token?: string; uid?: number; channelName?: string; error?: string }> => {
+    return new Promise((resolve, reject) => {
+      if (!socket) {
+        reject(new Error('Socket not connected'));
+        return;
+      }
+      socket.emit('call:join', { callId }, (response: any) => {
+        if (response?.ok) {
+          resolve(response);
+        } else {
+          reject(new Error(response?.error || 'call:join failed'));
+        }
+      });
+    });
+  },
+
+  rejectGroupCall: (callId: string) => {
+    socket?.emit('group-call:reject', { callId });
+    store.dispatch(clearGroupIncomingCall());
+    store.dispatch(setGroupStatus('idle'));
+  },
+
+  leaveGroupCall: (callId: string) => {
+    socket?.emit('group-call:leave', { callId });
+    // NO dispatch — caller handles local cleanup
+  },
+
+  endGroupCall: (callId: string) => {
+    socket?.emit('group-call:end', { callId });
+    store.dispatch(setGroupStatus('ended'));
   },
 
   // Read receipts - backend uses mark_read

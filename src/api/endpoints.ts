@@ -504,18 +504,112 @@ export const uploadApi = {
 
 // ─── Calls ──────────────────────────────────────────────────────────────────
 
+export interface AgoraTokenPayload {
+  appId: string;
+  token: string;
+  uid: number;
+  channelName: string;
+  expireAt: string;
+}
+
+export interface CallSession {
+  callId: string;
+  conversationId: string;
+  callType: 'audio' | 'video';
+  callMode: 'direct' | 'group';
+  status: string;
+  channelName: string;
+  participants: Array<{
+    userId: string;
+    role: string;
+    status: string;
+  }>;
+}
+
+export interface GroupCallSession {
+  sessionId: string;
+  callId: string;
+  callType: string;
+  channelName: string;
+  token: string;
+  agoraUid: number;
+  conversationId: string;
+  participants?: Array<{
+    userId: string;
+    role: string;
+    status: string;
+  }>;
+}
+
 export const callApi = {
-  getZegoToken: (roomId: string, userName: string) =>
+  startCall: (conversationId: string, callType: 'audio' | 'video') =>
     apiClient
-      .get<{
-        token: string;
-        app_id: number;
-        room_id: string;
-        user_id: string;
-        user_name: string;
-      }>('/calls/token', {
-        params: { room_id: roomId, user_name: userName },
-      })
+      .post<{ call: CallSession; token: AgoraTokenPayload; recipientIds: string[] }>(
+        '/calls/start',
+        { conversationId, callType }
+      )
+      .then((r) => r.data),
+
+  acceptCall: (callId: string) =>
+    apiClient
+      .post<{ call: CallSession; token: AgoraTokenPayload }>(
+        `/calls/${callId}/accept`
+      )
+      .then((r) => r.data),
+
+  rejectCall: (callId: string) =>
+    apiClient
+      .post(`/calls/${callId}/reject`)
+      .then((r) => r.data),
+
+  cancelCall: (callId: string) =>
+    apiClient
+      .post(`/calls/${callId}/cancel`)
+      .then((r) => r.data),
+
+  endCall: (callId: string) =>
+    apiClient
+      .post(`/calls/${callId}/end`)
+      .then((r) => r.data),
+
+  getActiveCall: () =>
+    apiClient
+      .get<{ call: CallSession; token: AgoraTokenPayload } | null>('/calls/active')
+      .then((r) => r.data),
+
+  getCallToken: (callId: string) =>
+    apiClient
+      .post<AgoraTokenPayload>(`/calls/${callId}/token`)
+      .then((r) => r.data),
+
+  startGroupCall: (conversationId: string, callType: 'audio' | 'video' = 'video') =>
+    apiClient
+      .post<{ data: { call: GroupCallSession }; message: string }>(
+        '/calls/group/initiate',
+        { conversationId, callType }
+      )
+      .then((r) => r.data.data.call),
+
+  acceptGroupCall: (sessionId: string) =>
+    apiClient
+      .post<{ data: { session: GroupCallSession }; message: string }>(
+        `/calls/group/${sessionId}/accept`
+      )
+      .then((r) => r.data.data.session),
+
+  rejectGroupCall: (sessionId: string) =>
+    apiClient
+      .post(`/calls/group/${sessionId}/reject`)
+      .then((r) => r.data),
+
+  leaveGroupCall: (sessionId: string) =>
+    apiClient
+      .post(`/calls/group/${sessionId}/leave`)
+      .then((r) => r.data),
+
+  endGroupCall: (sessionId: string) =>
+    apiClient
+      .post(`/calls/group/${sessionId}/end`)
       .then((r) => r.data),
 };
 

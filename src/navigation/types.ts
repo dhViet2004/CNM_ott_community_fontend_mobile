@@ -26,6 +26,26 @@ export type RootStackParamList = {
   ChatSettings: { conversationId: string; friendshipId?: string; friendId?: string; title: string; avatarUrl?: string | null; originalName?: string };
   MessageSearch: { conversationId: string; title: string };
   ChangePassword: undefined;
+  DirectCall: {
+    callId: string;
+    channelName: string;
+    token: string;
+    uid: number;
+    callType: 'audio' | 'video';
+    conversationId: string;
+    remoteName: string;
+    remoteAvatar?: string | null;
+  };
+  GroupCall: {
+    callId: string;
+    channelName: string;
+    token: string;
+    uid: number;
+    callType: 'audio' | 'video';
+    groupId: string;
+    groupName: string;
+    mode?: 'normal' | 'rejoin';
+  };
 };
 
 export type MainTabParamList = {

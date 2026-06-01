@@ -9,6 +9,8 @@ import { store } from '@store/store';
 import RootStackNavigator from '@navigation/RootStackNavigator';
 import { connectSocket, disconnectSocket } from '@api/socket';
 import { getAccessToken } from '@api/client';
+import DirectIncomingCallModal from '@features/call/components/DirectIncomingCallModal';
+import GroupIncomingCallModal from '@features/call/components/GroupIncomingCallModal';
 
 const AppContent: React.FC = () => {
   const appState = useRef(AppState.currentState);
@@ -68,6 +70,8 @@ const AppContent: React.FC = () => {
   return (
     <NavigationContainer>
       <RootStackNavigator />
+      <DirectIncomingCallModal />
+      <GroupIncomingCallModal />
     </NavigationContainer>
   );
 };

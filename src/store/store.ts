@@ -4,6 +4,7 @@ import chatReducer from './slices/chatSlice';
 import contactReducer from './slices/contactSlice';
 import groupsReducer from './slices/groupsSlice';
 import callReducer from './slices/callSlice';
+import groupCallReducer from './slices/groupCallSlice';
 
 export const store = configureStore({
   reducer: {
@@ -12,12 +13,13 @@ export const store = configureStore({
     contacts: contactReducer,
     groups: groupsReducer,
     call: callReducer,
+    groupCall: groupCallReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
-        ignoredActions: ['call/setZegoCredentials'],
-        ignoredPaths: ['call.zegoToken'],
+        ignoredActions: ['call/setAgoraCredentials'],
+        ignoredPaths: ['call.agoraToken'],
       },
     }),
 });

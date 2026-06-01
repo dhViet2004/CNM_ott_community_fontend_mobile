@@ -60,7 +60,7 @@ const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const dmConversations: ChatConversation[] = useMemo(() => friends.map((friend) => {
     const friendId = friend.friend_id || friend.userId || '';
     const myId = currentUserId || '';
-    const sortedIds = [myId, friendId].sort();
+    const sortedIds = [myId, friendId].sort((a, b) => Number(a) - Number(b));
     return {
       id: `dm:${sortedIds.join(':')}`,
       type: 'single' as const,

@@ -1,15 +1,26 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 interface IncomingCall {
-  roomId: string;
+  callId: string;
   callerId: string;
-  caller_name: string;
-  type: 'video' | 'voice';
+  callerName: string;
+  callerAvatar?: string | null;
+  callType: 'audio' | 'video';
+  callMode: 'direct' | 'group';
+  channelName: string;
+  conversationId: string;
+  token?: string;
+  uid?: number;
 }
 
 interface ActiveCall {
-  roomId: string;
-  type: 'video' | 'voice';
+  callId: string;
+  channelName: string;
+  token: string;
+  uid: number;
+  callType: 'audio' | 'video';
+  callMode: 'direct' | 'group';
+  conversationId: string;
   participants: string[];
   startedAt: string;
 }
@@ -21,8 +32,15 @@ interface CallState {
   isMuted: boolean;
   isCameraOff: boolean;
   isSpeakerOn: boolean;
-  zegoToken: string | null;
-  zegoAppId: number | null;
+  agoraToken: string | null;
+  agoraAppId: string | null;
+  channelName: string | null;
+  uid: number | null;
+  callId: string | null;
+  conversationId: string | null;
+  callType: 'audio' | 'video';
+  callMode: 'direct' | 'group';
+  isCaller: boolean;
 }
 
 const initialState: CallState = {
@@ -32,8 +50,15 @@ const initialState: CallState = {
   isMuted: false,
   isCameraOff: false,
   isSpeakerOn: true,
-  zegoToken: null,
-  zegoAppId: null,
+  agoraToken: null,
+  agoraAppId: null,
+  channelName: null,
+  uid: null,
+  callId: null,
+  conversationId: null,
+  callType: 'video',
+  callMode: 'direct',
+  isCaller: false,
 };
 
 const callSlice = createSlice({
@@ -60,12 +85,27 @@ const callSlice = createSlice({
         state.incomingCall = null;
       }
     },
-    setZegoCredentials(
+    setAgoraCredentials(
       state,
-      action: PayloadAction<{ token: string; appId: number }>
+      action: PayloadAction<{
+        token: string;
+        appId: string;
+        channelName: string;
+        uid: number;
+        callId: string;
+        conversationId: string;
+        callType: 'audio' | 'video';
+        callMode: 'direct' | 'group';
+      }>
     ) {
-      state.zegoToken = action.payload.token;
-      state.zegoAppId = action.payload.appId;
+      state.agoraToken = action.payload.token;
+      state.agoraAppId = action.payload.appId;
+      state.channelName = action.payload.channelName;
+      state.uid = action.payload.uid;
+      state.callId = action.payload.callId;
+      state.conversationId = action.payload.conversationId;
+      state.callType = action.payload.callType;
+      state.callMode = action.payload.callMode;
     },
     toggleMute(state) {
       state.isMuted = !state.isMuted;
@@ -76,14 +116,22 @@ const callSlice = createSlice({
     toggleSpeaker(state) {
       state.isSpeakerOn = !state.isSpeakerOn;
     },
+    setIsCaller(state, action: PayloadAction<boolean>) {
+      state.isCaller = action.payload;
+    },
     endCall(state) {
       state.activeCall = null;
       state.incomingCall = null;
       state.callStatus = 'idle';
       state.isMuted = false;
       state.isCameraOff = false;
-      state.zegoToken = null;
-      state.zegoAppId = null;
+      state.agoraToken = null;
+      state.agoraAppId = null;
+      state.channelName = null;
+      state.uid = null;
+      state.callId = null;
+      state.conversationId = null;
+      state.isCaller = false;
     },
   },
 });
@@ -93,10 +141,11 @@ export const {
   clearIncomingCall,
   setActiveCall,
   setCallStatus,
-  setZegoCredentials,
+  setAgoraCredentials,
   toggleMute,
   toggleCamera,
   toggleSpeaker,
+  setIsCaller,
   endCall,
 } = callSlice.actions;
 

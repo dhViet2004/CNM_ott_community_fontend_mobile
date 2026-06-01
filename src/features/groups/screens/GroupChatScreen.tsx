@@ -28,8 +28,9 @@ import {
   Message,
 } from '@store/slices/chatSlice';
 import { setGroupMembers } from '@store/slices/groupsSlice';
-import { messageApi, channelApi } from '@api/endpoints';
+import { messageApi, channelApi, callApi } from '@api/endpoints';
 import { socketActions } from '@api/socket';
+import { setGroupCallCredentials, setGroupStatus } from '@store/slices/groupCallSlice';
 import { colors, spacing, typography } from '@theme';
 import { Icons, IconSize } from '@components/common';
 import MessageBubble from '@features/chat/components/MessageBubble';
@@ -92,18 +93,6 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     });
   }, [conversationId]);
 
-  const handleNavigateToMessage = useCallback((messageId: string) => {
-    const index = messages.findIndex(m => String(m.id) === String(messageId));
-    if (index !== -1) {
-      navigation.setParams({ focusedMessageId: String(messageId) } as any);
-      flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
-      
-      setTimeout(() => {
-        navigation.setParams({ focusedMessageId: undefined } as any);
-      }, 3000);
-    }
-  }, [messages, navigation]);
-
   // Bottom padding cho input
   const bottomPadding = Platform.OS === 'ios'
     ? insets.bottom
@@ -113,6 +102,18 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const messages = useAppSelector(
     (state) => state.chat.messages[conversationId] ?? EMPTY_MESSAGES
   );
+
+  const handleNavigateToMessage = useCallback((messageId: string) => {
+    const index = messages.findIndex(m => String(m.id) === String(messageId));
+    if (index !== -1) {
+      navigation.setParams({ focusedMessageId: String(messageId) } as any);
+      flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+
+      setTimeout(() => {
+        navigation.setParams({ focusedMessageId: undefined } as any);
+      }, 3000);
+    }
+  }, [messages, navigation]);
 
   const currentUserId = useAppSelector((state) => state.auth.user?.userId);
   const currentUser = useAppSelector((state) => state.auth.user);
@@ -132,6 +133,106 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
   const flatListRef = useRef<FlatList>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  const handleStartGroupCall = useCallback(async (callType: 'audio' | 'video') => {
+    console.log('[mobile:startGroupCall]', { groupId, conversationId, callType });
+    try {
+      try {
+        const activeCallResponse = await callApi.getActiveCall();
+        const activeCall = (activeCallResponse as any)?.call;
+        if (
+          activeCall &&
+          activeCall.callMode === 'group' &&
+          String(activeCall.conversationId) === String(conversationId)
+        ) {
+          console.log('[mobile:startGroupCall] found existing group call, rejoining', {
+            callId: activeCall.callId,
+            conversationId: activeCall.conversationId,
+          });
+          await rejoinGroupCall(activeCall.callId, conversationId, 'video');
+          return;
+        }
+      } catch (precheckErr: any) {
+        console.warn(
+          '[mobile:startGroupCall] active-call precheck failed, continuing fresh start',
+          precheckErr?.response?.data || precheckErr?.message,
+        );
+      }
+
+      const result = await callApi.startGroupCall(conversationId, callType);
+      console.log('[mobile:startGroupCall] success', {
+        sessionId: result.sessionId,
+        channelName: result.channelName,
+        agoraUid: result.agoraUid,
+      });
+
+      dispatch(setGroupCallCredentials({
+        channelName: result.channelName,
+        uid: result.agoraUid,
+        callId: result.sessionId,
+        sessionId: result.sessionId,
+        groupId: groupId,
+        callType,
+        isHost: true,
+      }));
+      dispatch(setGroupStatus('joining'));
+
+      navigation.navigate('GroupCall', {
+        callId: result.sessionId,
+        channelName: result.channelName,
+        token: result.token,
+        uid: result.agoraUid,
+        callType,
+        groupId,
+        groupName: title,
+      });
+    } catch (err: any) {
+      console.error('[mobile:startGroupCall] error', err?.response?.data || err?.message);
+      const msg = err?.response?.data?.message || err?.message || 'Không thể bắt đầu cuộc gọi nhóm';
+      Alert.alert('Lỗi', msg);
+    }
+  }, [groupId, conversationId, title, dispatch, navigation]);
+
+  const rejoinGroupCall = useCallback(async (
+    sessionId: string,
+    conversationId: string,
+    callType: 'audio' | 'video' = 'video',
+  ) => {
+    try {
+      console.log('[mobile:rejoinGroupCall] joining existing call', { sessionId });
+      const result = await socketActions.joinGroupCall(sessionId);
+
+      if (!result.ok) {
+        Alert.alert('Lỗi', result.error || 'Không thể tham gia cuộc gọi');
+        return;
+      }
+
+      dispatch(setGroupCallCredentials({
+        channelName: result.channelName!,
+        uid: result.uid!,
+        callId: sessionId,
+        sessionId: sessionId,
+        groupId: conversationId,
+        callType,
+        isHost: false,
+      }));
+      dispatch(setGroupStatus('joining'));
+
+      navigation.navigate('GroupCall', {
+        callId: sessionId,
+        channelName: result.channelName!,
+        token: result.token!,
+        uid: result.uid!,
+        callType,
+        groupId: conversationId,
+        groupName: title,
+        mode: 'rejoin',
+      });
+    } catch (err: any) {
+      console.error('[mobile:rejoinGroupCall] error', err?.message);
+      Alert.alert('Lỗi', err?.message || 'Không thể tham gia lại cuộc gọi');
+    }
+  }, [dispatch, navigation, title]);
 
   // Keep ref in sync with state — so callbacks always read latest value
   useEffect(() => {
@@ -567,9 +668,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
           <View style={styles.headerRight}>
             <TouchableOpacity
-              onPress={() =>
-                navigation.navigate('GroupDetail', { groupId })
-              }
+              onPress={() => handleStartGroupCall('video')}
               style={styles.headerIcon}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
