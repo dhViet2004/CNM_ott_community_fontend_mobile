@@ -607,11 +607,14 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   );
 
   const renderMessage = useCallback(
-    ({ item }: { item: MessageItem }) => {
+    ({ item, index }: { item: MessageItem, index: number }) => {
       const senderName =
         !item.isMe && (!item.senderName || item.senderName === 'Unknown')
           ? title
           : item.senderName;
+
+      const prevMessage = index < messages.length - 1 ? messages[index + 1] : null;
+      const showAvatarAndName = !prevMessage || String(prevMessage.senderId) !== String(item.senderId) || prevMessage.type === 'system';
 
       return (
         <MessageBubble
@@ -636,6 +639,9 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           pollData={item.pollData}
           locationData={(item as any).locationData}
           currentUserId={currentUserId}
+          showAvatar={showAvatarAndName}
+          showName={showAvatarAndName}
+          onCall={(type) => handleStartCall(type)}
           onJumpToMessage={(messageId) => handleNavigateToMessage(String(messageId))}
           onLongPress={(msg) => {
             setSelectedMessage(msg);
@@ -643,7 +649,7 @@ const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         />
       );
     },
-    [title, focusedMessageId, handleNavigateToMessage, currentUserId]
+    [title, focusedMessageId, handleNavigateToMessage, currentUserId, messages]
   );
 
   const keyExtractor = useCallback((item: MessageItem) => String(item.id), []);

@@ -4,7 +4,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
  * Group call status — mirrors web's GroupCallPhase exactly.
  * Transitions: idle → ringing → joining → active → ended
  */
-export type GroupCallStatus = 'idle' | 'ringing' | 'joining' | 'active' | 'ended';
+export type GroupCallStatus = 'idle' | 'ringing' | 'joining' | 'connected' | 'active' | 'ended';
 
 interface GroupIncomingCall {
   callId: string;
@@ -31,7 +31,9 @@ interface GroupCallState {
   callId: string | null;
   sessionId: string | null;
   groupId: string | null;
+  groupName: string | null;
   callType: 'audio' | 'video';
+  token: string | null;
   remoteUsers: number[];
 }
 
@@ -47,7 +49,9 @@ const initialState: GroupCallState = {
   callId: null,
   sessionId: null,
   groupId: null,
+  groupName: null,
   callType: 'video',
+  token: null,
   remoteUsers: [],
 };
 
@@ -78,7 +82,9 @@ const groupCallSlice = createSlice({
         callId: string;
         sessionId: string;
         groupId: string;
+        groupName: string;
         callType: 'audio' | 'video';
+        token: string;
         isHost?: boolean;
       }>
     ) {
@@ -88,7 +94,9 @@ const groupCallSlice = createSlice({
       state.callId = p.callId;
       state.sessionId = p.sessionId;
       state.groupId = p.groupId;
+      state.groupName = p.groupName;
       state.callType = p.callType;
+      state.token = p.token;
       if (p.isHost !== undefined) state.isHost = p.isHost;
       if (state.status === 'idle' || state.status === 'ringing') {
         state.status = 'joining';
@@ -122,7 +130,9 @@ const groupCallSlice = createSlice({
       state.callId = null;
       state.sessionId = null;
       state.groupId = null;
+      state.groupName = null;
       state.callType = 'video';
+      state.token = null;
       state.remoteUsers = [];
     },
 
@@ -139,7 +149,9 @@ const groupCallSlice = createSlice({
       state.callId = null;
       state.sessionId = null;
       state.groupId = null;
+      state.groupName = null;
       state.callType = 'video';
+      state.token = null;
       state.remoteUsers = [];
     },
   },

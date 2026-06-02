@@ -21,6 +21,7 @@ import {
 import { socketActions } from '@api/socket';
 import { callApi } from '@api/endpoints';
 import type { RootStackParamList } from '@navigation/types';
+import { playIncomingRingtone, stopRingtone } from '@utils/audioUtils';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -31,6 +32,17 @@ const GroupIncomingCallModal: React.FC = () => {
   const status = useAppSelector((s) => s.groupCall.status);
 
   const visible = incomingCall !== null && status === 'ringing';
+
+  React.useEffect(() => {
+    if (visible) {
+      playIncomingRingtone();
+    } else {
+      stopRingtone();
+    }
+    return () => {
+      stopRingtone();
+    };
+  }, [visible]);
 
   const handleAccept = useCallback(async () => {
     if (!incomingCall) return;

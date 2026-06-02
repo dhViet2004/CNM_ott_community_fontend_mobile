@@ -11,6 +11,7 @@ import { connectSocket, disconnectSocket } from '@api/socket';
 import { getAccessToken } from '@api/client';
 import DirectIncomingCallModal from '@features/call/components/DirectIncomingCallModal';
 import GroupIncomingCallModal from '@features/call/components/GroupIncomingCallModal';
+import GroupOutgoingCallModal from '@features/call/components/GroupOutgoingCallModal';
 
 const AppContent: React.FC = () => {
   const appState = useRef(AppState.currentState);
@@ -72,6 +73,7 @@ const AppContent: React.FC = () => {
       <RootStackNavigator />
       <DirectIncomingCallModal />
       <GroupIncomingCallModal />
+      <GroupOutgoingCallModal />
     </NavigationContainer>
   );
 };

@@ -18,6 +18,7 @@ import VoiceMessageBubble from './VoiceMessageBubble';
 import PollMessageBubble from './PollMessageBubble';
 import ReminderDetailCard from './ReminderDetailCard';
 import type { PollData } from '@/types';
+import { CallMessageCard } from './CallMessageCard';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const MAX_BUBBLE_WIDTH = SCREEN_WIDTH * 0.72;
@@ -173,6 +174,9 @@ interface MessageBubbleProps {
     readAt?: string;
   }>;
   voiceDuration?: number;
+  showAvatar?: boolean;
+  showName?: boolean;
+  onCall?: (callType: 'video' | 'audio') => void;
 }
 
 type ReplyToMessage = {
@@ -464,6 +468,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   pollData,
   currentUserId,
   locationData,
+  showAvatar = true,
+  showName = true,
+  onCall,
 }) => {
   const [isImageViewVisible, setIsImageViewVisible] = useState(false);
   const [replyReferenceBodyWidth, setReplyReferenceBodyWidth] = useState<number | undefined>();
@@ -474,6 +481,71 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   }
 
   const isRevokedOrDeleted = isDeleted || isRevoked;
+
+  // ── Call messages: early return WITHOUT bubble wrapper ───────────────────
+  // CallMessageCard has its own background/border — must not be wrapped
+  // in the outgoing blue bubble or incoming white bubble.
+  if (type === 'group_call_active' || type === 'call_log') {
+    const isGroupActive = type === 'group_call_active' && content === 'Cuộc gọi nhóm đang diễn ra';
+
+    // Don't render ended group_call_active — call_log handles ended state
+    if (type === 'group_call_active' && !isGroupActive) {
+      return null;
+    }
+
+    // Determine status from content string
+    let callStatus: 'active' | 'ended' | 'missed' | 'cancelled' | 'rejected' = 'ended';
+    if (isGroupActive) {
+      callStatus = 'active';
+    } else if (content?.includes('không bắt máy') || content?.includes('nhỡ')) {
+      callStatus = 'missed';
+    } else if (content?.includes('đã hủy')) {
+      callStatus = 'cancelled';
+    } else if (content?.includes('từ chối')) {
+      callStatus = 'rejected';
+    }
+
+    // Parse duration from content
+    let durationSeconds = 0;
+    const durationMatch = content?.match(/(\d{1,2}):(\d{2})/);
+    if (durationMatch) {
+      durationSeconds = parseInt(durationMatch[1]) * 60 + parseInt(durationMatch[2]);
+    }
+
+    return (
+      <View style={[styles.bubbleRow, isMe ? styles.bubbleRowMe : styles.bubbleRowOther]}>
+        {!isMe && (
+          <View style={styles.avatarContainer}>
+            {showAvatar ? (
+              <Avatar
+                uri={senderAvatar ?? undefined}
+                name={senderName || defaultName || 'User'}
+                size="xs"
+              />
+            ) : (
+              <View style={{ width: 24 }} />
+            )}
+          </View>
+        )}
+        <View style={{ alignItems: isMe ? 'flex-end' : 'flex-start' }}>
+          <CallMessageCard
+            variant={type === 'group_call_active' || content?.includes('nhóm') ? 'group' : 'direct'}
+            callType={content?.toLowerCase().includes('video') ? 'video' : 'audio'}
+            status={callStatus}
+            durationSeconds={durationSeconds}
+            onCall={onCall}
+            isOwn={isMe}
+          />
+          {/* Time footer */}
+          <View style={[styles.bubbleFooter, isMe ? styles.bubbleFooterMe : styles.bubbleFooterOther, { marginTop: 4 }]}>
+            <Text style={[styles.bubbleTime, isMe ? styles.timeMe : styles.timeOther]}>
+              {time}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   // ── Background Change / System Message ────────────────────────────────
   const isBackgroundChange = type === 'system' || content?.toLowerCase().includes('hình nền đã được thay đổi');
@@ -647,15 +719,19 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       <View style={[styles.bubbleRow, isMe ? styles.bubbleRowMe : styles.bubbleRowOther]}>
         {!isMe && (
           <View style={styles.avatarContainer}>
-            <Avatar
-              uri={senderAvatar ?? undefined}
-              name={senderName || defaultName || 'User'}
-              size="xs"
-            />
+            {showAvatar ? (
+              <Avatar
+                uri={senderAvatar ?? undefined}
+                name={senderName || defaultName || 'User'}
+                size="xs"
+              />
+            ) : (
+              <View style={{ width: 24 }} />
+            )}
           </View>
         )}
         <View style={[styles.bubbleInner, isMe && styles.bubbleInnerMe]}>
-          {!isMe && senderName && (
+          {!isMe && senderName && showName && (
             <Text style={styles.senderName}>{senderName}</Text>
           )}
           <View
@@ -828,17 +904,21 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       {/* Avatar for received messages */}
       {!isMe && (
         <View style={styles.avatarContainer}>
-          <Avatar
-            uri={senderAvatar ?? undefined}
-            name={senderName || defaultName || 'User'}
-            size="xs"
-          />
+          {showAvatar ? (
+            <Avatar
+              uri={senderAvatar ?? undefined}
+              name={senderName || defaultName || 'User'}
+              size="xs"
+            />
+          ) : (
+            <View style={{ width: 24 }} />
+          )}
         </View>
       )}
 
       {/* Bubble content */}
       <View style={[styles.bubbleInner, isMe && styles.bubbleInnerMe]}>
-        {senderName && !isMe && (
+        {senderName && !isMe && showName && (
           <Text style={styles.senderName}>{senderName}</Text>
         )}
         <View
@@ -1048,7 +1128,7 @@ const styles = StyleSheet.create({
   // ── Main Bubble Layout ─────────────────────────────────────────────────
   bubbleRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     marginBottom: spacing.xs,
     paddingHorizontal: spacing.md,
   },
@@ -1076,7 +1156,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   bubble: {
-    borderRadius: spacing.borderRadius.lg,
+    borderRadius: 20,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     minWidth: 60,
@@ -1093,11 +1173,11 @@ const styles = StyleSheet.create({
     }),
   },
   bubbleMe: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#dff1ff',
     borderBottomRightRadius: 4,
   },
   bubbleOther: {
-    backgroundColor: colors.background.chatBubbleOther,
+    backgroundColor: '#FFFFFF',
     borderBottomLeftRadius: 4,
   },
   focusedBubble: {
@@ -1147,7 +1227,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   replyReferenceSenderMe: {
-    color: colors.text.inverse,
+    color: colors.text.primary,
   },
   replyReferenceText: {
     ...typography.caption,
@@ -1158,7 +1238,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   replyReferenceTextMe: {
-    color: 'rgba(255,255,255,0.72)',
+    color: colors.text.secondary,
   },
   storyReply: {
     marginBottom: 7,
@@ -1191,7 +1271,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   textMe: {
-    color: colors.text.inverse,
+    color: colors.text.primary,
   },
   textOther: {
     color: colors.text.primary,
@@ -1281,7 +1361,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   timeMe: {
-    color: 'rgba(255,255,255,0.65)',
+    color: 'rgba(0,0,0,0.5)',
   },
   timeOther: {
     color: colors.text.tertiary,

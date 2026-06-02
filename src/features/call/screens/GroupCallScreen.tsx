@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, StatusBar, ScrollView, Platform, PermissionsAndroid, Alert } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, ScrollView, Platform, PermissionsAndroid, Alert, TouchableOpacity, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   createAgoraRtcEngine,
@@ -26,6 +26,7 @@ import { socketActions } from '@api/socket';
 import { callApi } from '@api/endpoints';
 import CallControls from '@features/call/components/CallControls';
 import type { RootStackScreenProps } from '@navigation/types';
+import { playOutgoingRingtone, stopRingtone } from '@utils/audioUtils';
 
 type Props = RootStackScreenProps<'GroupCall'>;
 
@@ -77,6 +78,7 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
   const isMuted = useAppSelector((s) => s.groupCall.isMuted);
   const isCameraOff = useAppSelector((s) => s.groupCall.isCameraOff);
   const isSpeakerOn = useAppSelector((s) => s.groupCall.isSpeakerOn);
+  const isHost = useAppSelector((s) => s.groupCall.isHost);
   const remoteReduxUsers = useAppSelector((s) => s.groupCall.remoteUsers);
 
   // ── Agora refs ──────────────────────────────────────────────────────────
@@ -89,6 +91,10 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
   const [engineReady, setEngineReady] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Layout mode ──────────────────────────────────────────────────────────
+  const [showLayoutMenu, setShowLayoutMenu] = useState(false);
+  const [layoutMode, setLayoutMode] = useState<'auto' | 'grid'>('auto');
 
   // ── Timer cleanup ───────────────────────────────────────────────────────
   const stopDurationTimer = useCallback(() => {
@@ -190,19 +196,6 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
           setEngineReady(true);
         }
 
-        // ── Join channel ───────────────────────────────────────────────
-        const options: ChannelMediaOptions = {
-          clientRoleType: 1, // ClientRoleBroadcaster
-          channelProfile: ChannelProfileType.ChannelProfileCommunication,
-          publishCameraTrack: callType === 'video',
-          publishMicrophoneTrack: true,
-          autoSubscribeVideo: true,
-          autoSubscribeAudio: true,
-        };
-        console.log('[GroupCall] joinChannel', { channelName, uid, mode });
-        await engine.joinChannel(token, channelName, uid, options);
-        hasJoinedRef.current = true;
-
       } catch (err: any) {
         console.error('[GroupCall] init error:', err);
         if (!destroyed) {
@@ -222,11 +215,41 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const joinChannel = useCallback(async () => {
+    if (!engineRef.current || !token || !channelName || uid === undefined) return;
+    try {
+      const options: ChannelMediaOptions = {
+        clientRoleType: 1, // ClientRoleBroadcaster
+        channelProfile: ChannelProfileType.ChannelProfileCommunication,
+        publishCameraTrack: callType === 'video',
+        publishMicrophoneTrack: true,
+        autoSubscribeVideo: true,
+        autoSubscribeAudio: true,
+      };
+      console.log('[GroupCall] Executing joinChannel', { channelName, uid, mode });
+      await engineRef.current.joinChannel(token, channelName, uid, options);
+      hasJoinedRef.current = true;
+    } catch (err) {
+      console.error('[GroupCall] joinChannel error:', err);
+    }
+  }, [token, channelName, uid, callType, mode]);
+
+  useEffect(() => {
+    if (
+      engineReady &&
+      !hasJoinedRef.current &&
+      !releasedRef.current &&
+      (mode === 'rejoin' || status === 'connected' || !isHost)
+    ) {
+      joinChannel();
+    }
+  }, [engineReady, status, mode, isHost, joinChannel]);
+
   // ════════════════════════════════════════════════════════════════════════
   // 2. Terminal status (group-call:ended from backend) → cleanup + reset + goBack
   // ════════════════════════════════════════════════════════════════════════
   useEffect(() => {
-    if (status === 'ended' && !endedHandledRef.current && hasJoinedRef.current) {
+    if (status === 'ended' && !endedHandledRef.current) {
       endedHandledRef.current = true;
       cleanupAgora();
       dispatch(endGroupCall());
@@ -235,7 +258,15 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [status, cleanupAgora, dispatch, navigation]);
 
   // ════════════════════════════════════════════════════════════════════════
-  // 3. Sync UI controls → Agora engine
+  // 3. Ringtone for outgoing group calls
+  // ════════════════════════════════════════════════════════════════════════
+  const remoteUids = remoteReduxUsers.filter((u) => u !== uid);
+  const remoteCount = remoteUids.length;
+
+
+
+  // ════════════════════════════════════════════════════════════════════════
+  // 4. Sync UI controls → Agora engine
   // ════════════════════════════════════════════════════════════════════════
   useEffect(() => {
     if (!releasedRef.current && engineRef.current) {
@@ -283,73 +314,82 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Bug 1: Deduplicate UIDs — local uid not in remote list
-  const remoteUids = remoteReduxUsers.filter((u) => u !== uid);
-  const allUids = [uid, ...remoteUids];
-  const count = allUids.length;
+  // ── Layout calculations ──────────────────────────────────────────────────
+  const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+  // Reserve space for header (~120px) + bottom controls (~140px)
+  const VIDEO_AREA_H = SCREEN_H - 260;
+  const TILE_GAP = 6;
 
-  // Bug 1: Layout rules
-  const getTileStyle = () => {
-    if (count <= 1) return styles.tileFull;
-    if (count === 2) return styles.tileHalf;
-    return styles.tileGrid; // 2-column for 3-4, scroll for 5+
+  // Only remote UIDs in grid (local is floating overlay)
+  // (remoteUids and remoteCount are defined above)
+
+  // Tile dimensions based on remote count + layoutMode
+  const getTileDimensions = () => {
+    if (remoteCount <= 0) return { width: SCREEN_W - 32, height: VIDEO_AREA_H };
+    
+    const isGrid = layoutMode === 'grid' || (layoutMode === 'auto' && remoteCount >= 3);
+    
+    if (!isGrid) {
+      // 1-2 remote: column layout (stacked vertically)
+      const tileH = (VIDEO_AREA_H - TILE_GAP * (remoteCount - 1)) / remoteCount;
+      return { width: SCREEN_W - 32, height: tileH };
+    }
+    
+    // Grid: 2 columns
+    const cols = 2;
+    const rows = Math.ceil(remoteCount / cols);
+    const tileW = (SCREEN_W - 32 - TILE_GAP * (cols - 1)) / cols;
+    const tileH = (VIDEO_AREA_H - TILE_GAP * (rows - 1)) / rows;
+    return { width: tileW, height: Math.min(tileH, 300) };
   };
-  const tileStyle = getTileStyle();
+  const tileDim = getTileDimensions();
 
-  const renderTile = (tileUid: number, isLocal: boolean) => {
-    const tileKey = isLocal
-      ? `local-${callId}`
-      : `remote-${callId}-${tileUid}`;
+  const renderRemoteTile = (tileUid: number) => {
+    const tileKey = `remote-${callId}-${tileUid}`;
 
     if (callType === 'audio') {
       return (
-        <View key={tileKey} style={[tileStyle, styles.audioCell]}>
+        <View key={tileKey} style={[styles.audioCell, { width: tileDim.width, height: tileDim.height }]}>
           <View style={styles.avatarSmall}>
-            <Text style={styles.avatarText}>{isLocal ? 'B' : '#'}</Text>
+            <Text style={styles.avatarText}>#</Text>
           </View>
-          <Text style={styles.participantName}>
-            {isLocal ? 'Bạn' : `User ${tileUid}`}
-          </Text>
+          <Text style={styles.participantName}>User {tileUid}</Text>
         </View>
       );
     }
 
-    // Bug 4: engineReady gate — don't render RtcSurfaceView before engine init
     if (!engineReady) {
       return (
-        <View key={tileKey} style={[tileStyle, styles.videoCell]}>
-          <View style={styles.nameOverlay}>
-            <Text style={styles.debugText}>Đang khởi tạo...</Text>
-          </View>
+        <View key={tileKey} style={[styles.videoCell, { width: tileDim.width, height: tileDim.height }]}>
+          <Text style={styles.placeholderText}>Đang khởi tạo...</Text>
         </View>
       );
     }
 
     return (
-      <View key={tileKey} style={[tileStyle, styles.videoCell]}>
+      <View key={tileKey} style={[styles.videoCell, { width: tileDim.width, height: tileDim.height }]}>
         <RtcSurfaceView
           style={StyleSheet.absoluteFill}
-          canvas={isLocal
-            ? { uid: 0, sourceType: VideoSourceType.VideoSourceCamera, renderMode: RenderModeType.RenderModeHidden }
-            : { uid: tileUid, renderMode: RenderModeType.RenderModeHidden }
-          }
-          zOrderMediaOverlay={isLocal}
+          canvas={{ uid: tileUid, renderMode: RenderModeType.RenderModeHidden }}
         />
-        <View style={styles.nameOverlay}>
-          <Text style={styles.debugText}>
-            {isLocal
-              ? `LOCAL canvasUid=0 backendUid=${tileUid}`
-              : `REMOTE uid=${tileUid}`}
-          </Text>
-        </View>
+        {__DEV__ && (
+          <View style={styles.nameOverlay}>
+            <Text style={styles.debugText}>uid={tileUid}</Text>
+          </View>
+        )}
       </View>
     );
   };
 
-  // Bug 1: Grid layout — View+map+ScrollView
-  const gridContent = (
-    <View style={count <= 2 ? styles.columnLayout : styles.wrapLayout}>
-      {allUids.map((tileUid, idx) => renderTile(tileUid, idx === 0))}
+  // Grid content — remote users only
+  const isGridLayout = layoutMode === 'grid' || (layoutMode === 'auto' && remoteCount >= 3);
+  const gridContent = remoteCount > 0 ? (
+    <View style={isGridLayout && remoteCount > 1 ? styles.wrapLayout : styles.columnLayout}>
+      {remoteUids.map((tileUid) => renderRemoteTile(tileUid))}
+    </View>
+  ) : (
+    <View style={styles.waitingArea}>
+      <Text style={styles.waitingText}>Đang chờ người khác tham gia...</Text>
     </View>
   );
 
@@ -358,22 +398,68 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>{groupName}</Text>
-          <Text style={styles.statusText}>
-            {status === 'active'
-              ? formatDuration(callDuration)
-              : status === 'joining'
-              ? 'Đang tham gia...'
-              : 'Đang kết nối...'}
-          </Text>
-          <Text style={styles.countText}>
-            {count} người tham gia
-          </Text>
+          <View style={styles.headerRow}>
+            <View style={{ flex: 1 }} />
+            <View style={styles.headerCenter}>
+              <Text style={styles.headerTitle}>{groupName}</Text>
+              <Text style={styles.statusText}>
+                {status === 'active'
+                  ? formatDuration(callDuration)
+                  : status === 'joining'
+                  ? isHost ? 'Đang gọi nhóm...' : 'Đang tham gia...'
+                  : 'Đang kết nối...'}
+              </Text>
+              <Text style={styles.countText}>
+                {remoteCount + 1} người tham gia
+              </Text>
+            </View>
+            <View style={styles.headerRight}>
+              <TouchableOpacity
+                style={styles.layoutButton}
+                onPress={() => setShowLayoutMenu((p) => !p)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.layoutButtonText}>⊞</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Layout dropdown menu */}
+          {showLayoutMenu && (
+            <View style={styles.layoutMenu}>
+              {([
+                { key: 'auto', label: 'Tự động' },
+                { key: 'grid', label: 'Lưới' },
+              ] as const).map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[
+                    styles.layoutMenuItem,
+                    layoutMode === opt.key && styles.layoutMenuItemActive,
+                  ]}
+                  onPress={() => {
+                    setLayoutMode(opt.key);
+                    setShowLayoutMenu(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.layoutMenuText,
+                      layoutMode === opt.key && styles.layoutMenuTextActive,
+                    ]}
+                  >
+                    {opt.label}{layoutMode === opt.key ? ' ✓' : ''}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
 
-        {/* Bug 1: ScrollView for 5+ users */}
+        {/* Remote video grid */}
         <View style={styles.gridArea}>
-          {count > 4 ? (
+          {remoteCount > 4 ? (
             <ScrollView contentContainerStyle={styles.scrollContent}>
               {gridContent}
             </ScrollView>
@@ -382,13 +468,26 @@ const GroupCallScreen: React.FC<Props> = ({ route, navigation }) => {
           )}
         </View>
 
+        {/* Local preview — floating overlay, always visible for video calls */}
+        {callType === 'video' && engineReady && (
+          <View style={styles.localPreview}>
+            <RtcSurfaceView
+              key={`local-${callId}`}
+              style={StyleSheet.absoluteFill}
+              canvas={{
+                uid: 0,
+                sourceType: VideoSourceType.VideoSourceCamera,
+                renderMode: RenderModeType.RenderModeHidden,
+              }}
+              zOrderMediaOverlay
+            />
+          </View>
+        )}
+
         <View style={styles.bottomArea}>
-          {/* Member: "Rời khỏi" text link */}
-          
-            <Text style={styles.leaveText} onPress={handleLeave}>
-              Rời khỏi
-            </Text>
-          
+          <Text style={styles.leaveText} onPress={handleLeave}>
+            Rời khỏi
+          </Text>
           <CallControls
             isMuted={isMuted}
             isCameraOff={isCameraOff}
@@ -424,6 +523,55 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+  },
+  headerCenter: {
+    flex: 2,
+    alignItems: 'center',
+  },
+  headerRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+    paddingRight: 16,
+  },
+  layoutButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  layoutButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+  },
+  layoutMenu: {
+    marginTop: 8,
+    backgroundColor: 'rgba(40, 40, 40, 0.95)',
+    borderRadius: 12,
+    paddingVertical: 4,
+    minWidth: 140,
+    alignSelf: 'center',
+  },
+  layoutMenuItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  layoutMenuItemActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  layoutMenuText: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+  },
+  layoutMenuTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
   statusText: {
     fontSize: 13,
     color: 'rgba(255, 255, 255, 0.6)',
@@ -439,50 +587,31 @@ const styles = StyleSheet.create({
     margin: 8,
   },
   scrollContent: {
-    gap: 8,
+    gap: 6,
   },
   columnLayout: {
     flex: 1,
-    gap: 8,
+    gap: 6,
   },
   wrapLayout: {
+    flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-  },
-  tileFull: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  tileHalf: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  tileGrid: {
-    width: '48%',
-    aspectRatio: 3 / 4,
-    borderRadius: 12,
-    overflow: 'hidden',
+    gap: 6,
+    alignContent: 'flex-start',
+    justifyContent: 'center',
   },
   videoCell: {
     backgroundColor: '#1A1A1A',
-  },
-  nameOverlay: {
-    position: 'absolute',
-    bottom: 8,
-    left: 8,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   audioCell: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 24,
     backgroundColor: '#1A1A1A',
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   avatarSmall: {
     width: 64,
@@ -503,6 +632,47 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
   },
+  nameOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  debugText: {
+    color: '#00FF00',
+    fontSize: 10,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  placeholderText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  waitingArea: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  waitingText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 15,
+  },
+  // Local preview — floating overlay (like DirectCallScreen)
+  localPreview: {
+    position: 'absolute',
+    bottom: 160,
+    right: 16,
+    width: 110,
+    height: 150,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    zIndex: 10,
+  },
   bottomArea: {
     alignItems: 'center',
   },
@@ -511,11 +681,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
     marginBottom: 4,
-  },
-  debugText: {
-    color: '#00FF00',
-    fontSize: 10,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
 });
 

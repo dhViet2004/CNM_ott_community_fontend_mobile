@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,36 +6,47 @@ import {
   Modal,
   TouchableOpacity,
   StatusBar,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppDispatch, useAppSelector } from '@store/hooks';
-import {
-  clearIncomingCall,
-  setCallStatus,
-  setIsCaller,
-} from '@store/slices/callSlice';
-import { socketActions } from '@api/socket';
+import { endGroupCall } from '@store/slices/groupCallSlice';
 import { callApi } from '@api/endpoints';
+import { playOutgoingRingtone, stopRingtone } from '@utils/audioUtils';
 import type { RootStackParamList } from '@navigation/types';
-import { playIncomingRingtone, stopRingtone } from '@utils/audioUtils';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const DirectIncomingCallModal: React.FC = () => {
+const GroupOutgoingCallModal: React.FC = () => {
   const dispatch = useAppDispatch();
   const navigation = useNavigation<Nav>();
-  const incomingCall = useAppSelector((s) => s.call.incomingCall);
-  const callStatus = useAppSelector((s) => s.call.callStatus);
 
-  const visible = incomingCall !== null && callStatus === 'ringing';
+  const status = useAppSelector((s) => s.groupCall.status);
+  const isHost = useAppSelector((s) => s.groupCall.isHost);
+  const callType = useAppSelector((s) => s.groupCall.callType);
+  const sessionId = useAppSelector((s) => s.groupCall.sessionId);
+  
+  const callId = useAppSelector((s) => s.groupCall.callId);
+  const channelName = useAppSelector((s) => s.groupCall.channelName);
+  const token = useAppSelector((s) => s.groupCall.token);
+  const uid = useAppSelector((s) => s.groupCall.uid);
+  const groupId = useAppSelector((s) => s.groupCall.groupId);
+  const groupName = useAppSelector((s) => s.groupCall.groupName);
 
-  React.useEffect(() => {
+  const visible = status === 'joining' && isHost;
+  const wasVisibleRef = React.useRef(visible);
+
+  useEffect(() => {
     if (visible) {
-      playIncomingRingtone();
+      wasVisibleRef.current = true;
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (visible) {
+      playOutgoingRingtone();
     } else {
       stopRingtone();
     }
@@ -44,45 +55,45 @@ const DirectIncomingCallModal: React.FC = () => {
     };
   }, [visible]);
 
-  const handleAccept = useCallback(async () => {
-    if (!incomingCall) return;
-
-    try {
-      const result = await callApi.acceptCall(incomingCall.callId);
-      const { call, token } = result;
-
-      dispatch(setIsCaller(false));
-      dispatch(setCallStatus('connected'));
-      dispatch(clearIncomingCall());
-
-      navigation.navigate('DirectCall', {
-        callId: call.callId,
-        channelName: token.channelName,
-        token: token.token,
-        uid: token.uid,
-        callType: incomingCall.callType,
-        conversationId: incomingCall.conversationId,
-        remoteName: incomingCall.callerName,
+  // Navigate when someone answers (status becomes connected or active)
+  useEffect(() => {
+    if ((status === 'connected' || status === 'active') && isHost && callId && channelName && token && uid !== null && groupId) {
+      wasVisibleRef.current = false;
+      navigation.navigate('GroupCall', {
+        callId,
+        channelName,
+        token,
+        uid,
+        callType,
+        groupId,
+        groupName: groupName || 'Nhóm',
       });
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Không thể chấp nhận cuộc gọi';
-      Alert.alert('Lỗi', msg);
-      dispatch(clearIncomingCall());
-      dispatch(setCallStatus('idle'));
     }
-  }, [incomingCall, dispatch, navigation]);
+  }, [status, isHost, callId, channelName, token, uid, callType, groupId, groupName, navigation]);
 
-  const handleReject = useCallback(() => {
-    if (!incomingCall) return;
-    socketActions.rejectCall(incomingCall.callId);
-    dispatch(clearIncomingCall());
-    dispatch(setCallStatus('idle'));
-  }, [incomingCall, dispatch]);
+  // Clean up if the call ends while we are waiting
+  useEffect(() => {
+    if (status === 'ended' && wasVisibleRef.current) {
+      wasVisibleRef.current = false;
+      dispatch(endGroupCall());
+    }
+  }, [status, dispatch]);
 
-  if (!incomingCall) return null;
+  const handleCancel = useCallback(async () => {
+    try {
+      if (sessionId) {
+        await callApi.leaveGroupCall(sessionId);
+      }
+    } catch (e) {
+      // Ignore API errors on cancel
+    }
+    dispatch(endGroupCall());
+  }, [sessionId, dispatch]);
 
-  const isVideo = incomingCall.callType === 'video';
-  const callerName = incomingCall.callerName || 'Người dùng';
+  if (!visible) return null;
+
+  const isVideo = callType === 'video';
+  const nameToDisplay = groupName || 'Nhóm';
 
   return (
     <Modal visible={visible} animationType="fade" transparent={false} statusBarTranslucent>
@@ -97,26 +108,17 @@ const DirectIncomingCallModal: React.FC = () => {
                 color="#FFFFFF"
               />
             </View>
-            <Text style={styles.callerName}>{callerName}</Text>
+            <Text style={styles.callerName}>{nameToDisplay}</Text>
             <Text style={styles.callTypeText}>
-              {isVideo ? 'Cuộc gọi video đến' : 'Cuộc gọi thoại đến'}
+              {`Đang gọi nhóm ${isVideo ? 'video' : 'thoại'}...`}
             </Text>
           </View>
 
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.rejectButton} onPress={handleReject}>
+            <TouchableOpacity style={styles.rejectButton} onPress={handleCancel}>
               <Ionicons name="call" size={32} color="#FFFFFF" />
             </TouchableOpacity>
-            <Text style={styles.actionLabel}>Từ chối</Text>
-
-            <TouchableOpacity style={styles.acceptButton} onPress={handleAccept}>
-              <Ionicons
-                name={isVideo ? 'videocam' : 'call'}
-                size={32}
-                color="#FFFFFF"
-              />
-            </TouchableOpacity>
-            <Text style={styles.actionLabel}>Chấp nhận</Text>
+            <Text style={styles.actionLabel}>Huỷ</Text>
           </View>
         </SafeAreaView>
       </View>
@@ -173,14 +175,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  acceptButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#34C759',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   actionLabel: {
     color: 'rgba(255, 255, 255, 0.7)',
     fontSize: 13,
@@ -189,4 +183,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default DirectIncomingCallModal;
+export default GroupOutgoingCallModal;

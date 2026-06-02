@@ -24,6 +24,7 @@ import { socketActions } from '@api/socket';
 import { callApi } from '@api/endpoints';
 import CallControls from '@features/call/components/CallControls';
 import type { RootStackScreenProps } from '@navigation/types';
+import { playOutgoingRingtone, stopRingtone } from '@utils/audioUtils';
 
 type Props = RootStackScreenProps<'DirectCall'>;
 
@@ -137,6 +138,18 @@ const DirectCallScreen: React.FC<Props> = ({ route, navigation }) => {
       dispatch(setCallStatus('ended'));
     }
   }, [token, channelName, uid, callType, dispatch]);
+
+  // ── Ringtone for outgoing calls ─────────────────────────────────────────
+  useEffect(() => {
+    if (isCaller && callStatus !== 'connected' && callStatus !== 'ended') {
+      playOutgoingRingtone();
+    } else {
+      stopRingtone();
+    }
+    return () => {
+      stopRingtone();
+    };
+  }, [isCaller, callStatus]);
 
   // ════════════════════════════════════════════════════════════════════════
   // 1. Create one engine on mount — cleanup only Agora on unmount

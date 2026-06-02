@@ -18,6 +18,7 @@ import type { PollData } from '@/types';
 import {
   removeGroup,
   addGroup,
+  updateGroup,
   socketAddMember,
   socketRemoveMember,
   socketUpdateRole,
@@ -150,12 +151,16 @@ const REGISTERED_EVENTS = [
   'call:missed', 'call:busy', 'call:error', 'call:ringing', 'call:state-updated',
   'group-call:incoming', 'group-call:accepted', 'group-call:ended',
   'group-call:participant-joined', 'group-call:participant-left',
+  'call:participant-disconnected', 'call:participant-reconnected',
   'user_joined', 'user_left', 'room_joined', 'message_read',
   'live_location_started', 'live_location_updated', 'live_location_stopped',
-  'message_pinned_updated', 'poll_updated',
-  // Nhiệm vụ 2: Group management socket events
+  'message_pinned_updated', 'poll_updated', 'message:updated',
+  // Group management socket events
   'group:members_added', 'group:member_removed', 'group:member_left',
   'group:you_were_removed', 'group:you_were_added', 'group:deleted',
+  'group:added_to_group', 'group:owner_transferred',
+  'SERVER:ROLE_UPDATED', 'SERVER:GROUP_SETTINGS_UPDATED',
+  'SERVER:NEW_JOIN_REQUEST', 'SERVER:JOIN_REQUEST_APPROVED',
 ];
 
 function removeAllListeners() {
@@ -243,7 +248,9 @@ export const connectSocket = (token: string) => {
 
     console.log('[Socket] currentUserId:', currentUserId, 'senderId:', senderId, 'match:', currentUserId === senderId);
 
-    if (currentUserId && senderId && senderId === String(currentUserId)) {
+    // Skip own regular messages (but NOT system/call messages — those should always show)
+    const isSystemCallMessage = ['group_call_active', 'call_log', 'system'].includes(message.contentType || '');
+    if (currentUserId && senderId && senderId === String(currentUserId) && !isSystemCallMessage) {
       console.log('[Socket] Skipping own message');
       return;
     }
@@ -294,6 +301,8 @@ export const connectSocket = (token: string) => {
       senderName: senderDisplayName || 'Unknown',
       sender_name: senderDisplayName || 'Unknown',
       sender_avatar: senderAvatar,
+      callData: (message as any).callData ?? null,
+      contentType: (message as any).contentType ?? null,
       type: (message.contentType ?? 'text') as 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file' | 'sticker' | 'emoji' | 'system' | 'poll' | 'reminder' | 'reminder_due' | 'location',
       content: message.content ?? '',
       pollData: message.pollData ?? null,
@@ -306,6 +315,28 @@ export const connectSocket = (token: string) => {
       replyTo: (message as any).replyTo ?? null,
       replyToMessage: (message as any).replyToMessage ?? null,
       storyReply: (message as any).storyReply ?? null,
+    }));
+  });
+
+  // ── message:updated — realtime message content update (e.g. group_call_active → ended) ──
+  socket.on('message:updated', (data: {
+    conversationId: string;
+    messageId: string;
+    contentType?: string;
+    content?: string;
+    callData?: any;
+    updatedAt?: string;
+  }) => {
+    console.log('[Socket] message:updated:', data.messageId, 'in', data.conversationId);
+    if (!data.conversationId || !data.messageId) return;
+    store.dispatch(updateMessage({
+      conversationId: data.conversationId,
+      messageId: data.messageId,
+      updates: {
+        ...(data.content !== undefined ? { content: data.content } : {}),
+        ...(data.callData !== undefined ? { callData: data.callData } : {}),
+        ...(data.updatedAt !== undefined ? { updatedAt: data.updatedAt } : {}),
+      },
     }));
   });
 
@@ -486,6 +517,7 @@ export const connectSocket = (token: string) => {
     callId: string;
     sessionId?: string;
     callerId: string;
+    hostUserId?: string;
     callerName?: string;
     caller_name?: string;
     callerAvatar?: string | null;
@@ -497,7 +529,7 @@ export const connectSocket = (token: string) => {
   }) => {
     store.dispatch(setGroupIncomingCall({
       callId: data.sessionId ?? data.callId,
-      callerId: data.callerId,
+      callerId: data.hostUserId ?? data.callerId,
       callerName: data.callerName || data.caller_name || '',
       callerAvatar: data.callerAvatar ?? null,
       // Group call is video-only in current product flow. Web also treats it as a single type.
@@ -516,8 +548,8 @@ export const connectSocket = (token: string) => {
     callId: string;
     token?: { appId: string; token: string; uid: number; channelName: string };
   }) => {
-    // NO dispatch — initiator is already active, invitee handles via modal
     console.log('[Socket] group-call:accepted:', data.callId);
+    store.dispatch(setGroupStatus('connected'));
   });
 
   // Group call ended
@@ -532,6 +564,10 @@ export const connectSocket = (token: string) => {
     userId: string;
   }) => {
     console.log('[Socket] group-call:participant-joined:', data.userId);
+    const { status } = store.getState().groupCall;
+    if (status === 'joining') {
+      store.dispatch(setGroupStatus('connected'));
+    }
   });
 
   // Group call participant left
@@ -540,6 +576,30 @@ export const connectSocket = (token: string) => {
     userId: string;
   }) => {
     console.log('[Socket] group-call:participant-left:', data.userId);
+  });
+
+  // ── call:participant-disconnected — someone lost connection in group call ──
+  socket.on('call:participant-disconnected', (data: {
+    callId: string;
+    userId: string;
+    graceMs?: number;
+  }) => {
+    console.log('[Socket] call:participant-disconnected:', data.userId, 'in call', data.callId);
+    // Log only — no UI action needed. Backend manages reconnect timer.
+    // Other participants can see a brief "reconnecting" indicator if desired.
+  });
+
+  // ── call:participant-reconnected — someone reconnected to group call ──
+  socket.on('call:participant-reconnected', (data: {
+    callId: string;
+    userId: string;
+    token?: string;
+    uid?: number;
+    channelName?: string;
+  }) => {
+    console.log('[Socket] call:participant-reconnected:', data.userId, 'in call', data.callId);
+    // If this is the current user reconnecting (has token), we could refresh Agora credentials.
+    // For now, log only — Agora SDK handles reconnection automatically.
   });
 
   // ─── Message Read Receipt Events ─────────────────────────────────────────
@@ -675,18 +735,20 @@ export const connectSocket = (token: string) => {
     const currentUserId = store.getState().auth?.user?.userId;
     const gIdStr = String(data.groupId);
 
-    // Reload toàn bộ danh sách members cho group hiện tại
-    store.dispatch(socketReloadMembers({
-      groupId: gIdStr,
-      members: data.newMembers.map((m: any) => ({
-        userId: m.userId,
-        username: m.username || '',
-        display_name: m.display_name || m.displayName || m.username || '',
-        avatar_url: m.avatar_url ?? m.avatarUrl ?? null,
-        role: m.role || 'MEMBER',
-        joined_at: new Date().toISOString(),
-      })),
-    }));
+    // Merge new members into existing list (append, not replace)
+    for (const m of data.newMembers) {
+      store.dispatch(socketAddMember({
+        groupId: gIdStr,
+        member: {
+          userId: m.userId,
+          username: m.username || '',
+          display_name: m.display_name || m.displayName || m.username || '',
+          avatar_url: m.avatar_url ?? m.avatarUrl ?? null,
+          role: m.role || 'MEMBER',
+          joined_at: new Date().toISOString(),
+        },
+      }));
+    }
 
     // Nếu user hiện tại là người được thêm → thêm vào conversation list
     if (currentUserId && data.newMembers.some((m) => String(m.userId) === String(currentUserId))) {
@@ -920,6 +982,88 @@ export const connectSocket = (token: string) => {
     store.dispatch(removeGroup(gIdStr));
     store.dispatch(removeConversationById(gIdStr));
     console.log('[Socket] Group deleted:', gIdStr);
+  });
+
+  // ── SERVER:ROLE_UPDATED — realtime role change ──
+  socket.on('SERVER:ROLE_UPDATED', (data: {
+    groupId: string;
+    targetUserId?: string;
+    userId?: string;
+    newRole?: string;
+    role?: string;
+  }) => {
+    console.log('[Socket] SERVER:ROLE_UPDATED:', JSON.stringify(data));
+    if (!data.groupId) return;
+    const uid = data.targetUserId || data.userId;
+    const role = data.newRole || data.role;
+    if (!uid || !role) return;
+    store.dispatch(socketUpdateRole({
+      groupId: String(data.groupId),
+      userId: String(uid),
+      newRole: role,
+    }));
+  });
+
+  // ── SERVER:GROUP_SETTINGS_UPDATED — realtime settings change ──
+  socket.on('SERVER:GROUP_SETTINGS_UPDATED', (data: {
+    groupId: string;
+    settings?: { name?: string; description?: string; avatarUrl?: string | null; isApprovalRequired?: boolean; allowSendLinks?: string; spamFilterLevel?: number };
+    name?: string;
+    description?: string;
+    avatarUrl?: string | null;
+  }) => {
+    console.log('[Socket] SERVER:GROUP_SETTINGS_UPDATED:', JSON.stringify(data));
+    if (!data.groupId) return;
+    const s = data.settings || {};
+    const gIdStr = String(data.groupId);
+    // Build partial group update — merge into existing group in myGroups
+    const currentGroup = store.getState().groups?.myGroups?.find(
+      (g: any) => String(g.groupId) === gIdStr
+    );
+    if (currentGroup) {
+      store.dispatch(updateGroup({
+        ...currentGroup,
+        name: s.name ?? data.name ?? currentGroup.name,
+        description: s.description ?? data.description ?? currentGroup.description,
+        avatar_url: s.avatarUrl ?? data.avatarUrl ?? currentGroup.avatar_url,
+        is_private: currentGroup.is_private,
+        invite_code: currentGroup.invite_code,
+        member_count: currentGroup.member_count,
+        created_by: currentGroup.created_by,
+        created_at: currentGroup.created_at,
+      }));
+    }
+  });
+
+  // ── group:owner_transferred — realtime owner change ──
+  socket.on('group:owner_transferred', (data: {
+    groupId?: string;
+    newOwnerId: string;
+    oldOwnerId: string;
+  }) => {
+    console.log('[Socket] group:owner_transferred:', JSON.stringify(data));
+    // Update roles: old owner → MEMBER, new owner → OWNER
+    // We need groupId — it may not be in payload, so we search all groups
+    const groups = store.getState().groups?.myGroups || [];
+    for (const g of groups) {
+      const members = store.getState().groups?.groupMembers?.[String(g.groupId)] || [];
+      const hasOldOwner = members.some((m: any) => String(m.userId) === String(data.oldOwnerId));
+      const hasNewOwner = members.some((m: any) => String(m.userId) === String(data.newOwnerId));
+      if (hasOldOwner || hasNewOwner) {
+        store.dispatch(socketUpdateRole({ groupId: String(g.groupId), userId: String(data.oldOwnerId), newRole: 'MEMBER' }));
+        store.dispatch(socketUpdateRole({ groupId: String(g.groupId), userId: String(data.newOwnerId), newRole: 'OWNER' }));
+        break;
+      }
+    }
+  });
+
+  // ── SERVER:NEW_JOIN_REQUEST — notification for admins ──
+  socket.on('SERVER:NEW_JOIN_REQUEST', (data: {
+    groupId: string;
+    userId: string;
+  }) => {
+    console.log('[Socket] SERVER:NEW_JOIN_REQUEST:', JSON.stringify(data));
+    // Log only — no UI built yet. Admins can see requests in GroupSettingsScreen.
   });
 
   // Khi hồ sơ cá nhân/avatar được cập nhật ở client khác (Web/Mobile), đồng bộ lại state

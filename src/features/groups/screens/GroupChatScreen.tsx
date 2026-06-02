@@ -114,6 +114,33 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
     (state) => state.chat.messages[conversationId] ?? EMPTY_MESSAGES
   );
 
+  // Dedup: hide group_call_active (ended) when call_log exists for same callId
+  // This prevents duplicate "Cuộc gọi nhóm đã kết thúc" bubbles
+  const filteredMessages = React.useMemo(() => {
+    if (!messages || messages.length === 0) return messages;
+    
+    // Build set of callIds that have a call_log (group)
+    const endedCallIds = new Set<string>();
+    for (const m of messages) {
+      if (
+        (m.type === 'call_log' || (m as any).contentType === 'call_log') &&
+        ((m as any).callData?.callMode === 'group' || (m as any).callData?.callMode === undefined) &&
+        (m as any).callData?.callId
+      ) {
+        endedCallIds.add(String((m as any).callData.callId));
+      }
+    }
+    
+    if (endedCallIds.size === 0) return messages;
+    
+    // Filter out group_call_active whose callId has a call_log
+    return messages.filter((m) => {
+      if ((m as any).contentType === 'group_call_active' && (m as any).callData?.callId) {
+        return !endedCallIds.has(String((m as any).callData.callId));
+      }
+      return true;
+    });
+  }, [messages]);
 
   const currentUserId = useAppSelector((state) => state.auth.user?.userId);
   const currentUser = useAppSelector((state) => state.auth.user);
@@ -174,20 +201,22 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         callId: result.sessionId,
         sessionId: result.sessionId,
         groupId: groupId,
+        groupName: title,
         callType,
+        token: result.token,
         isHost: true,
       }));
       dispatch(setGroupStatus('joining'));
 
-      navigation.navigate('GroupCall', {
-        callId: result.sessionId,
-        channelName: result.channelName,
-        token: result.token,
-        uid: result.agoraUid,
-        callType,
-        groupId,
-        groupName: title,
-      });
+
+
+
+
+
+
+
+
+
     } catch (err: any) {
       console.error('[mobile:startGroupCall] error', err?.response?.data || err?.message);
       const msg = err?.response?.data?.message || err?.message || 'Không thể bắt đầu cuộc gọi nhóm';
@@ -449,6 +478,8 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           isDeleted: m.isDeleted || false,
           replyTo: m.replyTo ?? null,
           replyToMessage: m.replyToMessage ?? null,
+          callData: m.callData ?? null,
+          contentType: m.contentType ?? null,
         };
       });
       dispatch(setMessages({ conversationId, messages: mapped as Message[] }));
@@ -772,7 +803,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   const renderMessage = useCallback(
-    ({ item }: { item: Message }) => {
+    ({ item, index }: { item: Message, index: number }) => {
       const isMe = String(item.senderId) === String(currentUserId);
       const time = new Date(item.createdAt ?? item.timestamp ?? Date.now()).toLocaleTimeString('vi-VN', {
         hour: '2-digit',
@@ -782,6 +813,9 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
       const senderAvatar = item.senderAvatar || item.sender_avatar || null;
       const messageType = item.type;
       const isFocused = (route.params as any).focusedMessageId === String(item.id);
+
+      const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
+      const showAvatarAndName = !prevMessage || String((prevMessage as any).senderId) !== String(item.senderId) || prevMessage.type === 'system';
 
       return (
         <MessageBubble
@@ -804,13 +838,16 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
           replyToMessage={item.replyToMessage}
           pollData={item.pollData}
           currentUserId={currentUserId}
+          showAvatar={showAvatarAndName}
+          showName={showAvatarAndName}
+          onCall={(type) => handleStartGroupCall(type)}
           onJumpToMessage={(messageId) => handleNavigateToMessage(String(messageId))}
           onLongPress={setSelectedMessage}
           readBy={item.readBy}
         />
       );
     },
-    [title, currentUserId, route.params, handleNavigateToMessage]
+    [title, currentUserId, route.params, handleNavigateToMessage, filteredMessages]
   );
 
   const keyExtractor = useCallback((item: Message) => String(item.id), []);
@@ -918,7 +955,7 @@ const GroupChatScreen: React.FC<Props> = ({ route, navigation }) => {
         />
         <FlatList
           ref={flatListRef}
-          data={messages as Message[]}
+          data={filteredMessages as Message[]}
           keyExtractor={keyExtractor}
           renderItem={renderMessage as any}
           contentContainerStyle={[
