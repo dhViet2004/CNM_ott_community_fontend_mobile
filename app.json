@@ -49,7 +49,9 @@
         {
           "cameraPermission": "Cho phép $(PRODUCT_NAME) sử dụng camera để quét mã QR kết bạn."
         }
-      ]
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging"
     ],
     "experiments": {
       "typedRoutes": true

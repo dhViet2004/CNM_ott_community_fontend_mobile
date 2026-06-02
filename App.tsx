@@ -12,6 +12,13 @@ import { getAccessToken } from '@api/client';
 import DirectIncomingCallModal from '@features/call/components/DirectIncomingCallModal';
 import GroupIncomingCallModal from '@features/call/components/GroupIncomingCallModal';
 import GroupOutgoingCallModal from '@features/call/components/GroupOutgoingCallModal';
+import { registerDeviceForFCM } from './src/utils/firebasePush';
+
+// Handle background messages
+import messaging from '@react-native-firebase/messaging';
+messaging().setBackgroundMessageHandler(async remoteMessage => {
+  console.log('[FCM] Message handled in the background!', remoteMessage);
+});
 
 const AppContent: React.FC = () => {
   const appState = useRef(AppState.currentState);
@@ -67,6 +74,14 @@ const AppContent: React.FC = () => {
 
     return unsubscribe;
   }, []);
+
+  // Register FCM token when authenticated
+  useEffect(() => {
+    const state = store.getState();
+    if (state.auth.isAuthenticated) {
+      registerDeviceForFCM();
+    }
+  }, [store.getState().auth.isAuthenticated]);
 
   return (
     <NavigationContainer>
