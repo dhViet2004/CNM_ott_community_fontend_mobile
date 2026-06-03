@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "157525683453",
+    "project_id": "ottott-863f8",
+    "storage_bucket": "ottott-863f8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:157525683453:android:550bed593d518cf8fe2294",
+        "android_client_info": {
+          "package_name": "com.zaloclone.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDpZ2oyibG-3of72AIehw95Fzr2RXen1mk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
